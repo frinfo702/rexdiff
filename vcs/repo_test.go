@@ -5,8 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rednafi/rexdiff/vcs"
 )
@@ -301,5 +303,113 @@ func TestRefs(t *testing.T) {
 	}
 	if _, err := r.Resolve(ctx, "nosuchref"); err == nil {
 		t.Error("Resolve(nosuchref): no error")
+	}
+}
+
+func TestEditor(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	r, dir := newRepo(t)
+	if got := r.Editor(t.Context()); got != "" {
+		t.Errorf("Editor with no core.editor = %q, want \"\"", got)
+	}
+	git(t, dir, "config", "core.editor", "vim -f")
+	if got := r.Editor(t.Context()); got != "vim -f" {
+		t.Errorf("Editor = %q, want \"vim -f\"", got)
+	}
+}
+
+func TestDiffRenameAndSubmodule(t *testing.T) {
+	dir := t.TempDir()
+	git(t, dir, "init", "-q")
+	write(t, dir, "old.txt", "one\ntwo\nthree\n")
+	const (
+		a = "1111111111111111111111111111111111111111"
+		b = "2222222222222222222222222222222222222222"
+	)
+	git(t, dir, "add", ".")
+	git(t, dir, "update-index", "--add", "--cacheinfo", "160000,"+a+",sub")
+	git(t, dir, "commit", "-qm", "one")
+	git(t, dir, "mv", "old.txt", "new.txt")
+	git(t, dir, "update-index", "--cacheinfo", "160000,"+b+",sub")
+	git(t, dir, "commit", "-qm", "two")
+
+	ctx := t.Context()
+	r, err := vcs.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from, to := parent(t, r, "HEAD"), head(t, r)
+	got, err := r.Diff(ctx, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []vcs.File{
+		{
+			Path:   "new.txt",
+			From:   "old.txt",
+			Status: vcs.StatusRenamed,
+			Old:    "one\ntwo\nthree\n",
+			New:    "one\ntwo\nthree\n",
+		},
+		{
+			Path:   "sub",
+			Status: vcs.StatusModified,
+			Old:    "Subproject commit " + a + "\n",
+			New:    "Subproject commit " + b + "\n",
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Diff:\n%+v\nwant:\n%+v", got, want)
+	}
+}
+
+func TestOpenOutsideARepo(t *testing.T) {
+	if _, err := vcs.Open(t.Context(), t.TempDir()); err == nil {
+		t.Error("Open: no error outside a repository")
+	}
+}
+
+// A new repository has no commit and no index yet.
+func TestNewRepo(t *testing.T) {
+	dir := t.TempDir()
+	git(t, dir, "init", "-q")
+	write(t, dir, "a.txt", "one\n")
+	r, err := vcs.Open(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Aa.txt" {
+		t.Errorf("Diff(Head, Snapshot) = %s, want Aa.txt", got)
+	}
+}
+
+// TestSnapshotRacyEdit checks that Snapshot sees an edit that keeps the
+// size of a file. The edit is in the same second as the last write of the
+// index.
+// git checks such "racily clean" files by their content. It finds them by
+// the modification time of the index, so the copy of the index must keep
+// that time.
+func TestSnapshotRacyEdit(t *testing.T) {
+	r, dir := newRepo(t)
+	git(t, dir, "config", "core.trustctime", "false")
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-qm", "all")
+	then := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	touch := func(name string) {
+		t.Helper()
+		if err := os.Chtimes(filepath.Join(dir, name), then, then); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, dir, "b.txt", "bee\n")
+	touch("b.txt")
+	git(t, dir, "update-index", "--really-refresh") // the entry gets the time of b.txt
+	touch(".git/index")
+	write(t, dir, "b.txt", "BEE\n") // the same size and time
+	touch("b.txt")
+
+	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Mb.txt" {
+		t.Errorf("Diff(HEAD, Snapshot) = %s, want Mb.txt", got)
 	}
 }
