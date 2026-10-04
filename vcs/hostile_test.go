@@ -1,6 +1,7 @@
 package vcs_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -215,5 +216,143 @@ func TestOpenRootWithNewline(t *testing.T) {
 	}
 	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Aa.txt" {
 		t.Errorf("Diff(Head, Snapshot) = %s, want Aa.txt", got)
+	}
+}
+
+// TestGitWorktree checks a working tree that "git worktree add" made. It
+// has its own index.
+func TestGitWorktree(t *testing.T) {
+	_, dir := newRepo(t)
+	ctx := t.Context()
+	wt := filepath.Join(t.TempDir(), "wt")
+	git(t, dir, "worktree", "add", "-q", "-b", "other", wt, "main")
+	write(t, wt, "a.txt", "changed\n")
+	write(t, wt, "staged.txt", "s\n")
+	git(t, wt, "add", "staged.txt")
+
+	r, err := vcs.Open(ctx, wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := names(changes(t, r, head(t, r), snapshot(t, r)))
+	if got != "Ma.txt Astaged.txt" {
+		t.Errorf("Diff(Head, Snapshot) = %s, want Ma.txt Astaged.txt", got)
+	}
+	st, _ := exec.Command("git", "-C", wt, "status", "--porcelain").Output()
+	if string(st) != " M a.txt\nA  staged.txt\n" {
+		t.Errorf("the index of the worktree changed:\n%s", st)
+	}
+}
+
+func TestDetachedHead(t *testing.T) {
+	r, dir := newRepo(t)
+	ctx := t.Context()
+	git(t, dir, "checkout", "-q", "--detach", "main")
+	got := names(changes(t, r, head(t, r), snapshot(t, r)))
+	if got != "A.gitignore Ma.txt Anew.txt" {
+		t.Errorf("Diff(Head, Snapshot) = %s", got)
+	}
+	if cs, err := r.Commits(ctx, 5); err != nil || len(cs) != 1 || cs[0].Subject != "init" {
+		t.Errorf("Commits = %+v, %v; want init", cs, err)
+	}
+}
+
+// TestGrepIsLiteral checks that Grep finds the text, and does not read it
+// as a pattern or as an option.
+func TestGrepIsLiteral(t *testing.T) {
+	r, dir := newRepo(t)
+	ctx := t.Context()
+	write(t, dir, "g.txt", "abc\na.c\n-v\n--help\n[x\n(y\n\\d\n*\n^a\nx$\n")
+	git(t, dir, "config", "grep.column", "true") // adds a field to the output
+	tests := []struct {
+		q    string
+		want []string
+	}{
+		{"a.c", []string{"a.c"}},
+		{"-v", []string{"-v"}},
+		{"--help", []string{"--help"}},
+		{"[x", []string{"[x"}},
+		{"(y", []string{"(y"}},
+		{`\d`, []string{`\d`}},
+		{"*", []string{"*"}},
+		{"^a", []string{"^a"}},
+		{"x$", []string{"x$"}},
+		{"abc\na.c", nil}, // no line has a newline
+	}
+	for _, tt := range tests {
+		ms, err := r.Grep(ctx, tt.q, 10)
+		if err != nil {
+			t.Errorf("Grep(%q): %v", tt.q, err)
+			continue
+		}
+		var got []string
+		for _, m := range ms {
+			got = append(got, m.Text)
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("Grep(%q) = %q, want %q", tt.q, got, tt.want)
+		}
+	}
+}
+
+// A subject can have any byte, for example the separator of the fields of
+// the log.
+func TestCommitsHostileSubject(t *testing.T) {
+	r, dir := newRepo(t)
+	subjects := []string{"a\x1fb", "\x1b[31mred\x1b[0m", "tab\there"}
+	for _, s := range subjects {
+		git(t, dir, "commit", "-q", "--allow-empty", "-m", s)
+	}
+	cs, err := r.Commits(t.Context(), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range cs {
+		got = append(got, c.Subject)
+		if c.Author != "t" {
+			t.Errorf("Author of %q = %q, want t", c.Subject, c.Author)
+		}
+	}
+	want := []string{subjects[2], subjects[1], subjects[0]}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Commits subjects = %q, want %q", got, want)
+	}
+}
+
+// TestPullRequestBadJSON checks the output of gh that is not a normal pull
+// request.
+func TestPullRequestBadJSON(t *testing.T) {
+	tests := []struct {
+		name, out string
+		want      error // nil for an error of any type
+		ok        bool  // true if PullRequest must not fail
+	}{
+		{name: "empty object", out: `{}`, want: vcs.ErrNotFound},
+		{name: "not JSON", out: `warning: no pull request`},
+		{name: "huge number", out: `{"title": "T", "number": 1e30}`},
+		{
+			name: "null fields",
+			out: `{"title": "T", "author": null, "comments": null, ` +
+				`"statusCheckRollup": null}`,
+			ok: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bin := t.TempDir()
+			fakePath(t, bin)
+			fakeTool(t, bin, "gh", map[string]string{ghArgs: tt.out})
+			r, _ := repoAt(t, "https://github.com/o/r")
+			pr, err := r.PullRequest(t.Context(), vcs.Hosts{})
+			switch {
+			case tt.ok && (err != nil || pr.Title != "T"):
+				t.Errorf("PullRequest = %+v, %v; want the title T", pr, err)
+			case !tt.ok && err == nil:
+				t.Errorf("PullRequest = %+v, want an error", pr)
+			case tt.want != nil && !errors.Is(err, tt.want):
+				t.Errorf("PullRequest: err = %v, want %v", err, tt.want)
+			}
+		})
 	}
 }
