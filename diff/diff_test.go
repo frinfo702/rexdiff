@@ -3,6 +3,7 @@ package diff_test
 import (
 	"fmt"
 	"image/color"
+	"slices"
 	"strings"
 	"testing"
 
@@ -166,6 +167,86 @@ func TestCount(t *testing.T) {
 		if a != tt.added || d != tt.deleted {
 			t.Errorf("Count(%q, %q) = %d, %d; want %d, %d",
 				tt.old, tt.new, a, d, tt.added, tt.deleted)
+		}
+	}
+}
+
+func TestRenderFile(t *testing.T) {
+	src := "package x\n\nfunc f() {\n\treturn\n}\n"
+	d := diff.RenderFile("x.go", src, diff.Options{Width: 14})
+	if len(d.Lines) != 5 || len(d.Rows) != 5 {
+		t.Fatalf("got %d lines and %d rows, want 5", len(d.Lines), len(d.Rows))
+	}
+	if d.Rows[3] != (diff.Row{Kind: diff.KindEqual, Old: 4, New: 4}) {
+		t.Errorf("row 3 = %+v", d.Rows[3])
+	}
+	if got := ansi.Strip(d.Lines[2]); got != " 3  func f() {" {
+		t.Errorf("line 2 = %q", got)
+	}
+	if got := ansi.Strip(d.Lines[0]); got != " 1  package x" {
+		t.Errorf("line 0 = %q", got)
+	}
+	// Control characters must not reach the terminal.
+	d = diff.RenderFile("x.txt", "a\x1b[31mb\n", diff.Options{})
+	if strings.Contains(ansi.Strip(d.Lines[0]), "\x1b") {
+		t.Errorf("line 0 = %q, has an escape", d.Lines[0])
+	}
+}
+
+// TestWrap wraps a long line. All of its text shows, and each screen line
+// fits the width. The continued rows point at the same source lines, and
+// the snippet of a comment does not change.
+func TestWrap(t *testing.T) {
+	long := "x := []string{" + strings.Repeat(`"word", `, 12) + "}"
+	old, new := "a\nb\n", "a\n"+long+"\nb\n"
+	const width = 40
+	renders := []struct {
+		name   string
+		render func(o diff.Options) *diff.Diff
+	}{
+		{"unified", func(o diff.Options) *diff.Diff {
+			return diff.Render("x.go", old, new, o)
+		}},
+		{"split", func(o diff.Options) *diff.Diff {
+			o.Split = true
+			return diff.Render("x.go", old, new, o)
+		}},
+		{"file", func(o diff.Options) *diff.Diff {
+			return diff.RenderFile("x.go", new, o)
+		}},
+	}
+	for _, tt := range renders {
+		name, render := tt.name, tt.render
+		cut := render(diff.Options{Width: width})
+		d := render(diff.Options{Width: width, Wrap: true})
+		if len(d.Lines) != len(d.Rows) || len(d.Lines) <= len(cut.Lines) {
+			t.Fatalf("%s: %d lines and %d rows, want more than the %d lines without wrap",
+				name, len(d.Lines), len(d.Rows), len(cut.Lines))
+		}
+		var text strings.Builder
+		for i, l := range d.Lines {
+			if w := ansi.StringWidth(l); w > width {
+				t.Errorf("%s: line %d is %d cells wide", name, i, w)
+			}
+			r := d.Rows[i]
+			if r.New == 2 {
+				text.WriteString(ansi.Strip(l))
+			}
+			prev := d.Rows[max(i-1, 0)]
+			sameLines := prev.Old == r.Old && prev.New == r.New
+			if r.Continued && !sameLines {
+				t.Errorf("%s: continued row %d = %+v, the row above = %+v",
+					name, i, r, prev)
+			}
+		}
+		noSpace := func(s string) string { return strings.Join(strings.Fields(s), "") }
+		if !strings.Contains(noSpace(text.String()), noSpace(long)) {
+			t.Errorf("%s: the wrapped lines do not show all of the line:\n%s",
+				name, text.String())
+		}
+		got, want := snippet(d.Rows, old, new), snippet(cut.Rows, old, new)
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: snippet with wrap %q, without %q", name, got, want)
 		}
 	}
 }
