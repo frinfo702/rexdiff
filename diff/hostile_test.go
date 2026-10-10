@@ -1,6 +1,7 @@
 package diff_test
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
@@ -132,6 +133,32 @@ func TestQuote(t *testing.T) {
 	for _, tt := range tests {
 		if got := diff.Quote(tt.in); got != tt.want {
 			t.Errorf("Quote(%q) = %s, want %s", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestReviewHostileComment(t *testing.T) {
+	c := comment("a\x1b]52;c;aGk=\x07.go", diff.SideNew,
+		"",
+		"x\x1b[2J\n",
+		"ok\x1b]7501;state=idle\x07\r\nnext\u0085line",
+	)
+	want := `"a\x1b]52;c;aGk=\a.go":1` + "\n+x[2J\nok]7501;state=idle\nnextline"
+	if got := review(c); got != want {
+		t.Errorf("Review = %q, want %q", got, want)
+	}
+}
+
+// TestBlackTint renders a theme whose tint of deleted lines is black. An
+// equal line with the same text as a deleted line has no background.
+func TestBlackTint(t *testing.T) {
+	black := color.RGBA{A: 255}
+	th := diff.Theme{Background: black, Foreground: color.White, Red: black}
+	d := diff.Render("a.txt", "x\ny\nx\n", "y\nx\n", diff.Options{Theme: th})
+	for i, r := range d.Rows {
+		if r.Kind == diff.KindEqual && strings.Contains(d.Lines[i], "48;2;0;0;0mx") {
+			t.Errorf("equal line %d has the background of a deleted line: %q",
+				r.New, d.Lines[i])
 		}
 	}
 }
