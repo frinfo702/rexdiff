@@ -1,7 +1,11 @@
 package diff_test
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rednafi/rexdiff/diff"
@@ -28,6 +32,54 @@ func review(c diff.Comment) string {
 	var cs diff.Comments
 	cs.Add(c)
 	return cs.Review("")
+}
+
+func TestReviewMatchesHerdr(t *testing.T) {
+	var cs diff.Comments
+	cs.Add(comment("c.go", diff.SideNew,
+		"ctx\n\told\x1b[31m\n",
+		"ctx\n\tnew\n",
+		"fix\x1b]7501;state=idle\x07 this",
+	))
+	cs.Add(comment("b.go", diff.SideOld, "gone()\n", "", "why?"))
+	cs.Add(comment("a.go", diff.SideNew,
+		"",
+		"x := 1\ny := 2\n",
+		"merge these\n\n  \nplease  ",
+	))
+	cs.Relocate("c.go", "", "other\n") // makes the c.go comment stale
+
+	got := cs.Review("Fix each comment.\r\n")
+	want := "Fix each comment.\n\n" +
+		"a.go:1-2\n+x := 1\n+y := 2\nmerge these\nplease\n\n" +
+		"b.go:1 (removed)\n-gone()\nwhy?\n\n" +
+		"c.go:1-2 (stale: the code has changed since)\n" +
+		" ctx\n-\told[31m\n+\tnew\nfix]7501;state=idle this"
+	if got != want {
+		t.Errorf("Review:\n%s\nwant:\n%s", got, want)
+	}
+	if got := new(diff.Comments).Review(""); got != "" {
+		t.Errorf("Review of nothing = %q", got)
+	}
+}
+
+// A comment on continued rows only has no diff lines. Review then writes
+// the lines of its range.
+func TestReviewContinuedRows(t *testing.T) {
+	old, new := "", strings.Repeat("word ", 20)+"\n"
+	d := diff.Render("a.go", old, new, diff.Options{Width: 30, Wrap: true})
+	var cont []diff.Row
+	for _, r := range d.Rows {
+		if r.Continued {
+			cont = append(cont, r)
+		}
+	}
+	c := diff.NewComment("a.go", diff.SideNew, cont, old, new)
+	c.Text = "long"
+	want := "a.go:1\n+" + strings.TrimSuffix(new, "\n") + "\nlong"
+	if got := review(c); len(cont) == 0 || got != want {
+		t.Errorf("%d continued rows, Review:\n%s\nwant:\n%s", len(cont), got, want)
+	}
 }
 
 func TestComments(t *testing.T) {
@@ -146,5 +198,38 @@ func TestRelocateFollowsMovedCode(t *testing.T) {
 	}
 	if cs.Relocate("b.go", "", "x\r\n\r\n"); blank.Stale || blank.Start != 2 {
 		t.Errorf("a comment on a CRLF blank line: %+v", blank)
+	}
+}
+
+// The snippet must be the real diff, with raw text and tabs, in both
+// layouts. It must match the lines of git diff.
+func TestSnippetIsTheRealDiff(t *testing.T) {
+	old := "func a() {\n\treturn 1\n}\n"
+	new := "func a() {\n\t// two\n\treturn 2\n}\n"
+	want := " func a() {\n-\treturn 1\n+\t// two\n+\treturn 2\n }"
+	for _, split := range []bool{false, true} {
+		d := diff.Render("x.go", old, new, diff.Options{Split: split})
+		got := strings.Join(snippet(d.Rows, old, new), "\n")
+		if got != want {
+			t.Errorf("split %v:\n%s\nwant:\n%s", split, got, want)
+		}
+	}
+
+	dir := t.TempDir()
+	for name, src := range map[string]string{"old": old, "new": new} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// git diff exits with 1 when the files differ.
+	git := exec.Command(
+		"git", "diff", "--no-index", "-U1",
+		filepath.Join(dir, "old"),
+		filepath.Join(dir, "new"),
+	)
+	out, _ := git.Output()
+	_, body, _ := strings.Cut(string(out), "@@\n")
+	if strings.TrimSuffix(body, "\n") != want {
+		t.Errorf("git diff:\n%s\nwant:\n%s", body, want)
 	}
 }
