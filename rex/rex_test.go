@@ -1,11 +1,14 @@
 package rex_test
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rednafi/rexdiff/rex"
 )
@@ -135,6 +138,51 @@ func blockEvent(block, name, payload string) string {
 	return `{"type":"session_event","payload":{"session_id":"S",` +
 		`"event":{"type":"block_event","payload":{"block_id":"` + block +
 		`","name":"` + name + `","payload":` + payload + `}}}}`
+}
+
+func TestWatch(t *testing.T) {
+	c, dir := fakeRex(t)
+	events := strings.Join([]string{
+		blockEvent("block:pi", "program_status_changed", `{"id":"",`+
+			`"record":{"state":"working","kind":"","app":"x","effective_app":"pi"},`+
+			`"reason":"report"}`),
+		blockEvent("block:pi", "program_status_changed",
+			`{"id":"sub","record":{"state":"idle"}}`),
+		`not json`,
+		// The removal of a sub record is not a change of the agent.
+		blockEvent("block:pi", "program_status_removed",
+			`{"ids":["sub"],"reason":"clear"}`),
+		blockEvent("block:pi", "program_status_removed",
+			`{"ids":[""],"reason":"clear"}`),
+		`{"type":"session_event","payload":{"event":{"type":"block_closed",` +
+			`"payload":{"block_id":"block:pi"}}}}`,
+	}, "\n")
+	path := filepath.Join(dir, "events")
+	if err := os.WriteFile(path, []byte(events+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []rex.Event{
+		{Block: "block:pi", Status: rex.Status{App: "pi", State: rex.StateWorking}},
+		{Block: "block:pi"},
+		{Block: "block:pi", Closed: true},
+	}
+	// Stop Watch when it has reported all the events.
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	var got []rex.Event
+	err := c.Watch(ctx, func(e rex.Event) {
+		got = append(got, e)
+		if len(got) == len(want) {
+			cancel()
+		}
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Watch returned %v, want context.Canceled", err)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("events:\n%+v\nwant:\n%+v", got, want)
+	}
 }
 
 func TestFromEnv(t *testing.T) {
