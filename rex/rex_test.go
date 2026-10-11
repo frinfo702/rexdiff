@@ -1,0 +1,158 @@
+package rex_test
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/rednafi/rexdiff/rex"
+)
+
+// fakeRex writes a shell script that answers like the rex tool, with
+// recorded output. It logs each call to the file "calls" in its directory.
+func fakeRex(t *testing.T) (*rex.Client, string) {
+	t.Helper()
+	dir := t.TempDir()
+	script := `#!/bin/sh
+printf "%s\n" "$*" >> "` + dir + `/calls"
+case "$*" in
+"api call -s S session.list_blocks {}")
+  echo '{"blocks":[
+    {"block_id":"block:self","label":"rexdiff","window_id":"w1",
+     "creator_name":"com.superlogical.terminal"},
+    {"block_id":"block:pi","label":"agent","window_id":"w1",
+     "creator_name":"com.superlogical.terminal"},
+    {"block_id":"block:web","label":"","window_id":"w1",
+     "creator_name":"com.superlogical.browser"},
+    {"block_id":"block:sh","label":"shell","window_id":"w2",
+     "creator_name":"com.superlogical.terminal"},
+    {"block_id":"block:cc","label":"claude-code","window_id":"w2",
+     "creator_name":"com.superlogical.terminal"}]}' ;;
+"session inspect S --json")
+  echo '{"windows":[
+    {"window_id":"w1","label":"main"},
+    {"window_id":"w2","label":"side"}]}' ;;
+"block call -s S -b block:pi program_status")
+  echo '{"records":[
+    {"id":"sub","state":"idle","app":"sub"},
+    {"state":"blocked","kind":"permission","app":"pi","effective_app":"pi"}]}' ;;
+"block call -s S -b block:cc program_status")
+  echo '{"records":[{"state":"working","app":"claude-code"}]}' ;;
+"block call -s S -b block:sh program_status")
+  echo '{"records":[]}' ;;
+"block call -s S -b "*" process")
+  echo '{"foreground":{"cwd":"file:///repo"}}' ;;
+"block inspect agent -s S --json")
+  echo '{"block":{"block_id":"block:pi"}}' ;;
+"block inspect nosuch -s S --json")
+  echo 'Error: no block matches nosuch
+more detail' >&2; exit 1 ;;
+"events -s S --json")
+  cat "` + dir + `/events" ;;
+*) ;;
+esac
+`
+	bin := filepath.Join(dir, "rex")
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The client comes from the environment that Rex gives a block.
+	t.Setenv("REX_SESSION", "S")
+	t.Setenv("REX_BLOCK", "block:self")
+	t.Setenv("REX_BIN_DIR", dir)
+	return rex.FromEnv(), dir
+}
+
+func TestAgents(t *testing.T) {
+	c, _ := fakeRex(t)
+	agents, err := c.Agents(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []rex.Agent{
+		{
+			Block:  "block:pi",
+			Name:   "agent",
+			Window: "main",
+			Cwd:    "/repo",
+			Status: rex.Status{App: "pi", State: rex.StateBlocked},
+		},
+		{
+			Block:  "block:cc",
+			Name:   "claude-code",
+			Window: "side",
+			Cwd:    "/repo",
+			Status: rex.Status{App: "claude-code", State: rex.StateWorking},
+		},
+	}
+	if !slices.Equal(agents, want) {
+		t.Fatalf("Agents:\n%+v\nwant:\n%+v", agents, want)
+	}
+}
+
+func TestCommands(t *testing.T) {
+	c, dir := fakeRex(t)
+	ctx := t.Context()
+	if id, err := c.Resolve(ctx, "agent"); err != nil || id != "block:pi" {
+		t.Errorf("Resolve(agent) = %q, %v", id, err)
+	}
+	if id, _ := c.Resolve(ctx, "block:x"); id != "block:x" {
+		t.Errorf("Resolve(block:x) = %q", id)
+	}
+	_, err := c.Resolve(ctx, "nosuch")
+	if err == nil || err.Error() != "no block matches nosuch" {
+		t.Errorf("Resolve(nosuch): err = %v", err)
+	}
+	if err := c.Paste(ctx, "block:pi", "a\n\tb"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Focus(ctx, "block:pi"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Split(ctx, "/repo", "sh", "-c", "vi x"); err != nil {
+		t.Fatal(err)
+	}
+
+	b, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	calls := string(b)
+	for _, want := range []string{
+		`api call -s S block.event {"block_id":"block:pi",` +
+			`"event":{"type":"paste","payload":{"text":"a\n\tb"}}}`,
+		`api call -s S session.focus_block {"block_id":"block:pi"}`,
+		`split -s S -b block:self --cwd /repo -- sh -c vi x`,
+	} {
+		if !strings.Contains(calls, want) {
+			t.Errorf("no call %s in:\n%s", want, calls)
+		}
+	}
+}
+
+// blockEvent returns a line of "rex events --json" for an event of block
+// with the name and the payload.
+func blockEvent(block, name, payload string) string {
+	return `{"type":"session_event","payload":{"session_id":"S",` +
+		`"event":{"type":"block_event","payload":{"block_id":"` + block +
+		`","name":"` + name + `","payload":` + payload + `}}}}`
+}
+
+func TestFromEnv(t *testing.T) {
+	t.Setenv("REX_SESSION", "")
+	if c := rex.FromEnv(); c != nil {
+		t.Errorf("FromEnv outside Rex = %+v, want nil", c)
+	}
+	// fakeRex sets the environment of a block. The client runs the rex
+	// command of REX_BIN_DIR, in the session REX_SESSION.
+	c, dir := fakeRex(t)
+	if c == nil || c.Block != "block:self" {
+		t.Fatalf("FromEnv = %+v, want the block block:self", c)
+	}
+	if err := c.Focus(t.Context(), "block:pi"); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := os.ReadFile(filepath.Join(dir, "calls"))
+	if err != nil || !strings.Contains(string(calls), "api call -s S ") {
+		t.Errorf("calls %q, want a call to the fake rex in session S", calls)
+	}
+}
