@@ -346,6 +346,55 @@ func TestClickCommentBox(t *testing.T) {
 	}
 }
 
+// TestEditorError opens an editor that cannot start. The footer tells
+// why.
+func TestEditorError(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.cfg.Editor = "ed {file}"
+	t.Setenv("PATH", "") // sh cannot start
+	if m = press(t, m, "e"); !strings.Contains(view(m), "editor: ") {
+		t.Errorf("the footer does not show the error:\n%s", view(m))
+	}
+}
+
+// TestSendError sends the review when Rex fails. The footer shows the
+// error of Rex.
+func TestSendError(t *testing.T) {
+	m, dir := newTestModel(t)
+	bin := filepath.Join(dir, "rex")
+	script := "#!/bin/sh\necho 'Error: no Rex server' >&2\nexit 1\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REX_SESSION", "S")
+	t.Setenv("REX_BIN_DIR", dir)
+	m.rex = rex.FromEnv()
+	m = press(t, m, "]", "c", "h", "i", "enter")
+	m = update(t, m, m.deliver(rex.Agent{Block: "b", Name: "pi"})())
+	if !strings.Contains(m.status, "no Rex server") {
+		t.Errorf("status %q, want the error of Rex", m.status)
+	}
+}
+
+// TestMissingHead removes the object of the HEAD commit. The Changes tab
+// shows the error, and not each file as added.
+func TestMissingHead(t *testing.T) {
+	m, dir := newTestModel(t)
+	sha, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hex := strings.TrimSpace(string(sha))
+	obj := filepath.Join(dir, ".git", "objects", hex[:2], hex[2:])
+	if err := os.Remove(obj); err != nil {
+		t.Fatal(err)
+	}
+	m.reload()
+	if v := view(m); len(m.files) > 0 || !strings.Contains(v, "unknown revision HEAD") {
+		t.Errorf("files %v, want none and the error:\n%s", paths(m), v)
+	}
+}
+
 // errorHas reports whether err is not nil and has each of texts.
 func errorHas(err error, texts ...string) bool {
 	if err == nil {
@@ -416,5 +465,38 @@ func TestMouseOffScreen(t *testing.T) {
 		m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 		view(m)
 		m = press(t, m, "esc", "1")
+	}
+}
+
+// TestEmptyRepo presses keys in each tab of a repository with no commits
+// and no files, with key bindings that conflict. The program must not
+// panic.
+func TestEmptyRepo(t *testing.T) {
+	dir := t.TempDir()
+	git(t, dir, "init", "-q", "-b", "main")
+	repo, err := vcs.Open(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := defaultConfig()
+	cfg.Keybindings = keybindings{
+		Down:    []string{},
+		Comment: []string{"j", "c"},
+		Send:    []string{"x"},
+		Copy:    []string{"x"},
+	}
+	m := newModel(t.Context(), Options{Repo: repo}, cfg)
+	m.reload()
+	keys := []string{
+		"j", "k", "v", "c", "x", "enter", "f", "]", "n", "|", "m", "t", "b", "g", "G",
+		"enter", "B", "enter", "/", "a", "enter", ":", "9", "enter", "l", "esc", "e", "d",
+		"y", "s", "o", "r", "z", "<", "home", "end", "w", "esc",
+	}
+	for _, tab := range []string{"1", "2", "3"} {
+		m = press(t, m, tab)
+		for _, k := range keys {
+			m = press(t, m, k)
+			view(m)
+		}
 	}
 }
