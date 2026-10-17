@@ -246,6 +246,49 @@ func TestPRChecks(t *testing.T) {
 	}
 }
 
+// TestSmallScreens presses every key on screens down to 1x1. The program
+// must not panic, and the view must fit the screen.
+func TestSmallScreens(t *testing.T) {
+	keys := []string{
+		"w", "j", "v", "j", "c", "\x1b[31mx\x07", "enter", "f", "F", "]", "[", "n", "N",
+		"|", "p", "m", "t", "b", "u", "G", "esc", "/", "a", "esc", ":", "2", "enter", "?",
+		"esc", "2", "j", "m", "3", "1", "x", "d", "y", "s", "esc", "q", "esc", "home",
+	}
+	sizes := []struct{ w, h int }{
+		{0, 0}, {1, 1}, {2, 2}, {10, 3}, {20, 5}, {40, 4}, {200, 6},
+	}
+	for _, size := range sizes {
+		m, _ := newTestModel(t)
+		m = update(t, m, tea.WindowSizeMsg{Width: size.w, Height: size.h})
+		for _, k := range keys {
+			m = press(t, m, k)
+			lines := strings.Split(view(m), "\n")
+			if len(lines) > max(size.h, 1) {
+				t.Errorf("%dx%d after %q: %d lines", size.w, size.h, k, len(lines))
+			}
+			for _, l := range lines {
+				if w := ansi.StringWidth(l); w > max(size.w, 1) {
+					t.Errorf("%dx%d after %q: line width %d: %q", size.w, size.h, k, w, l)
+					break
+				}
+			}
+		}
+	}
+}
+
+// TestDragAfterReload drags while the pane gets shorter. The program must
+// not panic.
+func TestDragAfterReload(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.drag = dragState{active: true, gutter: true, moved: true, start: 48}
+	m = update(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft})
+
+	m.changes.set(nil, nil) // a reload found no changes
+	m.drag = dragState{active: true}
+	m = update(t, m, tea.MouseMotionMsg{Button: tea.MouseLeft, Y: m.h})
+	view(m)
+}
+
 // screenY returns the screen line of row i of the current pane.
 func screenY(t *testing.T, m model, i int) int {
 	t.Helper()
@@ -262,6 +305,45 @@ func click(t *testing.T, m model, x, y int) model {
 	t.Helper()
 	m = update(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
 	return update(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y})
+}
+
+// TestClickOldNumber clicks the old line number of an unchanged line. The
+// comment goes on the new side, so that it shows and d can delete it.
+func TestClickOldNumber(t *testing.T) {
+	m, _ := newTestModel(t)
+	equal := func(r diff.Row) bool { return r.Kind == diff.KindEqual }
+	i := slices.IndexFunc(m.changes.rows, equal)
+	m = click(t, m, m.mainX()+gutter, screenY(t, m, i))
+	m = press(t, m, "h", "i", "enter")
+	if v := view(m); !strings.Contains(v, "💬 hi") {
+		t.Errorf("the comment does not show:\n%s", v)
+	}
+	if m = press(t, m, "d"); m.comments.Len() != 0 {
+		t.Errorf("d did not delete the comment: %+v", m.comments.All())
+	}
+}
+
+// TestClickCommentBox clicks while the comment box is open. As in
+// herdr-reviewr, no click changes the draft or closes the box.
+func TestClickCommentBox(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = press(t, m, "]", "c", "h", "i")
+	_, rowAt := m.mainLines(m.bodyHeight())
+	box := bodyY + slices.Index(rowAt, m.changes.cur) + 1
+	clicks := []struct {
+		where string
+		y     int
+	}{
+		{"on", box},
+		{"outside", screenY(t, m, 0)},
+	}
+	for _, c := range clicks {
+		m = click(t, m, m.mainX()+6, c.y)
+		if m.mode != modeComment || m.editor.Value() != "hi" {
+			t.Errorf("a click %s the box: mode %v, draft %q; want the box open with hi",
+				c.where, m.mode, m.editor.Value())
+		}
+	}
 }
 
 // errorHas reports whether err is not nil and has each of texts.
@@ -310,4 +392,29 @@ func hunks(m model) []int {
 		}
 	}
 	return rs
+}
+
+// TestMouseOffScreen sends mouse events outside the screen, also while an
+// overlay is open and the screen changes size. The program must not panic.
+func TestMouseOffScreen(t *testing.T) {
+	m, _ := newTestModel(t)
+	for _, keys := range [][]string{{}, {"G"}, {"/"}, {"2"}, {"3"}} {
+		m = press(t, m, keys...)
+		points := []struct{ x, y int }{
+			{-1, -1}, {-50, 3}, {3, -50}, {1 << 30, 1 << 30}, {m.w, m.h},
+		}
+		for _, pt := range points {
+			mouse := tea.Mouse{X: pt.x, Y: pt.y, Button: tea.MouseLeft}
+			m = update(t, m, tea.MouseClickMsg(mouse))
+			m = update(t, m, tea.MouseMotionMsg(mouse))
+			m = update(t, m, tea.MouseReleaseMsg(mouse))
+			mouse.Button = tea.MouseWheelDown
+			m = update(t, m, tea.MouseWheelMsg(mouse))
+		}
+		m = update(t, m, tea.WindowSizeMsg{Width: 5, Height: 3})
+		m = press(t, m, "w", "w", "w")
+		m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+		view(m)
+		m = press(t, m, "esc", "1")
+	}
 }
