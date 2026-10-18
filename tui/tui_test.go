@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"image/color"
 	"os"
 	"os/exec"
@@ -583,6 +584,75 @@ func twoHunks(t *testing.T, m model, dir, long string) model {
 	return m
 }
 
+// TestWrap checks wrap as in herdr-reviewr. The w key toggles it, and the
+// cursor moves by source lines. A comment on wrapped lines gets the same
+// snippet.
+func TestWrap(t *testing.T) {
+	m, _, long := wrapModel(t)
+	cut := len(m.changes.lines)
+
+	m = press(t, m, "w")
+	if !m.wrap || len(m.changes.lines) <= cut {
+		t.Fatalf("w: wrap %v, %d lines, want more than %d",
+			m.wrap, len(m.changes.lines), cut)
+	}
+	if v := view(m); !strings.Contains(v, "x + 1") {
+		t.Errorf("the end of the long line does not show:\n%s", v)
+	}
+	m = press(t, m, "]")
+	for range len(m.changes.lines) {
+		if m.changes.cont(m.changes.cur) {
+			t.Fatalf("the cursor is on a continued row %d", m.changes.cur)
+		}
+		m = press(t, m, "j")
+	}
+
+	m = press(t, m, "home", "]", "v", "j", "c", "o", "k", "enter")
+	cs := m.comments.All()
+	want := "\n-\treturn 1\n+" + long + "\nok"
+	if r := m.comments.Review(""); len(cs) != 1 || !strings.HasSuffix(r, want) {
+		t.Fatalf("Review:\n%s\nwant one comment that ends with:%s", r, want)
+	}
+	// The comment shows below the last row of the wrapped line.
+	lines := strings.Split(view(m), "\n")
+	i := slices.IndexFunc(lines, func(l string) bool {
+		return strings.Contains(l, "💬 ok")
+	})
+	if i < 1 || !strings.Contains(lines[i-1], "x + 1") {
+		t.Errorf("the comment is not below the end of the line:\n%s", view(m))
+	}
+
+	// The sideways scroll applies only without wrap.
+	if m = update(t, m, tea.KeyPressMsg{Code: tea.KeyRight}); m.changes.xoff != 0 {
+		t.Errorf("→ with wrap scrolled to %d", m.changes.xoff)
+	}
+	if m = press(t, m, "w"); m.wrap || len(m.changes.lines) != cut {
+		t.Errorf("w again: wrap %v, %d lines, want %d", m.wrap, len(m.changes.lines), cut)
+	}
+	// A w in the Files tab applies to the Changes tab too.
+	if m = press(t, m, "2", "w", "w", "1"); len(m.changes.lines) != cut {
+		t.Errorf("w in the Files tab: the Changes tab has %d lines, want %d",
+			len(m.changes.lines), cut)
+	}
+}
+
+// TestWrapKeepsCursor checks that w keeps the cursor on its source line or
+// on its hunk header.
+func TestWrapKeepsCursor(t *testing.T) {
+	m, dir, long := wrapModel(t)
+	m = press(t, m, "end", "w")
+	if got := m.target(m.changes.cur, diff.SideNew).line; got != 5 {
+		t.Errorf("w moved the cursor from line 5 to line %d", got)
+	}
+
+	m = twoHunks(t, m, dir, long)
+	m.changes.cur = hunks(m)[1]
+	if m = press(t, m, "w"); m.changes.cur != hunks(m)[1] {
+		t.Errorf("w moved the cursor from the second hunk header to row %+v",
+			m.changes.rows[m.changes.cur])
+	}
+}
+
 // hunks returns the rows of the hunk headers in the Changes tab.
 func hunks(m model) []int {
 	var rs []int
@@ -592,6 +662,92 @@ func hunks(m model) []int {
 		}
 	}
 	return rs
+}
+
+// TestTallLine checks a wrapped line that is taller than the screen.
+func TestTallLine(t *testing.T) {
+	m, dir, long := wrapModel(t)
+	m = press(t, m, "w")
+	m = twoHunks(t, m, dir, long)
+	m = update(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
+
+	// The wheel scrolls past the line.
+	m = press(t, m, "home")
+	wheel := []tea.MouseButton{tea.MouseWheelDown, tea.MouseWheelDown, tea.MouseWheelUp}
+	for _, b := range wheel {
+		top := m.changes.top
+		m = update(t, m, tea.MouseWheelMsg{Button: b, X: 1, Y: 5})
+		m = update(t, m, tea.BlurMsg{}) // a later event keeps the view
+		if m.changes.top == top {
+			t.Fatalf("the wheel stopped at row %d of %d", top, len(m.changes.lines))
+		}
+	}
+	// A taller screen shows more rows, not blank space below the view.
+	m = update(t, m, tea.WindowSizeMsg{Width: 30, Height: 40})
+	if last := max(len(m.changes.lines)-m.bodyHeight(), 0); m.changes.top > last {
+		t.Errorf("top %d of %d rows on a screen of %d rows",
+			m.changes.top, len(m.changes.lines), m.bodyHeight())
+	}
+	if m = press(t, m, "j"); m.changes.top > m.changes.cur {
+		t.Errorf("j does not show the cursor: top %d, cursor %d",
+			m.changes.top, m.changes.cur)
+	}
+
+	// As in herdr-reviewr, a cursor on the line shows its first rows. The
+	// comment box shows below the last row. A c on a line with a comment
+	// edits the comment.
+	m = update(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
+	m = press(t, m, "home")
+	for m.changes.rows[m.changes.cur].New != 4 {
+		m = press(t, m, "j")
+	}
+	if v := view(m); !strings.Contains(v, "return x") {
+		t.Errorf("the first rows of the line do not show:\n%s", v)
+	}
+	m = press(t, m, "c", "o", "k", "enter", "c", "z", "z")
+	lines := strings.Split(view(m), "\n")
+	has := func(s string) func(string) bool {
+		return func(l string) bool { return strings.Contains(l, s) }
+	}
+	i := slices.IndexFunc(lines, has("okzz"))
+	if i < 0 || !slices.ContainsFunc(lines[:i], has("+ 1")) {
+		t.Errorf("the comment box is not below the end of the line:\n%s", view(m))
+	}
+	if strings.Contains(view(m), "💬 ok") {
+		t.Errorf("the comment shows above the box that edits it:\n%s", view(m))
+	}
+}
+
+// TestHostileText puts escape sequences in outside data: a file name, a
+// comment, an agent, and an error from Rex. The screen must
+// not get them raw. The diff tests check the review text.
+func TestHostileText(t *testing.T) {
+	const osc = "\x1b]0;owned\x07" // sets the title of the terminal
+	raw := func(where string, m model) {
+		t.Helper()
+		if strings.Contains(m.View().Content, osc) {
+			t.Errorf("%s: the screen has the escape sequence raw", where)
+		}
+	}
+	m, dir := newTestModel(t)
+	write(t, dir, "e"+osc+"\n.go", "x"+osc+"\n")
+	m.reload()
+	raw("file list", m)
+	m = press(t, m, "f", "]", "c")
+	m = update(t, m, tea.PasteMsg{Content: "hi" + osc + "\x1b[201~\r"})
+	m = press(t, m, "enter")
+	raw("comment", m)
+	if cs := m.comments.All(); len(cs) != 1 || !strings.HasPrefix(cs[0].Path, "e\x1b") {
+		t.Fatalf("comments %+v, want one on the file with the escape sequence", cs)
+	}
+
+	m = update(t, m, sentMsg{agent: rex.Agent{Name: "pi" + osc}})
+	raw("the status after a send", m)
+	m = update(t, m, sentMsg{err: errors.New("Rex" + osc)})
+	raw("the status after an error", m)
+	m = update(t, m, status("b", "pi"+osc, rex.StateWorking))
+	m = press(t, m, "t")
+	raw("the turn in the header", m)
 }
 
 // TestMouseOffScreen sends mouse events outside the screen, also while an
@@ -649,5 +805,20 @@ func TestEmptyRepo(t *testing.T) {
 			m = press(t, m, k)
 			view(m)
 		}
+	}
+}
+
+// TestFooterHints checks the footer in the select and the find modes. It
+// shows the keys of the mode.
+func TestFooterHints(t *testing.T) {
+	m, _ := newTestModel(t)
+	if m = press(t, m, "]", "v"); !strings.Contains(view(m), "extend") {
+		t.Errorf("select mode: the footer has no hint:\n%s", view(m))
+	}
+	m = press(t, m, "esc")
+	m = update(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	m = press(t, m, "r", "e", "t", "u", "r", "n", "enter")
+	if !strings.Contains(view(m), "next/prev match") {
+		t.Errorf("find mode: the footer has no hint:\n%s", view(m))
 	}
 }
