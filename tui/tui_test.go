@@ -1,14 +1,17 @@
 package tui
 
 import (
+	"image/color"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
@@ -406,6 +409,154 @@ func errorHas(err error, texts ...string) bool {
 		}
 	}
 	return true
+}
+
+// TestLoadConfig checks the configuration file: a herdr-reviewr file
+// carries over, and an unknown key or bad value is an error.
+func TestLoadConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	load := func(content string) error {
+		t.Helper()
+		write(t, filepath.Dir(path), "config.toml", content)
+		_, err := loadConfig(path)
+		return err
+	}
+
+	// The actions in herdr-reviewr's src/keymap.rs.
+	names := strings.Fields(`base-pick collapse comment comments commit-pick copy
+		delete down edit expand find goto-line half-down half-up keys navigator-grow
+		navigator-hide navigator-position navigator-shrink next-comment next-file
+		next-hunk open-pr page-down page-up prev-comment prev-file prev-hunk quit
+		quit-discard refresh rendered scope-branch scope-commits scope-last-turn
+		scope-uncommitted search select send split tab-all-files tab-changes tab-pr up
+		wrap`)
+	herdr := "theme = \"terminal\"\n[keybindings]\n"
+	for _, n := range names {
+		herdr += n + " = [\"x\"]\n"
+	}
+	if err := load(herdr); err != nil {
+		t.Errorf("herdr-reviewr config: %v", err)
+	}
+
+	unknown := []struct{ content, key string }{
+		{"layuot = \"split\"\n", `"layuot"`},
+		{"[keybindings]\nnext-fiel = [\"x\"]\n", `"keybindings.next-fiel"`},
+		{"[extra]\nx = 1\n", `"extra"`},
+	}
+	for _, c := range unknown {
+		if err := load(c.content); !errorHas(err, path, "unknown key "+c.key) {
+			t.Errorf("config %q: error %v, want unknown key %s in %s",
+				c.content, err, c.key, path)
+		}
+	}
+
+	// As in herdr-reviewr, each bad value is an error that names the key,
+	// the allowed values, and the value.
+	const (
+		editor = "editor: expected a command with only {file} and {line}"
+		opener = "url_opener: expected a command with only {url}"
+		scopes = "default_scope: expected one of uncommitted, branch, last-turn"
+		theme  = "theme: expected terminal or a chroma style name"
+		mdView = "markdown_view: expected one of source, rendered"
+		host   = "gitlab_host: expected a bare hostname"
+	)
+	bad := []struct{ content, want string }{
+		{`layout = "sideways"`, `layout: expected one of unified, split, not "sideways"`},
+		{`default_scope = "commits"`, scopes + `, not "commits"`},
+		{`markdown_view = "preview"`, mdView + `, not "preview"`},
+		{`file_list = "top"`, `file_list: expected one of right, left, not "top"`},
+		{`theme = "tokyo-night"`, theme + `, not "tokyo-night"`},
+		{`file_list_width = 3`, `file_list_width: expected 16 or more, not "3"`},
+		{`editor = " "`, editor + `, not " "`},
+		{`editor = "code {fil"`, editor + `, not "code {fil"`},
+		{`editor = "code {FILE}"`, `editor: expected`},
+		{`url_opener = "open {ur}"`, opener + `, not "open {ur}"`},
+		{`review_prefix = ""`, `review_prefix: expected text, not ""`},
+		{`gitlab_host = "https://git.x"`, host + `, not "https://git.x"`},
+		{"[keybindings]\nsend = []", `keybindings.send: expected a list of keys`},
+		{`layout = 1`, `layout`},
+	}
+	for _, c := range bad {
+		if err := load(c.content + "\n"); !errorHas(err, path, c.want) {
+			t.Errorf("config %q: error %v, want %s in %s", c.content, err, c.want, path)
+		}
+	}
+
+	good := `theme = "Monokai"
+editor = "code -g {file}:{line}"
+gitlab_host = "git.corp.example"
+`
+	if err := load(good); err != nil {
+		t.Errorf("good config: %v", err)
+	}
+}
+
+// TestConfigReload changes the configuration file while the program runs.
+// A reload keeps the flags and the layout that the user picked.
+func TestConfigReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+
+	// The flag -layout=split wins over the file.
+	write(t, filepath.Dir(path), "config.toml", "layout = \"unified\"\n")
+	m, _ := newTestModel(t)
+	cfg, err := loadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := Options{Repo: m.repo, ConfigPath: path, Layout: LayoutSplit}
+	m = newModel(t.Context(), o, cfg)
+	if !m.split {
+		t.Fatal("the flag -layout=split did not win over the file")
+	}
+	reload := func(content string) {
+		t.Helper()
+		write(t, filepath.Dir(path), "config.toml", content)
+		m.cfgModTime = time.Time{} // the file changes in the same tick
+		m = update(t, m, tickMsg{})
+	}
+	// A reload applies the file, keeps the flag, and does not undo |.
+	m = press(t, m, "|")
+	reload("layout = \"unified\"\nfile_list = \"left\"\n")
+	if m.split || !m.listLeft || m.cfg.Layout != LayoutSplit || m.cfgErr != "" {
+		t.Errorf("after a reload: split %v, list left %v, layout %q, error %q; "+
+			"want false, true, split, none",
+			m.split, m.listLeft, m.cfg.Layout, m.cfgErr)
+	}
+	// A bad file shows its error and keeps the last good configuration.
+	bad := []struct{ content, want string }{
+		{"file_list = \"right\"\nbogus = 1\n", `unknown key "bogus"`},
+		{"file_list = \"center\"\n", `invalid value for file_list`},
+	}
+	for _, c := range bad {
+		reload(c.content)
+		if !strings.Contains(m.cfgErr, c.want) || !m.listLeft {
+			t.Errorf("after a bad reload: error %q, list left %v; "+
+				"want %s and the old config", m.cfgErr, m.listLeft, c.want)
+		}
+	}
+	// A reload that does not change the file list does not undo p and >.
+	m = press(t, m, "p", ">")
+	reload("layout = \"unified\"\nfile_list = \"left\"\nreview_prefix = \"x\"\n")
+	if m.listLeft || m.listW != 28 {
+		t.Errorf("after a reload: list left %v, width %d; want false, 28",
+			m.listLeft, m.listW)
+	}
+}
+
+// TestPalette checks that inserted lines get their tint from the green of
+// the terminal, as in pi's system theme.
+func TestPalette(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = update(t, m, tea.BackgroundColorMsg{Color: color.Black})
+	// Black mixed 16% toward pure green.
+	const tint = "48;2;0;40;0m"
+	if strings.Contains(m.View().Content, tint) {
+		t.Fatal("the view has the tint before the terminal reports its green")
+	}
+	m = update(t, m, uv.UnknownOscEvent("\x1b]4;2;rgb:0000/ffff/0000\x1b\\"))
+	if !strings.Contains(m.View().Content, tint) {
+		t.Error("inserted lines are not tinted toward the green of the terminal")
+	}
 }
 
 // wrapModel shows a change that makes line 4 of a.go too long for the
