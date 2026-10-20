@@ -1,0 +1,39 @@
+# rexdiff does not start when its input is wrong. Each error says what is
+# wrong, and which values are allowed.
+
+! exec rexdiff -layout sideways
+stderr 'invalid value "sideways" for flag -layout: expected one of unified, split'
+! exec rexdiff -scope=week
+stderr 'invalid value "week" for flag -scope: expected one of uncommitted, branch, last-turn'
+! exec rexdiff -bogus
+stderr 'flag provided but not defined: -bogus'
+
+# rexdiff needs a git repository.
+! exec rexdiff $WORK
+stderr '^rexdiff: not a git repository$'
+
+# A bad configuration file names the file, the key, and the allowed values.
+exec git init -q repo
+env REXDIFF_CONFIG=$WORK/typo.toml
+! exec rexdiff repo
+cmpenv stderr typo.want
+env REXDIFF_CONFIG=$WORK/value.toml
+! exec rexdiff repo
+cmpenv stderr value.want
+
+# install rejects a wrong placement and an extra argument, and writes
+# nothing.
+! exec rexdiff install --placement=tabs
+stderr 'unknown placement "tabs" \(use split, zoomed, tab, or overlay\)'
+! exec rexdiff install extra
+stderr 'unknown argument extra'
+! exists .config/rex
+
+-- typo.toml --
+layuot = "split"
+-- value.toml --
+layout = "sideways"
+-- typo.want --
+rexdiff: config $WORK/typo.toml: unknown key "layuot"
+-- value.want --
+rexdiff: config $WORK/value.toml: invalid value for layout: expected one of unified, split, not "sideways"
