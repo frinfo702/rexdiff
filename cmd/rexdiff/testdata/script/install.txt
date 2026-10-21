@@ -1,0 +1,57 @@
+# install adds the Rex action and keeps the rest of init.lua. A second
+# install does not add a second require line.
+mkdir .config/rex
+cp mine.lua .config/rex/init.lua
+exec rexdiff install --key=ctrl+cmd+d --placement=zoomed
+stdout 'wrote '$WORK'/.config/rex/rexdiff.lua'
+stdout 'config reloaded'
+stdout 'press ctrl\+cmd\+d'
+exec rexdiff install --key=ctrl+cmd+d --placement=zoomed
+cmp .config/rex/init.lua installed.lua
+grep 'local PLACEMENT = "zoomed"' .config/rex/rexdiff.lua
+grep 'rex.bind\("ctrl\+cmd\+d", "rexdiff_toggle"\)' .config/rex/rexdiff.lua
+cmp rex.log reloads.log
+
+# Rex accepts the action.
+[realrex] exec $REALREX config check .config/rex/init.lua
+[realrex] stdout 'actions: 1'
+
+# If uninstall cannot change init.lua, it keeps rexdiff.lua, so that
+# init.lua does not require a missing file.
+chmod 0444 .config/rex/init.lua
+! exec rexdiff uninstall
+exists .config/rex/rexdiff.lua
+chmod 0644 .config/rex/init.lua
+
+# uninstall removes the action and keeps the rest.
+exec rexdiff uninstall
+stdout 'removed the rexdiff action from Rex'
+cmp .config/rex/init.lua mine.lua
+! exists .config/rex/rexdiff.lua
+
+# If Rex does not reload, install still writes the files and says what to do.
+env REX_FAIL=1
+exec rexdiff install
+stdout 'reload Rex''s config yourself: rex config reload'
+exists .config/rex/rexdiff.lua
+
+# REX_CONFIG moves the configuration of Rex.
+env REX_CONFIG=$WORK/other/init.lua
+exec rexdiff install
+exists other/rexdiff.lua
+grep 'require\("rexdiff"\)' other/init.lua
+
+# uninstall without an install changes nothing and does not fail.
+env REX_CONFIG=$WORK/none/init.lua
+exec rexdiff uninstall
+stdout 'removed the rexdiff action from Rex'
+! exists none
+
+-- mine.lua --
+rex.bind("cmd+e", "pane.zoom")
+-- installed.lua --
+rex.bind("cmd+e", "pane.zoom")
+require("rexdiff") -- rexdiff toggle; see rexdiff.lua
+-- reloads.log --
+config reload
+config reload
