@@ -1,13 +1,13 @@
-![rexdiff beside a coding agent in Rex](assets/banner.png)
+![rexdiff in Rex]
 
 # rexdiff
 
 rexdiff shows the changes that a coding agent makes, in a pane beside the
-agent in [Rex](https://www.superlogical.com/rex). You comment on the lines,
-and rexdiff pastes the comments into the input of the agent.
+agent in [Rex]. You comment on the lines, and rexdiff pastes the comments
+into the input of the agent.
 
-[Watch the demo (37 s)](assets/demo.mp4). In it, an agent adds a `-version`
-flag to rexdiff, and the review goes back to the agent.
+Watch the 37-second [demo]. In it, an agent adds a `-version` flag to
+rexdiff, and the review goes back to the agent.
 
 ## Install
 
@@ -53,11 +53,17 @@ close it.
 ## Configure
 
 rexdiff reads `~/.config/rexdiff/config.toml`, or the file in
-`$REXDIFF_CONFIG`. It accepts the keys of
-[herdr-reviewr](https://github.com/persiyanov/herdr-reviewr), and it reads
-the file again when it changes. `rexdiff -h` shows the flags and the path.
+`$REXDIFF_CONFIG`. It accepts the keys of [herdr-reviewr], and it reads the
+file again when it changes. `rexdiff -h` shows the flags and the path.
 
 ## Needs
 
 - Rex and git
 - `gh`, `glab`, or `az` for the PR tab, installed and signed in
+
+<!-- references -->
+
+[rexdiff in Rex]: assets/banner.png
+[Rex]: https://www.superlogical.com/rex
+[demo]: assets/demo.mp4
+[herdr-reviewr]: https://github.com/persiyanov/herdr-reviewr
