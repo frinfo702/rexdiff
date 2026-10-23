@@ -2,12 +2,12 @@
 
 # rexdiff
 
-rexdiff shows the changes that a coding agent makes, in a pane beside the
-agent in [Rex]. You comment on the lines, and rexdiff pastes the comments
-into the input of the agent.
+rexdiff is a diff viewer for coding agents in [Rex]. It opens in a pane next to
+your agent and shows what the agent changed. You comment on the lines you don't
+like and send the comments back to the agent.
 
-Watch the 37-second [demo]. In it, an agent adds a `-version` flag to
-rexdiff, and the review goes back to the agent.
+The 37-second [demo] shows an agent adding a `-version` flag to rexdiff and
+getting a review comment back.
 
 ## Install
 
@@ -17,26 +17,28 @@ rexdiff install
 ```
 
 `rexdiff install` adds a "Toggle rexdiff" action to your Rex config and binds
-it to Shift+Cmd+R. Use `--key` to pick another key. Use `--placement` to open
-rexdiff as a `split`, a `zoomed` pane, a `tab`, or an `overlay`.
-`rexdiff uninstall` removes the action and the key.
+it to Shift+Cmd+R. Use `--key` to pick another key. The `--placement` flag
+sets how rexdiff opens: `split`, `zoomed`, `tab`, or `overlay`. Run
+`rexdiff uninstall` to remove the action and the key.
 
 ## Use
 
-Press Shift+Cmd+R beside an agent, or pick "Toggle rexdiff" in the command
-palette. rexdiff opens in the folder of the agent. Press the key again to
-close it.
+Press Shift+Cmd+R next to an agent, or run "Toggle rexdiff" from the command
+palette. rexdiff opens in the agent's folder. Press the key again to close it.
 
-- **See what changed.** Show the uncommitted changes, the changes on the
-  branch, or only the changes from the last turn of the agent.
-- **Comment on lines.** Press `c` on a line. To comment on a range, press `v`
-  and move, or drag over the line numbers.
-- **Send the review.** Press `s`. The comments go into the input of the agent
-  as one paste. rexdiff does not press Enter, so you can edit the text first.
-- **Keep comments on moving code.** A comment follows its lines when the agent
-  edits the file. If the lines are gone, the comment shows as stale.
-- **Read the pull request.** The PR tab shows the description, the CI checks,
-  and the comments. It uses `gh`, `glab`, or `az`.
+You start on the uncommitted changes. Press `b` to see the whole branch, or `t`
+to see only what the agent did in its last turn.
+
+To comment, move to a line and press `c`. For a range, press `v` and move, or
+drag over the line numbers. Press `s` when you're done. rexdiff pastes all the
+comments into the agent's input but doesn't press Enter, so you can still edit
+them.
+
+A comment moves with its lines when the agent edits the file. If the lines are
+gone, rexdiff marks the comment as stale.
+
+The PR tab shows the pull request description, the CI checks, and the review
+comments. It needs `gh`, `glab`, or `az`.
 
 | Key | Action |
 | --- | --- |
@@ -52,14 +54,15 @@ close it.
 
 ## Configure
 
-rexdiff reads `~/.config/rexdiff/config.toml`, or the file in
-`$REXDIFF_CONFIG`. It accepts the keys of [herdr-reviewr], and it reads the
-file again when it changes. `rexdiff -h` shows the flags and the path.
+rexdiff reads its config from `~/.config/rexdiff/config.toml`. Set
+`REXDIFF_CONFIG` to use another file. The keys are the same as in
+[herdr-reviewr]. Edits to the file apply right away. `rexdiff -h` lists the
+flags and prints the config path.
 
-## Needs
+## Requirements
 
 - Rex and git
-- `gh`, `glab`, or `az` for the PR tab, installed and signed in
+- `gh`, `glab`, or `az` for the PR tab, logged in
 
 <!-- references -->
 
