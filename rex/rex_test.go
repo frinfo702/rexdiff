@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -202,5 +203,31 @@ func TestFromEnv(t *testing.T) {
 	calls, err := os.ReadFile(filepath.Join(dir, "calls"))
 	if err != nil || !strings.Contains(string(calls), "api call -s S ") {
 		t.Errorf("calls %q, want a call to the fake rex in session S", calls)
+	}
+}
+
+// Outside a Rex terminal, as under brew, REX_BIN_DIR is not set and rex
+// is not in PATH. ReloadConfig then runs the rex of the Rex server app.
+func TestReloadConfigOutsideRex(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("the Rex server app is on macOS")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("REX_BIN_DIR", "")
+	t.Setenv("PATH", t.TempDir())
+	dir := filepath.Join(home, "Library", "Application Support",
+		"com.superlogical.rex", "RexServer", "Versions", "Current",
+		"Rex Server.app", "Contents", "MacOS")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\necho \"reloaded: $*\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "rex"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := rex.ReloadConfig(t.Context())
+	if err != nil || out != "reloaded: config reload\n" {
+		t.Errorf("ReloadConfig = %q, %v, want the report of the app rex", out, err)
 	}
 }

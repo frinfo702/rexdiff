@@ -46,14 +46,27 @@ func FromEnv() *Client {
 	}
 }
 
-// binFromEnv returns the path of the rex command in REX_BIN_DIR. If
-// REX_BIN_DIR is not set, it returns "".
+// binFromEnv returns the path of the rex command. Rex sets REX_BIN_DIR
+// in its terminals. Other programs, such as brew, do not have it. Then
+// the path is "" for rex in PATH. If rex is not in PATH, it is the rex
+// of the Rex server app on macOS.
 func binFromEnv() string {
-	dir := os.Getenv("REX_BIN_DIR")
-	if dir == "" {
+	if dir := os.Getenv("REX_BIN_DIR"); dir != "" {
+		return filepath.Join(dir, "rex")
+	}
+	if _, err := exec.LookPath("rex"); err == nil {
 		return ""
 	}
-	return filepath.Join(dir, "rex")
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	bin := filepath.Join(dir, "com.superlogical.rex", "RexServer", "Versions",
+		"Current", "Rex Server.app", "Contents", "MacOS", "rex")
+	if _, err := os.Stat(bin); err != nil {
+		return ""
+	}
+	return bin
 }
 
 // command returns the command "rex args...".
