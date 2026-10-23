@@ -11,15 +11,30 @@ getting a review comment back.
 
 ## Install
 
+With Homebrew:
+
+```sh
+brew tap rednafi/rexdiff https://github.com/rednafi/rexdiff
+brew trust rednafi/rexdiff
+brew install --cask rexdiff
+```
+
+Or with Go:
+
 ```sh
 go install github.com/rednafi/rexdiff/cmd/rexdiff@latest
+```
+
+Then add rexdiff to Rex:
+
+```sh
 rexdiff install
 ```
 
-`rexdiff install` adds a "Toggle rexdiff" action to your Rex config and binds
-it to Shift+Cmd+R. Use `--key` to pick another key. The `--placement` flag
-sets how rexdiff opens: `split`, `zoomed`, `tab`, or `overlay`. Run
-`rexdiff uninstall` to remove the action and the key.
+This adds a "Toggle rexdiff" action to your Rex config and binds it to
+Shift+Cmd+R. Use `--key` to pick another key. The `--placement` flag sets how
+rexdiff opens: `split`, `zoomed`, `tab`, or `overlay`. Run `rexdiff uninstall`
+to remove the action and the key.
 
 ## Use
 
