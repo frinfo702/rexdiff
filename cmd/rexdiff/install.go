@@ -156,14 +156,13 @@ const (
 	luaFile     = "rexdiff.lua" // the file of the action, beside init.lua
 )
 
-// executable returns the path of the rexdiff binary, for the Rex action.
+// executable returns the path of the rexdiff binary, for the Rex action. It
+// keeps a symlink, such as the one from Homebrew. The target of the link
+// changes at each upgrade.
 func executable() (string, error) {
 	bin, err := os.Executable()
 	if err != nil {
 		return "", err
-	}
-	if b, err := filepath.EvalSymlinks(bin); err == nil {
-		bin = b
 	}
 	// go run deletes its binary at exit.
 	if strings.Contains(bin, string(filepath.Separator)+"go-build") {

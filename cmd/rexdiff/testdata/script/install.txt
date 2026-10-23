@@ -41,6 +41,12 @@ exec rexdiff install
 exists other/rexdiff.lua
 grep 'require\("rexdiff"\)' other/init.lua
 
+# On macOS, the action runs a symlinked rexdiff through the link, so that
+# it still works after brew upgrade.
+[darwin] exec sh -c 'mkdir brew && ln -s "$(command -v rexdiff)" brew/rexdiff'
+[darwin] exec $WORK/brew/rexdiff install
+[darwin] grep 'local BIN = "'$WORK'/brew/rexdiff"' other/rexdiff.lua
+
 # uninstall without an install changes nothing and does not fail.
 env REX_CONFIG=$WORK/none/init.lua
 exec rexdiff uninstall
