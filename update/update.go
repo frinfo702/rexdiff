@@ -169,7 +169,14 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 	case methodBrew:
 		// No hints and no questions: nobody sees the output.
 		env := []string{"HOMEBREW_NO_ENV_HINTS=1", "NONINTERACTIVE=1"}
-		_, err = u.command(ctx, env, cmp.Or(u.brew, "brew"), "upgrade", "--cask", "rexdiff")
+		brew := cmp.Or(u.brew, "brew")
+		// brew upgrade knows the casks as of the last update of the taps,
+		// which can be a day old, so it would not see the release. Update
+		// the taps first, and only once.
+		if _, err = u.command(ctx, env, brew, "update", "--quiet"); err == nil {
+			env = append(env, "HOMEBREW_NO_AUTO_UPDATE=1")
+			_, err = u.command(ctx, env, brew, "upgrade", "--cask", "rexdiff")
+		}
 	case methodGo:
 		// GOBIN puts the new binary where the old one is.
 		env := []string{"GOBIN=" + filepath.Dir(u.bin)}

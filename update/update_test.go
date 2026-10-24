@@ -148,7 +148,8 @@ func TestInstallCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"HOMEBREW_NO_ENV_HINTS=1 NONINTERACTIVE=1 brew upgrade --cask rexdiff",
+		"HOMEBREW_NO_ENV_HINTS=1 NONINTERACTIVE=1 brew update --quiet",
+		"HOMEBREW_NO_ENV_HINTS=1 NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade --cask rexdiff",
 		"/opt/homebrew/bin/rexdiff -version",
 	}
 	if strings.Join(brew.calls, "\n") != strings.Join(want, "\n") {
@@ -361,8 +362,8 @@ func TestDetectBrew(t *testing.T) {
 	if err := u.Install(t.Context(), Release{Tag: "v0.2.1"}); err != nil {
 		t.Fatal(err)
 	}
-	if want := "HOMEBREW_NO_ENV_HINTS=1 NONINTERACTIVE=1 " + brew + " upgrade --cask rexdiff"; fake.calls[0] != want {
-		t.Errorf("brew call = %q, want %q", fake.calls[0], want)
+	if want := "HOMEBREW_NO_ENV_HINTS=1 NONINTERACTIVE=1 " + brew + " update --quiet"; fake.calls[0] != want {
+		t.Errorf("first brew call = %q, want %q", fake.calls[0], want)
 	}
 }
 
