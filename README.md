@@ -5,7 +5,7 @@
 A diff viewer for coding agents in [Rex]. It opens next to the agent and shows
 the changes. You comment on lines and send the comments to the agent.
 
-Watch the [demo].
+https://github.com/user-attachments/assets/e44159eb-3b02-4ea8-88ca-f6314261c1aa
 
 ## Install
 
@@ -102,5 +102,4 @@ After a change:
 
 [rexdiff in Rex]: assets/banner.png
 [Rex]: https://www.superlogical.com/rex
-[demo]: assets/demo.mp4
 [herdr-reviewr]: https://github.com/persiyanov/herdr-reviewr
