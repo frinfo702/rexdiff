@@ -160,8 +160,10 @@ func TestInstallCommands(t *testing.T) {
 	if err := u.Install(t.Context(), r); err != nil {
 		t.Fatal(err)
 	}
-	if got := gorun.calls[0]; got != "GOBIN=/home/u/go/bin go install github.com/rednafi/rexdiff/cmd/rexdiff@v0.2.0" {
-		t.Errorf("go call = %q", got)
+	env, rest, _ := strings.Cut(gorun.calls[0], " ")
+	prog, args, _ := strings.Cut(rest, " ")
+	if env != "GOBIN=/home/u/go/bin" || filepath.Base(prog) != "go" || args != "install github.com/rednafi/rexdiff/cmd/rexdiff@v0.2.0" {
+		t.Errorf("go call = %q, want GOBIN=/home/u/go/bin go install github.com/rednafi/rexdiff/cmd/rexdiff@v0.2.0", gorun.calls[0])
 	}
 
 	// A failure has the last line of the output, which tells why.
@@ -335,5 +337,43 @@ func TestVersion(t *testing.T) {
 	t.Setenv("REXDIFF_LATEST_URL", "http://127.0.0.1:1/latest")
 	if u := Detect("/bin/rexdiff", "0.2.0"); u == nil || u.latestURL != "http://127.0.0.1:1/latest" || u.method != methodDownload {
 		t.Errorf("Detect of a release build = %+v", u)
+	}
+}
+
+// TestDetectBrew checks that a Homebrew install uses the brew beside its
+// Caskroom, because Rex starts rexdiff with a PATH without Homebrew.
+func TestDetectBrew(t *testing.T) {
+	prefix := t.TempDir()
+	cask := file(t, filepath.Join(prefix, "Caskroom", "rexdiff", "0.2.0", "rexdiff"), "")
+	brew := file(t, filepath.Join(prefix, "bin", "brew"), "#!/bin/sh\n")
+	brew, _ = filepath.EvalSymlinks(brew) // detect follows the links, as of /var on macOS
+	link := filepath.Join(prefix, "bin", "rexdiff")
+	if err := os.Symlink(cask, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", "/usr/bin:/bin") // the PATH of the Rex app
+	u := detect(link, "v0.2.0", false)
+	if u == nil || u.method != methodBrew || u.brew != brew {
+		t.Fatalf("detect = %+v, want brew %s", u, brew)
+	}
+	fake := &fakeRun{version: "v0.2.1"}
+	u.run = fake.run
+	if err := u.Install(t.Context(), Release{Tag: "v0.2.1"}); err != nil {
+		t.Fatal(err)
+	}
+	if want := "HOMEBREW_NO_ENV_HINTS=1 NONINTERACTIVE=1 " + brew + " upgrade --cask rexdiff"; fake.calls[0] != want {
+		t.Errorf("brew call = %q, want %q", fake.calls[0], want)
+	}
+}
+
+// TestErrorWithoutOutput checks that a command that fails with no output
+// has no empty part at the end of its error.
+func TestErrorWithoutOutput(t *testing.T) {
+	u := &Updater{run: func(context.Context, []string, string, ...string) ([]byte, error) {
+		return nil, errors.New(`exec: "brew": executable file not found in $PATH`)
+	}}
+	_, err := u.command(t.Context(), nil, "/x/brew", "upgrade")
+	if want := `brew: exec: "brew": executable file not found in $PATH`; err == nil || err.Error() != want {
+		t.Errorf("error = %v, want %s", err, want)
 	}
 }

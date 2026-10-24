@@ -75,6 +75,7 @@ type Updater struct {
 	bin       string // the path of rexdiff, as the user runs it; it can be a link
 	version   string // the version of the running rexdiff, for example "v0.1.0"
 	method    method
+	brew      string // the brew of the Caskroom of bin, for methodBrew
 	latestURL string
 	// run runs a command and returns its output. Tests change it.
 	run func(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
@@ -126,6 +127,10 @@ func detect(bin, version string, goInstall bool) *Updater {
 	switch {
 	case err == nil && strings.Contains(target, caskroom):
 		u.method = methodBrew
+		// The brew that owns the cask is in the bin directory beside the
+		// Caskroom, for example /opt/homebrew/bin/brew.
+		prefix, _, _ := strings.Cut(target, caskroom)
+		u.brew = tool("brew", filepath.Join(prefix, "bin"))
 	case goInstall:
 		u.method = methodGo
 	}
@@ -164,11 +169,15 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 	case methodBrew:
 		// No hints and no questions: nobody sees the output.
 		env := []string{"HOMEBREW_NO_ENV_HINTS=1", "NONINTERACTIVE=1"}
-		_, err = u.command(ctx, env, "brew", "upgrade", "--cask", "rexdiff")
+		_, err = u.command(ctx, env, cmp.Or(u.brew, "brew"), "upgrade", "--cask", "rexdiff")
 	case methodGo:
 		// GOBIN puts the new binary where the old one is.
 		env := []string{"GOBIN=" + filepath.Dir(u.bin)}
-		_, err = u.command(ctx, env, "go", "install", modulePath+"@"+r.Tag)
+		goTool := "go"
+		if _, err := exec.LookPath(goTool); err != nil { // not in the PATH of Rex
+			goTool = tool("go", "/opt/homebrew/bin", "/usr/local/go/bin", "/usr/local/bin")
+		}
+		_, err = u.command(ctx, env, goTool, "install", modulePath+"@"+r.Tag)
 	default:
 		return u.download(ctx, r) // it checks the version before it replaces
 	}
@@ -199,10 +208,26 @@ func (u *Updater) command(ctx context.Context, env []string, name string, args .
 		run = runCommand
 	}
 	out, err := run(ctx, env, name, args...)
-	if err != nil {
-		return out, fmt.Errorf("%s: %w: %s", name, err, lastLine(out))
+	if err == nil {
+		return out, nil
 	}
-	return out, nil
+	if last := lastLine(out); last != "" {
+		return out, fmt.Errorf("%s: %w: %s", filepath.Base(name), err, last)
+	}
+	return out, fmt.Errorf("%s: %w", filepath.Base(name), err)
+}
+
+// tool returns the path of the program name in dirs, or else the name, for
+// a look in PATH. dirs come first because Rex starts rexdiff with the PATH
+// of the Rex app, which has no directory of Homebrew or of Go.
+func tool(name string, dirs ...string) string {
+	for _, dir := range dirs {
+		path := filepath.Join(dir, name)
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+			return path
+		}
+	}
+	return name
 }
 
 // runCommand is the run of an Updater outside tests.
