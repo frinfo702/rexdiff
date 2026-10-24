@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo.png" alt="rexdiff" width="360"></p>
+<img src="assets/logo.png" alt="rexdiff" width="200" align="right">
 
 A diff viewer for coding agents in [Rex]. It opens next to the agent and shows
 the changes. You comment on lines and send the comments to the agent.
