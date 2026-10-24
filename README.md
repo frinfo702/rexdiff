@@ -1,7 +1,10 @@
 <img src="assets/logo.png" alt="rexdiff" width="360" align="right">
 
-A diff viewer for coding agents in [Rex]. It opens next to the agent and shows
-the changes. You comment on lines and send the comments to the agent.
+A diff viewer for coding agents in [Rex]. Think [herdr-reviewr], but for Rex.
+
+
+It opens next to the agent and shows the changes. You comment on lines and send
+the comments to the agent.
 
 https://github.com/user-attachments/assets/e44159eb-3b02-4ea8-88ca-f6314261c1aa
 
