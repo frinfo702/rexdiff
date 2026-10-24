@@ -1,6 +1,4 @@
-![rexdiff in Rex]
-
-# rexdiff
+<p align="center"><img src="assets/logo.png" alt="rexdiff" width="360"></p>
 
 A diff viewer for coding agents in [Rex]. It opens next to the agent and shows
 the changes. You comment on lines and send the comments to the agent.
@@ -100,6 +98,5 @@ After a change:
 
 <!-- references -->
 
-[rexdiff in Rex]: assets/banner.png
 [Rex]: https://www.superlogical.com/rex
 [herdr-reviewr]: https://github.com/persiyanov/herdr-reviewr
