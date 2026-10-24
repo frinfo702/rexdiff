@@ -117,10 +117,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	// After an update, run the new rexdiff in this process, with the same
 	// flags. resumeEnv gives it the saved state.
 	closeLog()
-	if err := os.Setenv(resumeEnv, resume); err != nil {
-		return fmt.Errorf("start the new rexdiff: %w; your comments are saved in %s", err, resume)
+	if err = os.Setenv(resumeEnv, resume); err == nil {
+		err = update.Restart(bin, args) // returns only if it fails
 	}
-	err = update.Restart(bin, args)
+	fmt.Print("\x1b[?1049l\x1b[?25h") // leave the screen that Run kept
 	return fmt.Errorf("start the new rexdiff: %w; your comments are saved in %s", err, resume)
 }
 

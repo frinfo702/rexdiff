@@ -6,6 +6,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
@@ -115,6 +116,11 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 	}
 	final, err := program.Run()
 	if fm, ok := final.(*model); ok && err == nil {
+		if fm.restartState != "" {
+			// Keep the last screen until the new rexdiff draws, so that
+			// the restart does not show the shell of the pane.
+			fmt.Print("\x1b[?1049h\x1b[?25l\x1b[H" + fm.View().Content)
+		}
 		return fm.restartState, nil
 	}
 	return "", err
