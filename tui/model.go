@@ -15,6 +15,7 @@ import (
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/rex"
+	"github.com/rednafi/rexdiff/update"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -177,13 +178,14 @@ type model struct {
 	rex  *rex.Client // nil outside Rex
 	log  *slog.Logger
 
-	cfg        config
-	cfgPath    string
-	layout     Layout // from the flags, or ""
-	scopeIn    Scope  // from the flags, or ""
-	cfgModTime time.Time
-	cfgErr     string
-	keys       keyMap
+	cfg    config
+	keys   keyMap
+	notice string // a problem that the footer shows, or ""
+
+	updater      Updater         // nil if rexdiff cannot update itself
+	release      *update.Release // a newer release, or nil
+	phase        updatePhase
+	restartState string // the file of the state for the restart, or ""
 
 	w, h    int
 	bg, fg  color.Color
@@ -209,6 +211,7 @@ type model struct {
 
 	changes, viewer, prPane pane
 	pr                      prState
+	prPlace                 *savedPane // the place of prPane after a restart
 
 	split      bool // show the diff side by side
 	wrap       bool
@@ -231,6 +234,7 @@ type model struct {
 	statusTill time.Time
 
 	agents   map[string]*agentState // by block
+	sends    int                    // the steps of sends that run now
 	lastSent string                 // the block of the last send
 	beside   string                 // the agent block that the pane opened beside
 }
@@ -249,9 +253,8 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 		repo:    o.Repo,
 		rex:     o.Rex,
 		log:     o.Log,
-		cfgPath: o.ConfigPath,
-		layout:  o.Layout,
-		scopeIn: o.Scope,
+		notice:  o.Notice,
+		updater: o.Updater,
 		w:       120,
 		h:       40,
 		focused: true,
@@ -268,19 +271,20 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 		m.base = o.Repo.DefaultBase(ctx)
 	}
 	if o.Rex != nil && o.Agent != "" {
+		// An agent that Rex does not know is not selected first; the
+		// picker still lists the agents.
 		m.beside, _ = o.Rex.Resolve(ctx, o.Agent)
 	}
 	m.changes.anchor, m.viewer.anchor, m.prPane.anchor = -1, -1, -1
-	if o.ConfigPath != "" {
-		m.cfgModTime = modTime(o.ConfigPath)
-	}
-	cfg = m.withFlags(cfg)
-	m.useConfig(cfg)
-	// As in herdr-reviewr, only the first configuration sets the layout,
-	// the markdown view, and the scope. Thus a reload does not undo | or m.
-	m.split = cfg.Layout == LayoutSplit
+	m.cfg = cfg
+	m.keys = defaultKeys()
+	m.keys.applyConfig(cfg.Keybindings)
+	m.listLeft = cfg.FileList == positionLeft
+	m.listW = cfg.FileListWidth
 	m.rendered = cfg.MarkdownView == markdownViewRendered
-	m.scope = cfg.DefaultScope
+	// The flags win over the settings.
+	m.split = cmp.Or(o.Layout, cfg.Layout) == LayoutSplit
+	m.scope = cmp.Or(o.Scope, cfg.DefaultScope)
 	return m
 }
 
@@ -324,11 +328,14 @@ func tick(d time.Duration) tea.Cmd {
 
 // Init starts the ticks, asks for the colours of the terminal, and loads
 // the pull request and the agents.
-func (m model) Init() tea.Cmd {
+func (m *model) Init() tea.Cmd {
 	cmds := []tea.Cmd{tick(time.Second), m.loadPR()}
 	cmds = append(cmds, requestColors...)
 	if m.rex != nil {
 		cmds = append(cmds, m.listAgents(agentsMsg{}))
+	}
+	if m.updater != nil {
+		cmds = append(cmds, m.checkRelease())
 	}
 	return tea.Batch(cmds...)
 }
@@ -432,19 +439,37 @@ func (m *model) reloadIfChanged() {
 // loadFiles makes sure that the list of all files is loaded.
 func (m *model) loadFiles() {
 	if m.allFiles == nil {
-		m.allFiles, _ = m.repo.Files(m.ctx)
+		m.allFiles, _ = m.repo.Files(m.ctx) // an error shows an empty list
 	}
 }
 
 // reloadFiles reads the list of all files again.
 func (m *model) reloadFiles() {
-	m.allFiles, _ = m.repo.Files(m.ctx)
+	m.allFiles, _ = m.repo.Files(m.ctx) // an error shows an empty list
 	m.allSel = min(m.allSel, max(len(m.allFiles)-1, 0))
 	m.refreshViewer()
 }
 
 // Update handles a message.
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := m.handle(msg)
+	if m.phase != phaseInstalled {
+		return m, cmd
+	}
+	// After an install, restart as soon as no work would be lost. A tick
+	// only schedules the next tick, which is no work.
+	pending := cmd
+	if _, tick := msg.(tickMsg); tick {
+		pending = nil
+	}
+	if m.restartIfReady(pending) {
+		return m, tea.Quit
+	}
+	return m, cmd
+}
+
+// handle does the work of Update. Update then checks for a restart.
+func (m *model) handle(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.MouseClickMsg: // these can move the cursor
@@ -484,6 +509,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.onPR(msg)
 	case grepMsg:
 		m.onGrep(msg)
+	case *update.Release:
+		m.release = msg
+	case installedMsg:
+		m.onInstalled(msg)
 	case editorDoneMsg:
 		if msg.err != nil {
 			m.flash("editor: " + msg.err.Error())
@@ -503,11 +532,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.onKey(msg)
 	}
 	m.ensureVisible()
-	return m, cmd
+	return cmd
 }
 
 // onKey gives a key to the part of the screen that takes the keys.
-func (m model) onKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) onKey(msg tea.KeyPressMsg) tea.Cmd {
 	m.log.Debug("key", "key", msg.String(), "mode", m.mode, "scope", m.scope)
 	switch m.mode {
 	case modeComment:
@@ -534,6 +563,10 @@ func (m *model) onPR(msg prMsg) {
 		m.pr.err = msg.err.Error()
 	}
 	m.renderPR()
+	if p := m.prPlace; p != nil && msg.err == nil && msg.pr != nil { // from before a restart
+		m.prPlace = nil
+		m.prPane.restore(*p)
+	}
 }
 
 // onPaste adds text to the comment box or to the input of the overlay.
@@ -555,12 +588,9 @@ const (
 	colorTicks   = 3  // a request for the colours of the terminal
 )
 
-// onTick reloads the configuration and the current tab, if they changed.
+// onTick reloads the current tab, if it changed.
 func (m *model) onTick() tea.Cmd {
 	m.ticks++
-	if m.cfgPath != "" && !modTime(m.cfgPath).Equal(m.cfgModTime) {
-		m.applyConfig()
-	}
 	// A pane without focus reloads less often, like herdr-reviewr.
 	every := 1
 	if !m.focused {
@@ -586,44 +616,6 @@ func (m *model) onTick() tea.Cmd {
 		cmds = append(cmds, requestColors...)
 	}
 	return tea.Batch(cmds...)
-}
-
-// applyConfig reads the configuration file again. If the file is not
-// valid, the configuration that the model has stays.
-func (m *model) applyConfig() {
-	m.cfgModTime = modTime(m.cfgPath) // before the read, so a later change shows
-	cfg, err := loadConfig(m.cfgPath)
-	if err != nil {
-		m.cfgErr = err.Error()
-		return
-	}
-	cfg = m.withFlags(cfg)
-	m.cfgErr = ""
-	m.useConfig(cfg)
-	m.rerender()
-	m.flash("config reloaded")
-}
-
-// withFlags returns cfg with the layout and the scope of the flags, if set.
-func (m *model) withFlags(cfg config) config {
-	cfg.Layout = cmp.Or(m.layout, cfg.Layout)
-	cfg.DefaultScope = cmp.Or(m.scopeIn, cfg.DefaultScope)
-	return cfg
-}
-
-// useConfig sets the configuration and the keys. It sets the position and
-// the width of the file list only if cfg changes them. Thus a reload does
-// not undo p, <, and >.
-func (m *model) useConfig(cfg config) {
-	if cfg.FileList != m.cfg.FileList {
-		m.listLeft = cfg.FileList == positionLeft
-	}
-	if cfg.FileListWidth != m.cfg.FileListWidth {
-		m.listW = cfg.FileListWidth
-	}
-	m.cfg = cfg
-	m.keys = defaultKeys()
-	m.keys.applyConfig(cfg.Keybindings)
 }
 
 // cur returns the pane of the current tab.

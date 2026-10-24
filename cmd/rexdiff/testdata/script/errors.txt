@@ -10,30 +10,23 @@ stderr 'flag provided but not defined: -bogus'
 
 # rexdiff needs a git repository.
 ! exec rexdiff $WORK
-stderr '^rexdiff: not a git repository$'
+stderr '^rexdiff: open .+: git rev-parse: fatal: not a git repository'
 
-# A bad configuration file names the file, the key, and the allowed values.
+# -check checks the settings without a repository, for the Rex action.
+# TestParseConfig has the other bad settings.
+! exec rexdiff -check -config '{"layout": "sideways"}'
+stderr '^rexdiff: config: invalid value for layout: expected one of unified, split, not "sideways"$'
+exec rexdiff -check -config '{"layout": "split"}'
+! stderr .
+
+# rexdiff does not start with bad settings.
 exec git init -q repo
-env REXDIFF_CONFIG=$WORK/typo.toml
-! exec rexdiff repo
-cmpenv stderr typo.want
-env REXDIFF_CONFIG=$WORK/value.toml
-! exec rexdiff repo
-cmpenv stderr value.want
+! exec rexdiff -config '{"layuot": "split"}' repo
+stderr '^rexdiff: config: unknown key "layuot"$'
 
-# install rejects a wrong placement and an extra argument, and writes
-# nothing.
-! exec rexdiff install --placement=tabs
-stderr 'unknown placement "tabs" \(use split, zoomed, tab, or overlay\)'
+# install takes no arguments: the key and the placement are settings.
+! exec rexdiff install --placement=tab
+stderr 'flag provided but not defined: -placement'
 ! exec rexdiff install extra
 stderr 'unknown argument extra'
 ! exists .config/rex
-
--- typo.toml --
-layuot = "split"
--- value.toml --
-layout = "sideways"
--- typo.want --
-rexdiff: config $WORK/typo.toml: unknown key "layuot"
--- value.want --
-rexdiff: config $WORK/value.toml: invalid value for layout: expected one of unified, split, not "sideways"

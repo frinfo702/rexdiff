@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -439,15 +440,55 @@ func (m *model) ensureVisible() {
 	}
 }
 
-// footer renders the status and the help of the keys.
+// footer renders the notice, the status, and the help of the keys. The
+// notice wraps, so that the user can read all of it.
 func (m *model) footer() string {
+	if m.notice != "" {
+		return delStyle.Render(wrapWords(m.notice, m.w)) + "\n" + m.footerLine()
+	}
+	return m.footerLine()
+}
+
+// wrapWords breaks s into lines of width w or less, at spaces only.
+// ansi.Wrap and lipgloss let a line end with a hyphen past w, which cuts
+// "--" off the edge of the screen. A word wider than w is cut, and a
+// character wider than w gets a line of its own.
+func wrapWords(s string, w int) string {
+	w = max(w, 1)
+	var lines []string
+	line := ""
+	for word := range strings.FieldsSeq(s) {
+		switch {
+		case line == "":
+			line = word
+		case ansi.StringWidth(line)+1+ansi.StringWidth(word) <= w:
+			line += " " + word
+		default:
+			lines = append(lines, line)
+			line = word
+		}
+		for ansi.StringWidth(line) > w {
+			head, rest := ansi.Truncate(line, w, ""), ansi.TruncateLeft(line, w, "")
+			if head == "" { // the first character is wider than w
+				_, n := utf8.DecodeRuneInString(line)
+				head, rest = line[:n], line[n:]
+			}
+			lines = append(lines, head)
+			line = rest
+		}
+	}
+	return strings.Join(append(lines, line), "\n")
+}
+
+// footerLine renders the status and the help of the keys.
+func (m *model) footerLine() string {
 	m.help.SetWidth(m.w)
 	var badge string
 	switch {
 	case m.status != "":
 		badge = cursorStyle.Render(m.status)
-	case m.cfgErr != "":
-		badge = delStyle.Render(m.cfgErr)
+	case m.release != nil:
+		badge = cursorStyle.Render(m.releaseBadge())
 	case m.find.active():
 		f := m.find
 		badge = findStyle.Render(fmt.Sprintf("≈ %q %d/%d", f.query, f.i+1, len(f.hits)))
@@ -487,7 +528,7 @@ func (m *model) heightAbove(footer string) int {
 }
 
 // View renders the screen.
-func (m model) View() tea.View {
+func (m *model) View() tea.View {
 	footer := m.footer()
 	h := m.heightAbove(footer)
 	hdr, _ := m.header()

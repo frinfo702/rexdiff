@@ -15,16 +15,16 @@ import (
 )
 
 // onClick handles a press of a mouse button.
-func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
+func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	if mouse.Button != tea.MouseLeft {
-		return m, nil
+		return nil
 	}
 	if m.mode == modeOverlay && m.overlay != nil {
 		return m.clickOverlay(mouse)
 	}
 	if m.mode == modeComment {
 		// As in herdr-reviewr, a click does nothing while the user writes.
-		return m, nil
+		return nil
 	}
 	if mouse.Y == 0 {
 		_, spans := m.header()
@@ -33,23 +33,26 @@ func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 				return m.clickHeader(s.action)
 			}
 		}
-		return m, nil
+		return nil
 	}
 	h := m.bodyHeight()
 	y := mouse.Y - bodyY
+	if y > h { // the footer, under the rule at y == h
+		return m.install()
+	}
 	if y < 0 || y >= h {
-		return m, nil
+		return nil
 	}
 	if m.inList(mouse.X) {
 		if y >= 1 {
 			m.focusList = true
 			m.pickFile(m.listStart(h) + y - 1)
 		}
-		return m, nil
+		return nil
 	}
 	_, rowAt := m.mainLines(h)
 	if y >= len(rowAt) || rowAt[y] < 0 {
-		return m, nil
+		return nil
 	}
 	p := m.cur()
 	m.focusList = false
@@ -61,7 +64,7 @@ func (m model) onClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 		gutter: onNumber,
 		pref:   side,
 	}
-	return m, nil
+	return nil
 }
 
 // inList tells if screen column x is on the file list.
@@ -101,30 +104,27 @@ func (m *model) onDrag(mouse tea.Mouse) {
 
 // onRelease ends a drag. A drag on the line numbers opens the comment
 // box; a drag on the code copies the lines.
-func (m model) onRelease() (tea.Model, tea.Cmd) {
+func (m *model) onRelease() tea.Cmd {
 	d := m.drag
 	m.drag.active = false
 	p := m.cur()
 	// A reload during the drag can make the pane shorter than the start.
 	if !d.active || d.start >= len(p.rows) {
-		return m, nil
+		return nil
 	}
 	switch {
 	case d.gutter: // a line or a range on the line numbers: comment
 		if d.moved {
 			p.anchor = d.start
 		}
-		// startComment changes m. In "return m, f()", Go does not set
-		// which comes first, the copy of m or the call.
-		cmd := m.startComment(d.pref)
-		return m, cmd
+		return m.startComment(d.pref)
 	case d.moved: // a range on the code: copy it
 		lo, hi := p.span(d.start, p.cur)
 		out := m.sourceLines(lo, hi, d.pref)
 		m.flash("copied " + plural(len(out), "line"))
-		return m, tea.SetClipboard(strings.Join(out, "\n"))
+		return tea.SetClipboard(strings.Join(out, "\n"))
 	}
-	return m, nil
+	return nil
 }
 
 // sourceLines returns the source lines of rows lo to hi of the current
@@ -186,7 +186,7 @@ func (m *model) onWheel(mouse tea.Mouse) {
 
 // clickOverlay handles a click while an overlay is open. A click outside
 // the box closes it, but not the prompt before a quit.
-func (m model) clickOverlay(mouse tea.Mouse) (tea.Model, tea.Cmd) {
+func (m *model) clickOverlay(mouse tea.Mouse) tea.Cmd {
 	box, x, y, listY := m.overlayBox()
 	w, h := lipgloss.Width(box), lipgloss.Height(box)
 	inBox := mouse.X >= x && mouse.X < x+w && mouse.Y >= y && mouse.Y < y+h
@@ -194,21 +194,21 @@ func (m model) clickOverlay(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 		if m.overlay.kind != overlayQuit {
 			m.closeOverlay()
 		}
-		return m, nil
+		return nil
 	}
 	idx := mouse.Y - y - listY
 	if idx < 0 || idx >= len(m.overlay.shown) {
-		return m, nil
+		return nil
 	}
 	if idx == m.overlay.cur { // a click on the selected row picks it
 		return m.chooseOverlay()
 	}
 	m.overlay.cur = idx
-	return m, nil
+	return nil
 }
 
 // clickHeader does action a of a click on the header.
-func (m model) clickHeader(a headerAction) (tea.Model, tea.Cmd) {
+func (m *model) clickHeader(a headerAction) tea.Cmd {
 	switch {
 	case a >= headerTabChanges && a <= headerTabPR:
 		m.setTab(tab(a - headerTabChanges))
@@ -224,8 +224,7 @@ func (m model) clickHeader(a headerAction) (tea.Model, tea.Cmd) {
 	case a == headerCommits:
 		m.openCommitPicker()
 	case a == headerAgent:
-		cmd := m.startSend() // it changes m, so call it before the return
-		return m, cmd
+		return m.startSend()
 	}
-	return m, nil
+	return nil
 }

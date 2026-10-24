@@ -2,6 +2,7 @@ package diff
 
 import (
 	"cmp"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
@@ -75,33 +76,33 @@ type Comments struct {
 }
 
 // Len returns the number of comments.
-func (s *Comments) Len() int { return len(s.items) }
+func (cs *Comments) Len() int { return len(cs.items) }
 
 // Add adds a copy of c with a new ID, and returns the copy.
-func (s *Comments) Add(c Comment) *Comment {
-	s.last++
-	c.ID = s.last
-	s.items = append(s.items, &c)
+func (cs *Comments) Add(c Comment) *Comment {
+	cs.last++
+	c.ID = cs.last
+	cs.items = append(cs.items, &c)
 	return &c
 }
 
 // Remove removes the comment with the given ID, if there is one.
-func (s *Comments) Remove(id int) {
-	s.items = slices.DeleteFunc(s.items, func(c *Comment) bool { return c.ID == id })
+func (cs *Comments) Remove(id int) {
+	cs.items = slices.DeleteFunc(cs.items, func(c *Comment) bool { return c.ID == id })
 }
 
 // All returns the comments, sorted by path and then by start line.
-func (s *Comments) All() []*Comment {
-	cs := slices.Clone(s.items)
-	slices.SortStableFunc(cs, func(a, b *Comment) int {
+func (cs *Comments) All() []*Comment {
+	all := slices.Clone(cs.items)
+	slices.SortStableFunc(all, func(a, b *Comment) int {
 		return cmp.Or(strings.Compare(a.Path, b.Path), cmp.Compare(a.Start, b.Start))
 	})
-	return cs
+	return all
 }
 
 // Find returns the comment with the given ID, or nil.
-func (s *Comments) Find(id int) *Comment {
-	for _, c := range s.items {
+func (cs *Comments) Find(id int) *Comment {
+	for _, c := range cs.items {
 		if c.ID == id {
 			return c
 		}
@@ -110,8 +111,8 @@ func (s *Comments) Find(id int) *Comment {
 }
 
 // At returns the first comment whose range includes line, or nil.
-func (s *Comments) At(path string, side Side, line int) *Comment {
-	for _, c := range s.items {
+func (cs *Comments) At(path string, side Side, line int) *Comment {
+	for _, c := range cs.items {
 		if c.Path == path && c.Side == side && line >= c.Start && line <= c.End {
 			return c
 		}
@@ -120,20 +121,20 @@ func (s *Comments) At(path string, side Side, line int) *Comment {
 }
 
 // EndingAt returns the comments whose range ends on line.
-func (s *Comments) EndingAt(path string, side Side, line int) []*Comment {
-	var cs []*Comment
-	for _, c := range s.items {
+func (cs *Comments) EndingAt(path string, side Side, line int) []*Comment {
+	var ending []*Comment
+	for _, c := range cs.items {
 		if c.Path == path && c.Side == side && c.End == line {
-			cs = append(cs, c)
+			ending = append(ending, c)
 		}
 	}
-	return cs
+	return ending
 }
 
 // Count returns the number of comments on the file at path.
-func (s *Comments) Count(path string) int {
+func (cs *Comments) Count(path string) int {
 	n := 0
-	for _, c := range s.items {
+	for _, c := range cs.items {
 		if c.Path == path {
 			n++
 		}
@@ -147,9 +148,9 @@ func (s *Comments) Count(path string) int {
 // the text is at more than one location, the comment moves to the nearest
 // one. If the version does not have the text, the comment stays and
 // becomes stale.
-func (s *Comments) Relocate(path, old, new string) {
+func (cs *Comments) Relocate(path, old, new string) {
 	var lines [2][]string // the lines of each side; split when a comment needs them
-	for _, c := range s.items {
+	for _, c := range cs.items {
 		if c.Path != path || len(c.code) == 0 {
 			continue
 		}
@@ -203,4 +204,53 @@ func abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+// savedComment is a [Comment] with its private fields, for MarshalJSON.
+type savedComment struct {
+	ID      int      `json:"id"`
+	Path    string   `json:"path"`
+	Side    Side     `json:"side"`
+	Start   int      `json:"start"`
+	End     int      `json:"end"`
+	Text    string   `json:"text"`
+	Stale   bool     `json:"stale"`
+	Code    []string `json:"code"`
+	Snippet []string `json:"snippet"`
+}
+
+// savedComments is a [Comments] with its private fields.
+type savedComments struct {
+	Last  int            `json:"last"`
+	Items []savedComment `json:"items"`
+}
+
+// MarshalJSON encodes the comments with their code and their diff rows,
+// so that UnmarshalJSON restores the same comments, for example after a
+// restart.
+func (cs *Comments) MarshalJSON() ([]byte, error) {
+	saved := savedComments{Last: cs.last}
+	for _, c := range cs.items {
+		saved.Items = append(saved.Items, savedComment{
+			ID: c.ID, Path: c.Path, Side: c.Side, Start: c.Start, End: c.End,
+			Text: c.Text, Stale: c.Stale, Code: c.code, Snippet: c.snippet,
+		})
+	}
+	return json.Marshal(saved)
+}
+
+// UnmarshalJSON reads comments that MarshalJSON wrote.
+func (cs *Comments) UnmarshalJSON(b []byte) error {
+	var saved savedComments
+	if err := json.Unmarshal(b, &saved); err != nil {
+		return err
+	}
+	*cs = Comments{last: saved.Last}
+	for _, c := range saved.Items {
+		cs.items = append(cs.items, &Comment{
+			ID: c.ID, Path: c.Path, Side: c.Side, Start: c.Start, End: c.End,
+			Text: c.Text, Stale: c.Stale, code: c.Code, snippet: c.Snippet,
+		})
+	}
+	return nil
 }

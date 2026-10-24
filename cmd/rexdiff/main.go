@@ -1,10 +1,11 @@
 // Rexdiff shows the changes that a coding agent makes, beside the agent in
 // Rex. You can comment on the changed lines, then paste the comments into the
 // agent. "rexdiff install" adds a "Toggle rexdiff" action and a key to the Rex
-// configuration. "rexdiff -h" shows the path of the rexdiff configuration file.
+// configuration, in rexdiff.lua beside Rex's init.lua. The settings of rexdiff
+// are at the top of rexdiff.lua. The action passes them in --config.
 //
 //	rexdiff [flags] [repo]
-//	rexdiff install [--key=shift+cmd+r] [--placement=split|zoomed|tab|overlay]
+//	rexdiff install
 //	rexdiff uninstall
 package main
 
@@ -23,6 +24,7 @@ import (
 
 	"github.com/rednafi/rexdiff/rex"
 	"github.com/rednafi/rexdiff/tui"
+	"github.com/rednafi/rexdiff/update"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -37,7 +39,7 @@ func main() {
 }
 
 const usage = `usage: rexdiff [flags] [repo]
-       rexdiff install [--key=shift+cmd+r] [--placement=split|zoomed|tab|overlay]
+       rexdiff install
        rexdiff uninstall
 
 flags:
@@ -64,10 +66,18 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if f.version {
+		fmt.Fprintln(stdout, cmp.Or(update.Version(version), "(devel)"))
+		return nil
+	}
+	if f.check {
+		return tui.CheckConfig(f.config)
+	}
 
-	repo, err := vcs.Open(ctx, cmp.Or(f.repo, "."))
+	dir := cmp.Or(f.repo, ".")
+	repo, err := vcs.Open(ctx, dir)
 	if err != nil {
-		return errors.New("not a git repository")
+		return fmt.Errorf("open %s: %w", dir, err)
 	}
 	log, closeLog, err := openLog(f.logPath)
 	if err != nil {
@@ -75,18 +85,62 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	defer closeLog()
 
-	return tui.Run(ctx, tui.Options{
-		Repo:       repo,
-		Rex:        rex.FromEnv(),
-		ConfigPath: tui.ConfigPath(),
-		Layout:     f.layout,
-		Scope:      f.scope,
-		Agent:      f.agent,
-		Base:       f.base,
-		Wrap:       f.wrap,
-		Log:        log,
+	// In Rex, replace the code of the action if it differs from the code
+	// of this rexdiff.
+	client := rex.FromEnv()
+	var notice string
+	bin, binErr := executable()
+	if binErr == nil && client != nil {
+		notice = upgrade(ctx, bin)
+	}
+	var updater tui.Updater
+	if u := update.Detect(bin, version); u != nil {
+		updater = u // not a nil *Updater in a non-nil interface
+	}
+	resume, err := tui.Run(ctx, tui.Options{
+		Repo:    repo,
+		Rex:     client,
+		Notice:  notice,
+		Updater: updater,
+		Resume:  resumeFile(),
+		Config:  f.config,
+		Layout:  f.layout,
+		Scope:   f.scope,
+		Agent:   f.agent,
+		Base:    f.base,
+		Wrap:    f.wrap,
+		Log:     log,
 	})
+	if err != nil || resume == "" {
+		return err
+	}
+	// After an update, run the new rexdiff in this process, with the same
+	// flags. resumeEnv gives it the saved state.
+	closeLog()
+	if err := os.Setenv(resumeEnv, resume); err != nil {
+		return fmt.Errorf("start the new rexdiff: %w; your comments are saved in %s", err, resume)
+	}
+	err = update.Restart(bin, args)
+	return fmt.Errorf("start the new rexdiff: %w; your comments are saved in %s", err, resume)
 }
+
+// resumeEnv is the variable that gives a restarted rexdiff the file of the
+// state from before the update. A variable keeps the flags of the user as
+// they are.
+const resumeEnv = "REXDIFF_RESUME"
+
+// resumeFile returns the file in resumeEnv, or "", and unsets the variable,
+// so that the programs that rexdiff starts, such as an editor, do not get
+// it.
+func resumeFile() string {
+	path := os.Getenv(resumeEnv)
+	_ = os.Unsetenv(resumeEnv) // fails only for a bad name, and resumeEnv is good
+	return path
+}
+
+// version is the version of rexdiff that GoReleaser sets, for example
+// "0.2.0". It is "" in other builds.
+var version string
 
 // flags are the command-line arguments of the diff viewer.
 type flags struct {
@@ -96,6 +150,9 @@ type flags struct {
 	base    string
 	agent   string
 	logPath string
+	config  string // the settings as JSON, or ""
+	check   bool   // check the settings and exit
+	version bool   // print the version and exit
 	repo    string // the repo argument, or ""
 }
 
@@ -116,10 +173,13 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 		"the agent's Rex block (id or label) this pane was opened beside")
 	fs.StringVar(&f.logPath, "log", os.Getenv("REXDIFF_LOG"),
 		"append a debug log to this file")
+	fs.StringVar(&f.config, "config", "",
+		"the settings as JSON; the Rex action passes them from rexdiff.lua")
+	fs.BoolVar(&f.check, "check", false, "check the settings of -config and exit")
+	fs.BoolVar(&f.version, "version", false, "print the version and exit")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, usage)
 		fs.PrintDefaults()
-		fmt.Fprintf(stderr, "\nconfig: %s\n", tui.ConfigPath())
 	}
 	err := fs.Parse(args)
 	f.repo = fs.Arg(0)
@@ -127,7 +187,7 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 }
 
 // oneOf returns a flag function that sets *p to a value from allowed.
-// Other values are an error, as in the configuration file.
+// Other values are an error, as in the settings.
 func oneOf[T ~string](p *T, allowed ...T) func(string) error {
 	return func(v string) error {
 		if !slices.Contains(allowed, T(v)) {

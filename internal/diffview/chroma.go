@@ -1,8 +1,6 @@
 package diffview
 
 import (
-	"image/color"
-	"io"
 	"strings"
 	"sync"
 
@@ -35,65 +33,6 @@ func matchLexer(fileName string) chroma.Lexer {
 	lexerCache[fileName] = l
 	lexerCacheMu.Unlock()
 	return l
-}
-
-// Formatter returns a chroma formatter that colours the tokens with the
-// chroma style, on the background bgColor. If processValue is not nil, it
-// changes the text of each token first.
-func Formatter(bgColor color.Color, processValue func(string) string) chroma.Formatter {
-	format := func(w io.Writer, style *chroma.Style, it chroma.Iterator) error {
-		styleOf := func(t chroma.TokenType) (lipgloss.Style, bool) {
-			return entryStyle(style.Get(t), bgColor)
-		}
-		return writeTokens(w, it, processValue, styleOf)
-	}
-	return chroma.FormatterFunc(format)
-}
-
-// entryStyle returns the style of a chroma style entry, on the background
-// bgColor. It returns false if the entry is empty.
-func entryStyle(entry chroma.StyleEntry, bgColor color.Color) (lipgloss.Style, bool) {
-	if entry.IsZero() {
-		return lipgloss.Style{}, false
-	}
-	s := lipgloss.NewStyle().Background(bgColor)
-	if entry.Bold == chroma.Yes {
-		s = s.Bold(true)
-	}
-	if entry.Underline == chroma.Yes {
-		s = s.Underline(true)
-	}
-	if entry.Italic == chroma.Yes {
-		s = s.Italic(true)
-	}
-	if entry.Colour.IsSet() {
-		s = s.Foreground(lipgloss.Color(entry.Colour.String()))
-	}
-	return s, true
-}
-
-// writeTokens writes the tokens of it to w. If processValue is not nil, it
-// changes the text of each token first. styleOf returns the style of a
-// token type, or false to write the token with no style.
-func writeTokens(
-	w io.Writer,
-	it chroma.Iterator,
-	processValue func(string) string,
-	styleOf func(chroma.TokenType) (lipgloss.Style, bool),
-) error {
-	for token := it(); token != chroma.EOF; token = it() {
-		value := token.Value
-		if processValue != nil {
-			value = processValue(value)
-		}
-		if s, ok := styleOf(token.Type); ok {
-			value = renderLines(s, value)
-		}
-		if _, err := io.WriteString(w, value); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // renderLines styles each line of value alone, and joins them with plain

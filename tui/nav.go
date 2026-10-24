@@ -21,31 +21,31 @@ const (
 )
 
 // updateNormal handles a key when no box is open.
-func (m model) updateNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 	k := m.keys
 	if m.find.active() {
 		switch {
 		case key.Matches(msg, k.FindNext):
 			m.stepFind(1)
-			return m, nil
+			return nil
 		case key.Matches(msg, k.FindPrev):
 			m.stepFind(-1)
-			return m, nil
+			return nil
 		case key.Matches(msg, k.Cancel):
 			m.find = findState{}
-			return m, nil
+			return nil
 		}
 	}
 	var cmd tea.Cmd
 	switch {
 	case key.Matches(msg, k.QuitDiscard):
-		return m, tea.Quit
+		return tea.Quit
 	case key.Matches(msg, k.Quit):
 		if m.comments.Len() > 0 {
 			m.openConfirmQuit()
-			return m, nil
+			return nil
 		}
-		return m, tea.Quit
+		return tea.Quit
 	case key.Matches(msg, k.Cancel):
 		m.cur().anchor = -1
 		m.help.ShowAll = false
@@ -55,7 +55,7 @@ func (m model) updateNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		cmd = m.actionKey(msg)
 	}
 	m.ensureVisible()
-	return m, cmd
+	return cmd
 }
 
 // actionKey gives a key to the handlers of the actions, by topic. The
@@ -230,6 +230,8 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.openPR()
 	case key.Matches(msg, k.Refresh):
 		return m.refresh(), true
+	case m.release != nil && key.Matches(msg, k.Upgrade):
+		return m.install(), true
 	default:
 		return nil, false
 	}
@@ -272,7 +274,8 @@ func (m *model) setTab(t tab) {
 	case tabChanges:
 		m.reloadIfChanged()
 	}
-	// The layout, the wrap, or the theme can change in another tab.
+	// The layout, the wrap, or the terminal colours can change in another
+	// tab.
 	m.rerender()
 }
 

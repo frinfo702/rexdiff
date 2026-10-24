@@ -30,7 +30,7 @@ func BenchmarkReview(b *testing.B) {
 		m.reload()
 		for range 100 {
 			next, _ := m.Update(down)
-			m = next.(model)
+			m = *next.(*model)
 			_ = m.View()
 		}
 	}

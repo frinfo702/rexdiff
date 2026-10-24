@@ -40,7 +40,8 @@ const binaryCheckLen = 8000
 var (
 	// ErrBinary means that a file is binary.
 	ErrBinary = errors.New("binary file")
-	// ErrTooBig means that a file is larger than 2 MiB.
+	// ErrTooBig means that a file is larger than 2 MiB or has more than 50,000
+	// lines.
 	ErrTooBig = errors.New("file too big")
 )
 
@@ -398,7 +399,7 @@ func readBatch(r *bufio.Reader, batch []int, blobs []blob) error {
 		}
 		n, err := strconv.Atoi(f[2])
 		if err != nil {
-			return errors.New("bad output")
+			return fmt.Errorf("bad size %q", f[2])
 		}
 		if f[1] != "blob" || n > maxFileSize {
 			if _, err := r.Discard(n + 1); err != nil {

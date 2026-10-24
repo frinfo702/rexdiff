@@ -83,7 +83,6 @@ func (m *model) diffOptions(xoff int) diff.Options {
 			Foreground: m.fg,
 			Green:      m.green,
 			Red:        m.red,
-			Syntax:     m.cfg.syntax(),
 		},
 	}
 }

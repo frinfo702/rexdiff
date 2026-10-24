@@ -223,7 +223,7 @@ func (m *model) openAgentPicker(agents []rex.Agent) {
 // current base has a tag.
 func (m *model) openBasePicker() {
 	ov := newOverlay(overlayBase, "base branch for the branch scope (or type any ref)")
-	branches, _ := m.repo.Branches(m.ctx)
+	branches, _ := m.repo.Branches(m.ctx) // an error shows an empty picker
 	var items []pickItem
 	for _, b := range branches {
 		tag := ""
@@ -240,7 +240,7 @@ func (m *model) openBasePicker() {
 // the commits scope. It lists the newest commits first.
 func (m *model) openCommitPicker() {
 	ov := newOverlay(overlayCommits, "pick a commit, or space to start a range")
-	commits, _ := m.repo.Commits(m.ctx, maxCommits)
+	commits, _ := m.repo.Commits(m.ctx, maxCommits) // an error shows an empty picker
 	var items []pickItem
 	for _, c := range commits {
 		items = append(items, pickItem{
@@ -284,29 +284,29 @@ func (m *model) fillCommentList(ov *overlay) {
 }
 
 // updateOverlay handles a key while an overlay is open.
-func (m model) updateOverlay(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateOverlay(msg tea.KeyPressMsg) tea.Cmd {
 	ov, k := m.overlay, overlayKeys
 	if ov.kind == overlayQuit {
 		switch {
 		case key.Matches(msg, k.Quit):
-			return m, tea.Quit
+			return tea.Quit
 		case key.Matches(msg, k.Stay):
 			m.closeOverlay()
 		}
-		return m, nil
+		return nil
 	}
 	switch {
 	case key.Matches(msg, k.Close):
 		m.closeOverlay()
-		return m, nil
+		return nil
 	case key.Matches(msg, k.Choose):
 		return m.chooseOverlay()
 	case key.Matches(msg, k.Up):
 		ov.up()
-		return m, nil
+		return nil
 	case key.Matches(msg, k.Down):
 		ov.down()
-		return m, nil
+		return nil
 	}
 	if !ov.hasInput() {
 		return m.updateList(msg)
@@ -317,20 +317,20 @@ func (m model) updateOverlay(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else if ov.cur < len(ov.shown) {
 			ov.mark = ov.shown[ov.cur]
 		}
-		return m, nil
+		return nil
 	}
 	var cmd tea.Cmd
 	before := ov.input.Value()
 	ov.input, cmd = ov.input.Update(msg)
 	if ov.input.Value() != before {
-		return m, tea.Batch(cmd, m.inputChanged())
+		return tea.Batch(cmd, m.inputChanged())
 	}
-	return m, cmd
+	return cmd
 }
 
 // updateList handles a key in an overlay that has no input. In the agent
 // picker, the digits 1 to 9 pick an agent.
-func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateList(msg tea.KeyPressMsg) tea.Cmd {
 	ov, k, s := m.overlay, overlayKeys, msg.String()
 	digit := len(s) == 1 && s[0] >= '1' && s[0] <= '9'
 	switch {
@@ -343,7 +343,7 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.comments.Remove(it.comment)
 			if m.comments.Len() == 0 {
 				m.closeOverlay()
-				return m, nil
+				return nil
 			}
 			m.fillCommentList(ov)
 		}
@@ -353,7 +353,7 @@ func (m model) updateList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m.chooseOverlay()
 		}
 	}
-	return m, nil
+	return nil
 }
 
 // inputChanged updates the overlay after a change of its input.
@@ -378,7 +378,7 @@ func (m *model) inputChanged() tea.Cmd {
 }
 
 // chooseOverlay acts on the selected item or on the input.
-func (m model) chooseOverlay() (tea.Model, tea.Cmd) {
+func (m *model) chooseOverlay() tea.Cmd {
 	ov := m.overlay
 	it := ov.selected()
 	switch ov.kind {
@@ -398,13 +398,13 @@ func (m model) chooseOverlay() (tea.Model, tea.Cmd) {
 		m.closeOverlay()
 		if !ok {
 			m.flash("no such ref: " + ref)
-			return m, nil
+			return nil
 		}
 		m.base = ref
 		m.setScope(ScopeBranch)
 	case overlayCommits:
 		if it == nil {
-			return m, nil
+			return nil
 		}
 		m.closeOverlay()
 		m.from, m.to = ov.commitRange(it)
@@ -420,11 +420,11 @@ func (m model) chooseOverlay() (tea.Model, tea.Cmd) {
 	case overlayAgents:
 		m.closeOverlay()
 		if a, ok := ov.agent(it); ok {
-			return m, m.deliver(a)
+			return m.deliver(a)
 		}
 	}
 	m.ensureVisible()
-	return m, nil
+	return nil
 }
 
 // commitRange returns the oldest and the newest commit that the commit

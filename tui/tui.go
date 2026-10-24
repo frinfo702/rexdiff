@@ -5,7 +5,10 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"slices"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -23,11 +26,11 @@ type Options struct {
 	// Rex is the Rex session of the process, or nil outside Rex. Without
 	// Rex, the review cannot be sent; it can only be copied.
 	Rex *rex.Client
-	// ConfigPath is the path of the configuration file. Run reads it first,
-	// and again when it changes. An empty path means the default settings.
-	ConfigPath string
-	// Layout and Scope, if not empty, win over the configuration file. Use
-	// them for the command-line flags.
+	// Config is the settings as JSON, from the top of rexdiff.lua. An
+	// empty text means the default settings.
+	Config string
+	// Layout and Scope, if not empty, win over the configuration. Use them
+	// for the command-line flags.
 	Layout Layout
 	Scope  Scope
 	// Agent is the block ID or the label of the agent that the program
@@ -40,30 +43,79 @@ type Options struct {
 	// default branch of the repository.
 	Base string
 	Log  *slog.Logger // nil means no log
+	// Notice, if not empty, is a problem that the footer shows until the
+	// program quits.
+	Notice string
+	// Updater installs a newer release, or is nil if rexdiff cannot update
+	// itself. If it is not nil, the program asks for the latest release.
+	Updater Updater
+	// Resume is the file of the state that Run returned before an update,
+	// or "". Run reads it and removes it.
+	Resume string
+}
+
+// check returns an error for options that Run cannot use.
+func (o Options) check() error {
+	switch {
+	case o.Repo == nil:
+		return errors.New("no repository")
+	case o.Layout != "" && !slices.Contains(layouts, o.Layout):
+		return invalid("layout", "one of "+strings.Join(names(layouts...), ", "), string(o.Layout))
+	case o.Scope != "" && !slices.Contains(configScopes, o.Scope):
+		return invalid("scope", "one of "+strings.Join(names(configScopes...), ", "), string(o.Scope))
+	}
+	return nil
+}
+
+// CheckConfig returns the error of the configuration text, a JSON object,
+// or nil if rexdiff accepts it.
+func CheckConfig(text string) error {
+	_, err := parseConfig(text)
+	return err
 }
 
 // Run shows the review program in the terminal. It returns when the user
-// quits or when ctx is done. If the configuration file is not valid, Run
-// returns the error before it starts.
-func Run(ctx context.Context, o Options) error {
-	cfg, err := loadConfig(o.ConfigPath)
+// quits or when ctx is done. If the configuration is not valid, Run
+// returns the error before it starts, as it does for options with no
+// Repo, or with a Layout or a Scope that it does not know. After an update, Run returns the
+// file of the saved state. The caller then runs the new rexdiff with
+// Options.Resume set to it.
+func Run(ctx context.Context, o Options) (resume string, err error) {
+	if err := o.check(); err != nil {
+		return "", err
+	}
+	cfg, err := parseConfig(o.Config)
 	if err != nil {
-		return err
+		return "", err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	m := newModel(ctx, o, cfg)
+	var saved *savedState
+	if o.Resume != "" {
+		if saved, err = loadState(o.Resume); err != nil {
+			m.flash("cannot read the comments from before the update: " + err.Error())
+		} else {
+			m.restoreSettings(saved)
+		}
+	}
 	m.reload()
+	if saved != nil {
+		m.restorePlaces(saved)
+	}
 	if o.Rex != nil && o.Rex.Block != "" {
 		if err := o.Rex.SetLabel(ctx, o.Rex.Block, appName); err != nil {
 			m.log.Debug("set label", "err", err)
 		}
 	}
-	program := tea.NewProgram(m, tea.WithContext(ctx))
+	program := tea.NewProgram(&m, tea.WithContext(ctx))
 	if o.Rex != nil {
 		go o.Rex.Watch(ctx, func(e rex.Event) { program.Send(eventMsg(e)) })
 	}
-	_, err = program.Run()
-	return err
+	final, err := program.Run()
+	if fm, ok := final.(*model); ok && err == nil {
+		return fm.restartState, nil
+	}
+	return "", err
 }

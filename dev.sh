@@ -1,7 +1,7 @@
 #!/bin/sh
 # dev.sh: rebuild rexdiff and (re)open it in the rexreview-test session next
-# to an "agent" pane, recreating whatever is missing. REXDIFF_CONFIG and
-# ARGS (extra flags) pass through to rexdiff.
+# to an "agent" pane, recreating whatever is missing. CONFIG (settings as
+# JSON) and ARGS (extra flags) pass through to rexdiff.
 set -e
 BIN=/tmp/rexdiff-dev/rexdiff
 cd "$(dirname "$0")" && go build -o $BIN ./cmd/rexdiff
@@ -15,7 +15,7 @@ for id in $(rex api call -s $S session.list_blocks '{}' | python3 -c 'import jso
   rex api call -s $S block.close "{\"block_id\":\"$id\"}" >/dev/null 2>&1 || true
 done
 sleep 0.5
-rex split -s $S -b agent --label rexdiff --ratio 70 --cwd $R -- env REXDIFF_CONFIG="$REXDIFF_CONFIG" $BIN -log /tmp/rexdiff.log --agent agent $ARGS >/dev/null
+rex split -s $S -b agent --label rexdiff --ratio 70 --cwd $R -- $BIN -config "${CONFIG:-}" -log /tmp/rexdiff.log --agent agent $ARGS >/dev/null
 sleep 0.5
 rex block call -s $S -b rexdiff resize "{\"columns\":${COLS:-170},\"rows\":${ROWS:-30}}" >/dev/null
 sleep 1.5

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -81,14 +82,16 @@ func TestAgents(t *testing.T) {
 			Name:   "agent",
 			Window: "main",
 			Cwd:    "/repo",
-			Status: rex.Status{App: "pi", State: rex.StateBlocked},
+			App:    "pi",
+			State:  rex.StateBlocked,
 		},
 		{
 			Block:  "block:cc",
 			Name:   "claude-code",
 			Window: "side",
 			Cwd:    "/repo",
-			Status: rex.Status{App: "claude-code", State: rex.StateWorking},
+			App:    "claude-code",
+			State:  rex.StateWorking,
 		},
 	}
 	if !slices.Equal(agents, want) {
@@ -229,5 +232,21 @@ func TestReloadConfigOutsideRex(t *testing.T) {
 	out, err := rex.ReloadConfig(t.Context())
 	if err != nil || out != "reloaded: config reload\n" {
 		t.Errorf("ReloadConfig = %q, %v, want the report of the app rex", out, err)
+	}
+}
+
+// TestErrorKeepsCause checks that the error of a failed rex is the message
+// of rex, and still wraps the exit error of the process.
+func TestErrorKeepsCause(t *testing.T) {
+	dir := t.TempDir()
+	script := "#!/bin/sh\necho 'Error: no Rex server' >&2\nexit 3\n"
+	if err := os.WriteFile(filepath.Join(dir, "rex"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REX_BIN_DIR", dir)
+	_, err := rex.ReloadConfig(t.Context())
+	ee, ok := errors.AsType[*exec.ExitError](err)
+	if err == nil || err.Error() != "no Rex server" || !ok || ee.ExitCode() != 3 {
+		t.Errorf("ReloadConfig error = %v, exit error %v; want %q wrapping exit 3", err, ok, "no Rex server")
 	}
 }

@@ -1,20 +1,45 @@
-# install adds the Rex action and keeps the rest of init.lua. A second
-# install does not add a second require line.
+# install writes rexdiff.lua, with the default settings at its top, and
+# adds one line to init.lua. It keeps the rest of init.lua.
 mkdir .config/rex
 cp mine.lua .config/rex/init.lua
-exec rexdiff install --key=ctrl+cmd+d --placement=zoomed
-stdout 'wrote '$WORK'/.config/rex/rexdiff.lua'
+exec rexdiff install
+stdout 'wrote '$WORK'/.config/rex/rexdiff.lua; the settings are at its top'
+stdout 'added require\("rexdiff"\) to '$WORK'/.config/rex/init.lua'
 stdout 'config reloaded'
-stdout 'press ctrl\+cmd\+d'
-exec rexdiff install --key=ctrl+cmd+d --placement=zoomed
+stdout 'press the key of the settings'
 cmp .config/rex/init.lua installed.lua
-grep 'local PLACEMENT = "zoomed"' .config/rex/rexdiff.lua
-grep 'rex.bind\("ctrl\+cmd\+d", "rexdiff_toggle"\)' .config/rex/rexdiff.lua
+grep '^local settings = \{$' .config/rex/rexdiff.lua
+grep '^-- rexdiff code below. Install and upgrades replace it. Do not edit this line.$' .config/rex/rexdiff.lua
+
+# Rex accepts the action and its key.
+[realrex] exec $REALREX config check .config/rex/init.lua
+[realrex] stdout 'bindings: 2'
+[realrex] stdout 'actions: 1'
+[realrex] ! stderr .
+
+# A second install keeps the settings and the one line of init.lua, and
+# replaces the code.
+exec sh -c 'sed "s/^local settings = {$/local settings = { key = \"ctrl+cmd+d\", layout = \"split\",/" .config/rex/rexdiff.lua > edited.lua'
+exec sh -c 'sed "s/^local function must/local function old_must/" edited.lua > .config/rex/rexdiff.lua'
+exec rexdiff install
+cmp .config/rex/init.lua installed.lua
+grep 'local settings = \{ key = "ctrl\+cmd\+d", layout = "split",' .config/rex/rexdiff.lua
+! grep 'old_must' .config/rex/rexdiff.lua
 cmp rex.log reloads.log
 
-# Rex accepts the action.
+# Rex binds the key of the settings.
 [realrex] exec $REALREX config check .config/rex/init.lua
-[realrex] stdout 'actions: 1'
+[realrex] stdout 'bindings: 2'
+[realrex] ! stderr .
+
+# Without the line above the code, install cannot tell the settings from
+# the code. It says so, and changes no file.
+exec sh -c 'grep -v "^-- rexdiff code below" .config/rex/rexdiff.lua > nomark.lua'
+cp nomark.lua .config/rex/rexdiff.lua
+! exec rexdiff install
+stderr 'rexdiff.lua has no line "-- rexdiff code below. Install and upgrades replace it. Do not edit this line.", so rexdiff cannot tell your settings from its code. Put that line back under your settings, or move the file away and run "rexdiff install" again'
+cmp .config/rex/rexdiff.lua nomark.lua
+cmp .config/rex/init.lua installed.lua
 
 # If uninstall cannot change init.lua, it keeps rexdiff.lua, so that
 # init.lua does not require a missing file.
@@ -23,9 +48,10 @@ chmod 0444 .config/rex/init.lua
 exists .config/rex/rexdiff.lua
 chmod 0644 .config/rex/init.lua
 
-# uninstall removes the action and keeps the rest.
+# uninstall removes the line and rexdiff.lua with the settings, and keeps
+# the rest.
 exec rexdiff uninstall
-stdout 'removed the rexdiff action from Rex'
+stdout 'removed the rexdiff action, its key, and its settings from Rex'
 cmp .config/rex/init.lua mine.lua
 ! exists .config/rex/rexdiff.lua
 
@@ -50,14 +76,14 @@ grep 'require\("rexdiff"\)' other/init.lua
 # uninstall without an install changes nothing and does not fail.
 env REX_CONFIG=$WORK/none/init.lua
 exec rexdiff uninstall
-stdout 'removed the rexdiff action from Rex'
+stdout 'removed the rexdiff action, its key, and its settings from Rex'
 ! exists none
 
 -- mine.lua --
 rex.bind("cmd+e", "pane.zoom")
 -- installed.lua --
 rex.bind("cmd+e", "pane.zoom")
-require("rexdiff") -- rexdiff toggle; see rexdiff.lua
+require("rexdiff")
 -- reloads.log --
 config reload
 config reload

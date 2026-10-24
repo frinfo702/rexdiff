@@ -15,12 +15,12 @@ import (
 //	 x := 1
 //	+y := 2
 //	Merge these lines.
-func (s *Comments) Review(prefix string) string {
+func (cs *Comments) Review(prefix string) string {
 	var parts []string
 	if p := strings.TrimRight(Plain(prefix), " \n\t"); p != "" {
 		parts = append(parts, p)
 	}
-	for _, c := range s.All() {
+	for _, c := range cs.All() {
 		parts = append(parts, format(c))
 	}
 	return strings.Join(parts, "\n\n")

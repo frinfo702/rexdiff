@@ -14,7 +14,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json/v2"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,8 +86,18 @@ func (c *Client) runRex(ctx context.Context, args ...string) ([]byte, error) {
 	msg := strings.TrimSpace(stderr.String())
 	msg = strings.TrimPrefix(msg, "Error: ")
 	msg, _, _ = strings.Cut(msg, "\n")
-	return nil, errors.New(cmp.Or(msg, err.Error()))
+	return nil, &runError{msg: cmp.Or(msg, err.Error()), err: err}
 }
+
+// runError is a failed run of rex. Its text is the first line that rex
+// wrote to stderr, and it wraps the error of the process, for errors.As.
+type runError struct {
+	msg string
+	err error
+}
+
+func (e *runError) Error() string { return e.msg }
+func (e *runError) Unwrap() error { return e.err }
 
 // runRexJSON runs "rex args..." and decodes the JSON output into v.
 func (c *Client) runRexJSON(ctx context.Context, v any, args ...string) error {

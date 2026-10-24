@@ -1,11 +1,5 @@
 package main
 
-// The install command adds a Rex action, "Toggle rexdiff", to the command
-// palette and binds it to a key. The action opens rexdiff beside the agent
-// in focus. If rexdiff runs in the session, the action closes each block
-// that runs it instead. It finds these blocks by the program status that
-// rexdiff reports. A Rex session is the same as a herdr workspace.
-
 import (
 	"context"
 	"errors"
@@ -20,29 +14,41 @@ import (
 	"github.com/rednafi/rexdiff/rex"
 )
 
-// placement tells where the toggle action opens rexdiff.
-type placement string
+// The install command adds a Rex action, "Toggle rexdiff", to the command
+// palette and binds it to a key. The action opens rexdiff beside the agent
+// in focus. If rexdiff runs in the session, the action closes each block
+// that runs it instead. It finds these blocks by the program status that
+// rexdiff reports. A Rex session is the same as a herdr workspace.
+//
+// The action is in rexdiff.lua, beside Rex's init.lua, and init.lua loads
+// it with one line. rexdiff.lua has the settings of the user at the top and
+// the code of rexdiff under codeMark. Install and upgrades replace the code
+// and keep the settings.
 
 const (
-	placementSplit   placement = "split"   // beside the agent
-	placementZoomed  placement = "zoomed"  // beside the agent, zoomed
-	placementTab     placement = "tab"     // in a new tab
-	placementOverlay placement = "overlay" // in a layer above the window
+	// requireLine is the line of init.lua that loads rexdiff.lua.
+	requireLine = `require("rexdiff")`
+	luaFile     = "rexdiff.lua" // beside init.lua
+	// codeMark is the line of rexdiff.lua above the code of rexdiff.
+	codeMark = "-- rexdiff code below. Install and upgrades replace it. Do not edit this line."
 )
 
-// placements are the values that --placement accepts.
-var placements = []placement{
-	placementSplit,
-	placementZoomed,
-	placementTab,
-	placementOverlay,
+// defaultSettings is the top of a new rexdiff.lua.
+const defaultSettings = `-- Installed by "rexdiff install". Remove with "rexdiff uninstall".
+--
+-- The settings of rexdiff. Edit them, then run "rex config reload". The
+-- README of rexdiff lists them. Install and upgrades keep this part.
+local settings = {
+  -- key = "shift+cmd+r", -- the key of the toggle, or false for none
+  -- placement = "split", -- split, zoomed, tab, or overlay
+  -- layout = "split",
 }
 
-// luaTemplate is the code of rexdiff.lua. Its verbs are the path of
-// rexdiff, the placement, and the key.
-const luaTemplate = `-- Installed by "rexdiff install". Remove with "rexdiff uninstall".
-local BIN = %q
-local PLACEMENT = %q -- split | zoomed | tab | overlay
+`
+
+// codeTemplate is the code of rexdiff.lua, under codeMark. Its %s is the
+// line from binLine.
+const codeTemplate = `%s
 local PLACEMENTS = { split = true, zoomed = true, tab = true, overlay = true }
 local TERM = "com.superlogical.terminal"
 
@@ -83,17 +89,26 @@ local function reviewers()
   return ids
 end
 
--- open_rexdiff opens rexdiff at placement, beside the agent in ctx.
--- rexdiff opens in the directory of the agent, as the rex package of
--- rexdiff finds it.
-local function open_rexdiff(ctx, placement)
+-- check fails the action if rexdiff does not accept the settings, a JSON
+-- object. The error reaches the user here, while a pane that rexdiff
+-- leaves at once would close with it.
+local function check(config)
+  local r, err = rex.exec({ BIN, "--check", "--config", config })
+  if r == nil then error(err, 0) end
+  if not r.ok then error((r.stderr:gsub("%%s+$", "")), 0) end
+end
+
+-- open_rexdiff opens rexdiff at placement, beside the agent in ctx, with
+-- the settings in config. rexdiff opens in the directory of the agent, as
+-- the rex package of rexdiff finds it.
+local function open_rexdiff(ctx, placement, config)
   local p = call("process", ctx.block_id)
   local cwd = (p.foreground or {}).cwd or (p.child or {}).cwd
   local node = rex.layout.block{
     flavor = TERM .. ".shell",
     label = "rexdiff",
     options = {
-      command = { BIN, "--agent", ctx.block_id },
+      command = { BIN, "--agent", ctx.block_id, "--config", config },
       cwd = cwd,
       shell = "none",
     },
@@ -121,6 +136,19 @@ local function open_rexdiff(ctx, placement)
   return s
 end
 
+-- The key and the placement are for Rex. rexdiff gets the other settings
+-- as JSON.
+if type(settings) ~= "table" then
+  error("rexdiff.lua: settings must be a table, as in: local settings = { }", 0)
+end
+local opts = {}
+for k, v in pairs(settings) do opts[k] = v end
+local key = opts.key
+if key == nil then key = "shift+cmd+r" end
+local default_placement = opts.placement or "split"
+opts.key, opts.placement = nil, nil
+local config, encode_err = rex.json.encode(opts)
+
 rex.action{
   name = "rexdiff_toggle",
   title = "Toggle rexdiff",
@@ -129,14 +157,16 @@ rex.action{
   keywords = "diff review git comments agent",
   args = { placement = "string?" }, -- split, zoomed, tab, or overlay
   run = function(ctx, args)
-    local placement = args.placement or PLACEMENT
+    local placement = args.placement or default_placement
     if not PLACEMENTS[placement] then
-      error("unknown placement " .. placement
+      error("unknown placement " .. tostring(placement)
         .. "; use split, zoomed, tab, or overlay", 0)
     end
     local open = reviewers()
     if #open == 0 then
-      return open_rexdiff(ctx, placement)
+      if config == nil then error("rexdiff settings: " .. encode_err, 0) end
+      check(config)
+      return open_rexdiff(ctx, placement, config)
     end
     for _, id in ipairs(open) do
       must(rex.call("block.close", { session_id = ctx.session_id, block_id = id }))
@@ -144,17 +174,65 @@ rex.action{
     return { closed = open }
   end,
 }
-
-rex.bind(%q, "rexdiff_toggle")
+if key then rex.bind(key, "rexdiff_toggle") end
 `
 
-// require is the code that loads rexdiff.lua. A line of init.lua that has
-// it belongs to rexdiff.
-const (
-	require     = `require("rexdiff")`
-	requireLine = require + ` -- rexdiff toggle; see rexdiff.lua`
-	luaFile     = "rexdiff.lua" // the file of the action, beside init.lua
-)
+// luaCode returns the code part of rexdiff.lua for bin, the path of
+// rexdiff, from codeMark to the end.
+func luaCode(bin string) string {
+	return codeMark + "\n" + fmt.Sprintf(codeTemplate, binLine(bin))
+}
+
+// binLine returns the line of rexdiff.lua that names bin. It tells which
+// rexdiff a file runs.
+func binLine(bin string) string { return "local BIN = " + luaQuote(bin) }
+
+// luaQuote returns s as a Lua string. Go's %q writes escapes, such as
+// \u200b, that Lua 5.1 does not know.
+func luaQuote(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`, "\x00", `\0`)
+	return `"` + r.Replace(s) + `"`
+}
+
+// splitLua returns the settings part of rexdiff.lua, above codeMark, and the
+// code part, from codeMark on. It returns an error if codeMark is gone,
+// because then the settings have no end.
+func splitLua(path, content string) (settings, code string, err error) {
+	i := 0
+	for line := range strings.Lines(content) {
+		if strings.TrimSpace(line) == codeMark {
+			return content[:i], content[i:], nil
+		}
+		i += len(line)
+	}
+	return "", "", fmt.Errorf("%s has no line %q, so rexdiff cannot tell your "+
+		"settings from its code. Put that line back under your settings, or move "+
+		"the file away and run \"rexdiff install\" again", path, codeMark)
+}
+
+// newLua returns the content of rexdiff.lua with the code for bin. It
+// keeps the settings of old, the content that the file has now. If old is
+// empty, it uses the default settings.
+func newLua(path, old, bin string) (string, error) {
+	if old == "" {
+		return defaultSettings + luaCode(bin), nil
+	}
+	settings, _, err := splitLua(path, old)
+	return settings + luaCode(bin), err
+}
+
+// luaPath returns the path of rexdiff.lua.
+func luaPath() string { return filepath.Join(filepath.Dir(rex.ConfigPath()), luaFile) }
+
+// readFile returns the content of the file at path, or "" if there is no
+// file.
+func readFile(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	return string(b), err
+}
 
 // executable returns the path of the rexdiff binary, for the Rex action. It
 // keeps a symlink, such as the one from Homebrew. The target of the link
@@ -181,9 +259,6 @@ func install(
 ) error {
 	fs := flag.NewFlagSet("rexdiff install", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	keyName := fs.String("key", "shift+cmd+r", "the key that toggles rexdiff")
-	placementFlag := fs.String("placement", string(placementSplit),
-		"where rexdiff opens: split, zoomed, tab, or overlay")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -191,46 +266,74 @@ func install(
 		return err
 	}
 	if fs.NArg() > 0 {
-		const use = "--key=KEY --placement=split|zoomed|tab|overlay"
-		return fmt.Errorf("unknown argument %s (use %s)", fs.Arg(0), use)
-	}
-	placement := placement(*placementFlag)
-	if !slices.Contains(placements, placement) {
-		return fmt.Errorf("unknown placement %q (use split, zoomed, tab, or overlay)",
-			placement)
+		return fmt.Errorf("unknown argument %s (set the key and the placement "+
+			"in the settings in %s)", fs.Arg(0), luaPath())
 	}
 
+	// Make the new rexdiff.lua before writing any file, so that a bad
+	// rexdiff.lua changes nothing.
+	lua := luaPath()
+	old, err := readFile(lua)
+	if err != nil {
+		return err
+	}
+	code, err := newLua(lua, old, bin)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(lua), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(lua, []byte(code), 0o644); err != nil {
+		return err
+	}
 	initPath := rex.ConfigPath()
-	dir := filepath.Dir(initPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	lua := filepath.Join(dir, luaFile)
-	code := fmt.Appendf(nil, luaTemplate, bin, placement, *keyName)
-	if err := os.WriteFile(lua, code, 0o644); err != nil {
-		return err
-	}
 	if err := addRequire(initPath); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "wrote %s\nadded require(\"rexdiff\") to %s\n", lua, initPath)
+	fmt.Fprintf(stdout, "wrote %s; the settings are at its top\n", lua)
+	fmt.Fprintf(stdout, "added %s to %s\n", requireLine, initPath)
 	fmt.Fprint(stdout, reload(ctx, stdout))
-	fmt.Fprintf(stdout,
-		"press %s, or run \"Toggle rexdiff\" from the command palette, beside an agent\n",
-		*keyName)
+	fmt.Fprintln(stdout, "press the key of the settings (shift+cmd+r by default), "+
+		"or run \"Toggle rexdiff\" from the command palette, beside an agent")
 	return nil
 }
 
+// upgrade replaces the code part of rexdiff.lua with the code for bin, if
+// they differ, and keeps the settings. It does nothing if there is no
+// rexdiff.lua, or if the file runs another rexdiff, for example a build
+// for development. It returns what the user must know, or "".
+func upgrade(ctx context.Context, bin string) string {
+	lua := luaPath()
+	old, err := readFile(lua)
+	if err != nil || !strings.Contains(old, binLine(bin)+"\n") {
+		return ""
+	}
+	code, err := newLua(lua, old, bin)
+	if err != nil {
+		return "cannot upgrade rexdiff.lua: " + err.Error()
+	}
+	if code == old {
+		return ""
+	}
+	if err := os.WriteFile(lua, []byte(code), 0o644); err != nil {
+		return "cannot upgrade rexdiff.lua: " + err.Error()
+	}
+	if _, err := rex.ReloadConfig(ctx); err != nil {
+		return "upgraded rexdiff.lua; reload Rex's config yourself: rex config reload"
+	}
+	return ""
+}
+
 // addRequire adds the require line to the end of the init.lua at path. It
-// creates the file if it is not there. If the file has a require of
-// rexdiff, addRequire does not change it.
+// creates the file if it is not there. If the file has the line, addRequire
+// does not change it.
 func addRequire(path string) error {
-	b, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	s, err := readFile(path)
+	if err != nil {
 		return err
 	}
-	s := string(b)
-	if strings.Contains(s, require) {
+	if slices.ContainsFunc(strings.Split(s, "\n"), isRequire) {
 		return nil
 	}
 	if s != "" && !strings.HasSuffix(s, "\n") {
@@ -239,36 +342,37 @@ func addRequire(path string) error {
 	return os.WriteFile(path, []byte(s+requireLine+"\n"), 0o644)
 }
 
-// uninstall removes the require line from init.lua, then rexdiff.lua. In
-// this order, a failure does not leave init.lua with a require of a file
-// that is not there.
+// isRequire reports whether line is the require line of rexdiff, maybe
+// with a comment after it.
+func isRequire(line string) bool {
+	t := strings.TrimSpace(line)
+	return t == requireLine || strings.HasPrefix(t, requireLine+" --")
+}
+
+// uninstall removes the require line from init.lua, then rexdiff.lua with
+// the settings. In this order, a failure does not leave init.lua with a
+// require of a file that is not there.
 func uninstall(ctx context.Context, stdout io.Writer) error {
 	initPath := rex.ConfigPath()
 	if err := removeRequire(initPath); err != nil {
 		return err
 	}
-	lua := filepath.Join(filepath.Dir(initPath), luaFile)
-	if err := os.Remove(lua); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(luaPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	fmt.Fprintln(stdout, "removed the rexdiff action from Rex")
+	fmt.Fprintln(stdout, "removed the rexdiff action, its key, and its settings from Rex")
 	reload(ctx, stdout)
 	return nil
 }
 
-// removeRequire removes each line that has a require of rexdiff from the
-// init.lua at path. If the file is not there, it does nothing.
+// removeRequire removes the require line of rexdiff from the init.lua at
+// path. If the file is not there, it does nothing.
 func removeRequire(path string) error {
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
+	s, err := readFile(path)
+	if err != nil || s == "" {
 		return err
 	}
-	lines := slices.DeleteFunc(strings.Split(string(b), "\n"), func(l string) bool {
-		return strings.Contains(l, require)
-	})
+	lines := slices.DeleteFunc(strings.Split(s, "\n"), isRequire)
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
 

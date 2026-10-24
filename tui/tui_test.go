@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"errors"
 	"image/color"
 	"os"
@@ -9,7 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -42,7 +42,7 @@ func newTestModel(t testing.TB) (model, string) {
 	}
 	m := newModel(t.Context(), Options{Repo: repo}, defaultConfig())
 	m.reload()
-	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	return m, dir
 }
 
@@ -71,11 +71,11 @@ func write(t testing.TB, dir, name, content string) {
 	}
 }
 
-// update gives msg to m and returns the new model.
-func update(t testing.TB, m model, msg tea.Msg) model {
+// step gives msg to m and returns the new model.
+func step(t testing.TB, m model, msg tea.Msg) model {
 	t.Helper()
 	next, _ := m.Update(msg)
-	return next.(model)
+	return *next.(*model)
 }
 
 // press sends keys to m. A key is a name, such as "enter", or the text
@@ -92,11 +92,11 @@ func press(t *testing.T, m model, keys ...string) model {
 		code, ok := named[k]
 		switch {
 		case ok:
-			m = update(t, m, tea.KeyPressMsg{Code: code})
+			m = step(t, m, tea.KeyPressMsg{Code: code})
 		case len(k) > 1 && strings.Trim(k, "abcdefghijklmnopqrstuvwxyz") == "":
 			t.Fatalf("press: no key is named %q", k)
 		default:
-			m = update(t, m, tea.KeyPressMsg{Code: []rune(k)[0], Text: k})
+			m = step(t, m, tea.KeyPressMsg{Code: []rune(k)[0], Text: k})
 		}
 	}
 	return m
@@ -152,7 +152,7 @@ func TestScopes(t *testing.T) {
 	// A click on the commit in the header opens the commit picker again.
 	top, _, _ := strings.Cut(view(m), "\n")
 	i := strings.Index(top, shortSHA(m.to))
-	m = update(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: ansi.StringWidth(top[:i])})
+	m = step(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: ansi.StringWidth(top[:i])})
 	if m.mode != modeOverlay || m.overlay.kind != overlayCommits {
 		t.Errorf("a click on the commit in the header did not open the commit picker")
 	}
@@ -161,11 +161,11 @@ func TestScopes(t *testing.T) {
 	// A turn of an agent: the scope shows only what changed during it.
 	m = press(t, m, "t")
 	if !strings.Contains(m.changes.note, "no agent turn") {
-		t.Errorf("turn scope before a turn: note %q", m.changes.note)
+		t.Errorf("turn scope before a turn: note %q, want a note that no turn ran", m.changes.note)
 	}
-	m = update(t, m, status("block:agent", "pi", rex.StateWorking))
+	m = step(t, m, status("block:agent", "pi", rex.StateWorking))
 	write(t, dir, "c.go", "package a\n")
-	m = update(t, m, status("block:agent", "pi", rex.StateIdle))
+	m = step(t, m, status("block:agent", "pi", rex.StateIdle))
 	if got := paths(m); !slices.Equal(got, []string{"c.go"}) || m.turn.running {
 		t.Errorf("turn scope shows %v (running %v), want [c.go]", got, m.turn.running)
 	}
@@ -195,15 +195,15 @@ func TestComment(t *testing.T) {
 		t.Errorf("Review:\n%s\nwant:\n%s", got, want)
 	}
 	if !shows(m, "💬 hi", "2 unsent comments") {
-		t.Errorf("the view does not show the comments:\n%s", view(m))
+		t.Errorf("view:\n%s\nwant the comments", view(m))
 	}
 
 	m = press(t, m, "s")
 	if !strings.Contains(m.status, "not inside Rex") {
-		t.Errorf("send outside Rex: status %q", m.status)
+		t.Errorf("send outside Rex: status %q, want \"not inside Rex\"", m.status)
 	}
 	next, cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if m = next.(model); cmd == nil || m.status != "copied 2 comments" {
+	if m = *next.(*model); cmd == nil || m.status != "copied 2 comments" {
 		t.Errorf("copy: status %q, command %v", m.status, cmd)
 	}
 
@@ -218,12 +218,12 @@ func TestTabs(t *testing.T) {
 
 	m = press(t, m, "2")
 	if !shows(m, "Files (2)", "package a") {
-		t.Errorf("the Files tab does not list 2 files and show a.go:\n%s", view(m))
+		t.Errorf("Files tab:\n%s\nwant 2 files, with a.go shown", view(m))
 	}
 
 	// The repository has no remote, so the PR tab shows why.
 	m = press(t, m, "3")
-	m = update(t, m, m.loadPR()())
+	m = step(t, m, m.loadPR()())
 	if v := view(m); !strings.Contains(v, "no git remote") {
 		t.Errorf("the PR tab does not say that there is no git remote:\n%s", v)
 	}
@@ -244,7 +244,7 @@ func TestPRChecks(t *testing.T) {
 			{Name: "e2e", Result: vcs.ResultPending},
 		},
 	}
-	m = update(t, m, prMsg{pr: pr})
+	m = step(t, m, prMsg{pr: pr})
 	if !shows(m, "checks: ✓ 2  ✗ 1  ◌ 1", "✗ build") {
 		t.Errorf("the PR tab does not show the checks:\n%s", view(m))
 	}
@@ -263,7 +263,7 @@ func TestSmallScreens(t *testing.T) {
 	}
 	for _, size := range sizes {
 		m, _ := newTestModel(t)
-		m = update(t, m, tea.WindowSizeMsg{Width: size.w, Height: size.h})
+		m = step(t, m, tea.WindowSizeMsg{Width: size.w, Height: size.h})
 		for _, k := range keys {
 			m = press(t, m, k)
 			lines := strings.Split(view(m), "\n")
@@ -285,11 +285,11 @@ func TestSmallScreens(t *testing.T) {
 func TestDragAfterReload(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.drag = dragState{active: true, gutter: true, moved: true, start: 48}
-	m = update(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft})
+	m = step(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft})
 
 	m.changes.set(nil, nil) // a reload found no changes
 	m.drag = dragState{active: true}
-	m = update(t, m, tea.MouseMotionMsg{Button: tea.MouseLeft, Y: m.h})
+	m = step(t, m, tea.MouseMotionMsg{Button: tea.MouseLeft, Y: m.h})
 	view(m)
 }
 
@@ -307,8 +307,8 @@ func screenY(t *testing.T, m model, i int) int {
 // click presses and releases the left button at x, y.
 func click(t *testing.T, m model, x, y int) model {
 	t.Helper()
-	m = update(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
-	return update(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y})
+	m = step(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
+	return step(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y})
 }
 
 // TestClickOldNumber clicks the old line number of an unchanged line. The
@@ -374,7 +374,7 @@ func TestSendError(t *testing.T) {
 	t.Setenv("REX_BIN_DIR", dir)
 	m.rex = rex.FromEnv()
 	m = press(t, m, "]", "c", "h", "i", "enter")
-	m = update(t, m, m.deliver(rex.Agent{Block: "b", Name: "pi"})())
+	m = step(t, m, m.deliver(rex.Agent{Block: "b", Name: "pi"})())
 	if !strings.Contains(m.status, "no Rex server") {
 		t.Errorf("status %q, want the error of Rex", m.status)
 	}
@@ -412,17 +412,10 @@ func errorHas(err error, texts ...string) bool {
 	return true
 }
 
-// TestLoadConfig checks the configuration file: a herdr-reviewr file
-// carries over, and an unknown key or bad value is an error.
-func TestLoadConfig(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	load := func(content string) error {
-		t.Helper()
-		write(t, filepath.Dir(path), "config.toml", content)
-		_, err := loadConfig(path)
-		return err
-	}
-
+// TestParseConfig checks the configuration that the Rex action passes as
+// JSON: each action of herdr-reviewr has a key, and an unknown key or a bad
+// value is an error.
+func TestParseConfig(t *testing.T) {
 	// The actions in herdr-reviewr's src/keymap.rs.
 	names := strings.Fields(`base-pick collapse comment comments commit-pick copy
 		delete down edit expand find goto-line half-down half-up keys navigator-grow
@@ -431,116 +424,150 @@ func TestLoadConfig(t *testing.T) {
 		quit-discard refresh rendered scope-branch scope-commits scope-last-turn
 		scope-uncommitted search select send split tab-all-files tab-changes tab-pr up
 		wrap`)
-	herdr := "theme = \"terminal\"\n[keybindings]\n"
+	keys := map[string][]string{}
 	for _, n := range names {
-		herdr += n + " = [\"x\"]\n"
+		keys[n] = []string{"x"}
 	}
-	if err := load(herdr); err != nil {
-		t.Errorf("herdr-reviewr config: %v", err)
-	}
-
-	unknown := []struct{ content, key string }{
-		{"layuot = \"split\"\n", `"layuot"`},
-		{"[keybindings]\nnext-fiel = [\"x\"]\n", `"keybindings.next-fiel"`},
-		{"[extra]\nx = 1\n", `"extra"`},
-	}
-	for _, c := range unknown {
-		if err := load(c.content); !errorHas(err, path, "unknown key "+c.key) {
-			t.Errorf("config %q: error %v, want unknown key %s in %s",
-				c.content, err, c.key, path)
-		}
-	}
-
-	// As in herdr-reviewr, each bad value is an error that names the key,
-	// the allowed values, and the value.
-	const (
-		editor = "editor: expected a command with only {file} and {line}"
-		opener = "url_opener: expected a command with only {url}"
-		scopes = "default_scope: expected one of uncommitted, branch, last-turn"
-		theme  = "theme: expected terminal or a chroma style name"
-		mdView = "markdown_view: expected one of source, rendered"
-		host   = "gitlab_host: expected a bare hostname"
-	)
-	bad := []struct{ content, want string }{
-		{`layout = "sideways"`, `layout: expected one of unified, split, not "sideways"`},
-		{`default_scope = "commits"`, scopes + `, not "commits"`},
-		{`markdown_view = "preview"`, mdView + `, not "preview"`},
-		{`file_list = "top"`, `file_list: expected one of right, left, not "top"`},
-		{`theme = "tokyo-night"`, theme + `, not "tokyo-night"`},
-		{`file_list_width = 3`, `file_list_width: expected 16 or more, not "3"`},
-		{`editor = " "`, editor + `, not " "`},
-		{`editor = "code {fil"`, editor + `, not "code {fil"`},
-		{`editor = "code {FILE}"`, `editor: expected`},
-		{`url_opener = "open {ur}"`, opener + `, not "open {ur}"`},
-		{`review_prefix = ""`, `review_prefix: expected text, not ""`},
-		{`gitlab_host = "https://git.x"`, host + `, not "https://git.x"`},
-		{"[keybindings]\nsend = []", `keybindings.send: expected a list of keys`},
-		{`layout = 1`, `layout`},
-	}
-	for _, c := range bad {
-		if err := load(c.content + "\n"); !errorHas(err, path, c.want) {
-			t.Errorf("config %q: error %v, want %s in %s", c.content, err, c.want, path)
-		}
-	}
-
-	good := `theme = "Monokai"
-editor = "code -g {file}:{line}"
-gitlab_host = "git.corp.example"
-`
-	if err := load(good); err != nil {
-		t.Errorf("good config: %v", err)
-	}
-}
-
-// TestConfigReload changes the configuration file while the program runs.
-// A reload keeps the flags and the layout that the user picked.
-func TestConfigReload(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-
-	// The flag -layout=split wins over the file.
-	write(t, filepath.Dir(path), "config.toml", "layout = \"unified\"\n")
-	m, _ := newTestModel(t)
-	cfg, err := loadConfig(path)
+	all, err := json.Marshal(map[string]any{"keybindings": keys})
 	if err != nil {
 		t.Fatal(err)
 	}
-	o := Options{Repo: m.repo, ConfigPath: path, Layout: LayoutSplit}
-	m = newModel(t.Context(), o, cfg)
-	if !m.split {
-		t.Fatal("the flag -layout=split did not win over the file")
+	if _, err := parseConfig(string(all)); err != nil {
+		t.Errorf("every action: %v", err)
 	}
-	reload := func(content string) {
-		t.Helper()
-		write(t, filepath.Dir(path), "config.toml", content)
-		m.cfgModTime = time.Time{} // the file changes in the same tick
-		m = update(t, m, tickMsg{})
+
+	unknown := []struct{ text, key string }{
+		{`{"layuot": "split"}`, `"layuot"`},
+		{`{"keybindings": {"next-fiel": ["x"]}}`, `"keybindings.next-fiel"`},
+		{`{"theme": "monokai"}`, `"theme"`},
+		// Lua keys are case-sensitive, so a key in another case is unknown,
+		// and cannot skip the checks.
+		{`{"EDITOR": " "}`, `"EDITOR"`},
+		{`{"keybindings": {"Send": ["x"]}}`, `"keybindings.Send"`},
 	}
-	// A reload applies the file, keeps the flag, and does not undo |.
-	m = press(t, m, "|")
-	reload("layout = \"unified\"\nfile_list = \"left\"\n")
-	if m.split || !m.listLeft || m.cfg.Layout != LayoutSplit || m.cfgErr != "" {
-		t.Errorf("after a reload: split %v, list left %v, layout %q, error %q; "+
-			"want false, true, split, none",
-			m.split, m.listLeft, m.cfg.Layout, m.cfgErr)
-	}
-	// A bad file shows its error and keeps the last good configuration.
-	bad := []struct{ content, want string }{
-		{"file_list = \"right\"\nbogus = 1\n", `unknown key "bogus"`},
-		{"file_list = \"center\"\n", `invalid value for file_list`},
-	}
-	for _, c := range bad {
-		reload(c.content)
-		if !strings.Contains(m.cfgErr, c.want) || !m.listLeft {
-			t.Errorf("after a bad reload: error %q, list left %v; "+
-				"want %s and the old config", m.cfgErr, m.listLeft, c.want)
+	for _, c := range unknown {
+		if _, err := parseConfig(c.text); !errorHas(err, "config: unknown key "+c.key) {
+			t.Errorf("config %s: error %v, want unknown key %s", c.text, err, c.key)
 		}
 	}
-	// A reload that does not change the file list does not undo p and >.
-	m = press(t, m, "p", ">")
-	reload("layout = \"unified\"\nfile_list = \"left\"\nreview_prefix = \"x\"\n")
-	if m.listLeft || m.listW != 28 {
-		t.Errorf("after a reload: list left %v, width %d; want false, 28",
-			m.listLeft, m.listW)
+
+	// Each bad value is an error that names the key, the allowed values,
+	// and the value.
+	const (
+		editor  = "editor: expected a command with only {file} and {line}"
+		opener  = "url_opener: expected a command with only {url}"
+		scopes  = "default_scope: expected one of uncommitted, branch, last-turn"
+		mdView  = "markdown_view: expected one of source, rendered"
+		host    = "gitlab_host: expected a bare hostname"
+		keyList = "keybindings.send: expected a list of keys"
+	)
+	bad := []struct{ text, want string }{
+		{`{"layout": "sideways"}`, `layout: expected one of unified, split, not "sideways"`},
+		{`{"default_scope": "commits"}`, scopes + `, not "commits"`},
+		{`{"markdown_view": "preview"}`, mdView + `, not "preview"`},
+		{`{"file_list": "top"}`, `file_list: expected one of right, left, not "top"`},
+		{`{"file_list_width": 3}`, `file_list_width: expected 16 or more, not "3"`},
+		{`{"editor": " "}`, editor + `, not " "`},
+		{`{"editor": "code {fil"}`, editor + `, not "code {fil"`},
+		{`{"editor": "code {FILE}"}`, `editor: expected`},
+		{`{"url_opener": "open {ur}"}`, opener + `, not "open {ur}"`},
+		{`{"review_prefix": ""}`, `review_prefix: expected text, not ""`},
+		{`{"gitlab_host": "https://git.x"}`, host + `, not "https://git.x"`},
+		{`{"keybindings": {"send": []}}`, keyList},
+		// Lua encodes an empty table as an object.
+		{`{"keybindings": {"send": {}}}`, keyList + `, not a table`},
+		{`{"keybindings": {"send": [1]}}`, `keybindings.send.0: expected text, not a number`},
+		{`{"layout": 1}`, `layout: expected text, not a number`},
+		{`{"file_list_width": 40.5}`, `file_list_width: expected a whole number, not a number`},
+		{`{"file_list_width": "wide"}`, `file_list_width: expected a whole number, not text`},
+		{`{"focus_agent_after_send": "yes"}`, `expected true or false, not text`},
+		{`["layout"]`, `config: expected a table of settings`},
+		{`{"layout": `, `config: `},
+		{`{"layout": "split", "layout": "unified"}`, `duplicate`},
+	}
+	for _, c := range bad {
+		if _, err := parseConfig(c.text); !errorHas(err, c.want) {
+			t.Errorf("config %s: error %v, want %s", c.text, err, c.want)
+		}
+	}
+
+	good := `{
+		"editor": "code -g {file}:{line}",
+		"gitlab_host": "git.corp.example",
+		"focus_agent_after_send": false,
+		"file_list": "left"
+	}`
+	c, err := parseConfig(good)
+	if err != nil {
+		t.Fatalf("good config: %v", err)
+	}
+	if c.focusAgent() || c.FileList != positionLeft || c.Layout != LayoutUnified {
+		t.Errorf("good config = %+v, want no focus, the list on the left, "+
+			"and the default layout", c)
+	}
+	if c, err := parseConfig(""); err != nil || c.Layout != defaultConfig().Layout {
+		t.Errorf(`parseConfig("") = %+v, %v; want the defaults`, c, err)
+	}
+}
+
+// TestConfigFlags checks that the flags win over the configuration, and
+// that the configuration sets the keys and the file list.
+func TestConfigFlags(t *testing.T) {
+	m, _ := newTestModel(t)
+	cfg, err := parseConfig(`{
+		"layout": "unified",
+		"default_scope": "branch",
+		"file_list": "left",
+		"file_list_width": 40,
+		"keybindings": {"split": ["X"]}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := Options{Repo: m.repo, Layout: LayoutSplit}
+	m = newModel(t.Context(), o, cfg)
+	if !m.split || m.scope != ScopeBranch || !m.listLeft || m.listW != 40 {
+		t.Errorf("split %v, scope %q, list left %v, width %d; want true, branch, true, 40",
+			m.split, m.scope, m.listLeft, m.listW)
+	}
+	o.Scope = ScopeLastTurn
+	if m := newModel(t.Context(), o, cfg); m.scope != ScopeLastTurn {
+		t.Errorf("scope %q; want the flag, last-turn", m.scope)
+	}
+	m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = press(t, m, "X")
+	if m.split {
+		t.Error("the key X of the configuration did not change the layout")
+	}
+}
+
+// TestNotice checks that the footer shows all of a long notice, on its own
+// lines, so that the user can read what went wrong.
+func TestNotice(t *testing.T) {
+	m, _ := newTestModel(t)
+	// The path makes the first line end in "--" at column 82, past the
+	// edge, if the wrap breaks at the hyphen.
+	notice := `cannot upgrade rexdiff.lua: /Users/rednafi/.config/rex/rexdiff.lua has no line ` +
+		`"-- rexdiff code below. Install and upgrades replace it. Do not edit this line.", ` +
+		strings.Repeat("the end word ", 20) + "LAST " + strings.Repeat("x", 100)
+	m = newModel(t.Context(), Options{Repo: m.repo, Notice: notice}, defaultConfig())
+	m = step(t, m, tea.WindowSizeMsg{Width: 80, Height: 30})
+	view := ansi.Strip(m.View().Content)
+	// Each word of the notice is in the view, so a hyphen does not push
+	// "--" past the edge of the screen.
+	words := strings.Fields(view)
+	for _, w := range strings.Fields(notice)[:30] {
+		if !slices.Contains(words, w) {
+			t.Errorf("the view does not show %q of the notice:\n%s", w, view)
+		}
+	}
+	if !strings.Contains(view, strings.Repeat("x", 80)) {
+		t.Errorf("the view does not show the start of a word wider than the screen")
+	}
+	for line := range strings.SplitSeq(view, "\n") {
+		if ansi.StringWidth(line) > 80 {
+			t.Errorf("line wider than the screen: %q", line)
+		}
 	}
 }
 
@@ -548,13 +575,13 @@ func TestConfigReload(t *testing.T) {
 // the terminal, as in pi's system theme.
 func TestPalette(t *testing.T) {
 	m, _ := newTestModel(t)
-	m = update(t, m, tea.BackgroundColorMsg{Color: color.Black})
+	m = step(t, m, tea.BackgroundColorMsg{Color: color.Black})
 	// Black mixed 16% toward pure green.
 	const tint = "48;2;0;40;0m"
 	if strings.Contains(m.View().Content, tint) {
 		t.Fatal("the view has the tint before the terminal reports its green")
 	}
-	m = update(t, m, uv.UnknownOscEvent("\x1b]4;2;rgb:0000/ffff/0000\x1b\\"))
+	m = step(t, m, uv.UnknownOscEvent("\x1b]4;2;rgb:0000/ffff/0000\x1b\\"))
 	if !strings.Contains(m.View().Content, tint) {
 		t.Error("inserted lines are not tinted toward the green of the terminal")
 	}
@@ -568,7 +595,7 @@ func wrapModel(t *testing.T) (m model, dir, long string) {
 	long = "\treturn " + strings.Repeat("x + ", 40) + "1"
 	write(t, dir, "a.go", "package a\n\nfunc A() int {\n"+long+"\n}\n")
 	m.reload()
-	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 40})
+	m = step(t, m, tea.WindowSizeMsg{Width: 80, Height: 40})
 	return m, dir, long
 }
 
@@ -623,7 +650,7 @@ func TestWrap(t *testing.T) {
 	}
 
 	// The sideways scroll applies only without wrap.
-	if m = update(t, m, tea.KeyPressMsg{Code: tea.KeyRight}); m.changes.xoff != 0 {
+	if m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight}); m.changes.xoff != 0 {
 		t.Errorf("→ with wrap scrolled to %d", m.changes.xoff)
 	}
 	if m = press(t, m, "w"); m.wrap || len(m.changes.lines) != cut {
@@ -669,21 +696,21 @@ func TestTallLine(t *testing.T) {
 	m, dir, long := wrapModel(t)
 	m = press(t, m, "w")
 	m = twoHunks(t, m, dir, long)
-	m = update(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
+	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
 
 	// The wheel scrolls past the line.
 	m = press(t, m, "home")
 	wheel := []tea.MouseButton{tea.MouseWheelDown, tea.MouseWheelDown, tea.MouseWheelUp}
 	for _, b := range wheel {
 		top := m.changes.top
-		m = update(t, m, tea.MouseWheelMsg{Button: b, X: 1, Y: 5})
-		m = update(t, m, tea.BlurMsg{}) // a later event keeps the view
+		m = step(t, m, tea.MouseWheelMsg{Button: b, X: 1, Y: 5})
+		m = step(t, m, tea.BlurMsg{}) // a later event keeps the view
 		if m.changes.top == top {
 			t.Fatalf("the wheel stopped at row %d of %d", top, len(m.changes.lines))
 		}
 	}
 	// A taller screen shows more rows, not blank space below the view.
-	m = update(t, m, tea.WindowSizeMsg{Width: 30, Height: 40})
+	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 40})
 	if last := max(len(m.changes.lines)-m.bodyHeight(), 0); m.changes.top > last {
 		t.Errorf("top %d of %d rows on a screen of %d rows",
 			m.changes.top, len(m.changes.lines), m.bodyHeight())
@@ -696,7 +723,7 @@ func TestTallLine(t *testing.T) {
 	// As in herdr-reviewr, a cursor on the line shows its first rows. The
 	// comment box shows below the last row. A c on a line with a comment
 	// edits the comment.
-	m = update(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
+	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
 	m = press(t, m, "home")
 	for m.changes.rows[m.changes.cur].New != 4 {
 		m = press(t, m, "j")
@@ -734,18 +761,18 @@ func TestHostileText(t *testing.T) {
 	m.reload()
 	raw("file list", m)
 	m = press(t, m, "f", "]", "c")
-	m = update(t, m, tea.PasteMsg{Content: "hi" + osc + "\x1b[201~\r"})
+	m = step(t, m, tea.PasteMsg{Content: "hi" + osc + "\x1b[201~\r"})
 	m = press(t, m, "enter")
 	raw("comment", m)
 	if cs := m.comments.All(); len(cs) != 1 || !strings.HasPrefix(cs[0].Path, "e\x1b") {
 		t.Fatalf("comments %+v, want one on the file with the escape sequence", cs)
 	}
 
-	m = update(t, m, sentMsg{agent: rex.Agent{Name: "pi" + osc}})
+	m = step(t, m, sentMsg{agent: rex.Agent{Name: "pi" + osc}})
 	raw("the status after a send", m)
-	m = update(t, m, sentMsg{err: errors.New("Rex" + osc)})
+	m = step(t, m, sentMsg{err: errors.New("Rex" + osc)})
 	raw("the status after an error", m)
-	m = update(t, m, status("b", "pi"+osc, rex.StateWorking))
+	m = step(t, m, status("b", "pi"+osc, rex.StateWorking))
 	m = press(t, m, "t")
 	raw("the turn in the header", m)
 }
@@ -761,15 +788,15 @@ func TestMouseOffScreen(t *testing.T) {
 		}
 		for _, pt := range points {
 			mouse := tea.Mouse{X: pt.x, Y: pt.y, Button: tea.MouseLeft}
-			m = update(t, m, tea.MouseClickMsg(mouse))
-			m = update(t, m, tea.MouseMotionMsg(mouse))
-			m = update(t, m, tea.MouseReleaseMsg(mouse))
+			m = step(t, m, tea.MouseClickMsg(mouse))
+			m = step(t, m, tea.MouseMotionMsg(mouse))
+			m = step(t, m, tea.MouseReleaseMsg(mouse))
 			mouse.Button = tea.MouseWheelDown
-			m = update(t, m, tea.MouseWheelMsg(mouse))
+			m = step(t, m, tea.MouseWheelMsg(mouse))
 		}
-		m = update(t, m, tea.WindowSizeMsg{Width: 5, Height: 3})
+		m = step(t, m, tea.WindowSizeMsg{Width: 5, Height: 3})
 		m = press(t, m, "w", "w", "w")
-		m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+		m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 		view(m)
 		m = press(t, m, "esc", "1")
 	}
@@ -816,7 +843,7 @@ func TestFooterHints(t *testing.T) {
 		t.Errorf("select mode: the footer has no hint:\n%s", view(m))
 	}
 	m = press(t, m, "esc")
-	m = update(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	m = step(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
 	m = press(t, m, "r", "e", "t", "u", "r", "n", "enter")
 	if !strings.Contains(view(m), "next/prev match") {
 		t.Errorf("find mode: the footer has no hint:\n%s", view(m))

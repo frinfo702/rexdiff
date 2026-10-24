@@ -1,23 +1,20 @@
 package tui
 
 import (
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
-
-	"github.com/BurntSushi/toml"
-	"github.com/alecthomas/chroma/v2/styles"
 )
 
 // Layout is the layout of the diff.
 type Layout string
 
+// The layouts.
 const (
 	LayoutUnified Layout = "unified" // the old and the new lines in one column
 	LayoutSplit   Layout = "split"   // the old lines beside the new lines
@@ -26,6 +23,7 @@ const (
 // Scope tells what the Changes tab compares with the working tree.
 type Scope string
 
+// The scopes, and what they compare with the working tree.
 const (
 	ScopeUncommitted Scope = "uncommitted" // HEAD
 	ScopeBranch      Scope = "branch"      // the base branch
@@ -56,170 +54,188 @@ var (
 	positions     = []position{positionRight, positionLeft}
 )
 
-// config is the content of the configuration file.
+// config is the configuration of rexdiff. It is at the top of rexdiff.lua,
+// beside Rex's init.lua, and the toggle action passes it to rexdiff as
+// JSON in --config.
 type config struct {
-	Layout       Layout `toml:"layout"`
-	DefaultScope Scope  `toml:"default_scope"`
+	Layout       Layout `json:"layout"`
+	DefaultScope Scope  `json:"default_scope"`
 	// ReviewPrefix is the text above each review that rexdiff sends or
 	// copies.
-	ReviewPrefix string `toml:"review_prefix"`
+	ReviewPrefix string `json:"review_prefix"`
 	// Editor is a command, for example "code -g {file}:{line}".
-	Editor string `toml:"editor"`
+	Editor string `json:"editor"`
 	// URLOpener is a command, for example "open {url}".
-	URLOpener string `toml:"url_opener"`
-	// Theme is "terminal" or the name of a chroma style, for example
-	// "monokai". loadConfig checks the name.
-	Theme        string       `toml:"theme"`
-	MarkdownView markdownView `toml:"markdown_view"`
+	URLOpener    string       `json:"url_opener"`
+	MarkdownView markdownView `json:"markdown_view"`
 	// FileList is the side of the screen that shows the list of files.
-	FileList position `toml:"file_list"`
+	FileList position `json:"file_list"`
 	// FileListWidth is in columns, minListWidth or more.
-	FileListWidth int `toml:"file_list_width"`
+	FileListWidth int `json:"file_list_width"`
 	// FocusAgent tells if the focus moves to the agent after a send. Nil
 	// means true.
-	FocusAgent *bool `toml:"focus_agent_after_send"`
+	FocusAgent *bool `json:"focus_agent_after_send"`
 	// GitHubHost, GitLabHost, and AzureHost are bare hostnames of
 	// self-hosted forges.
-	GitHubHost  string      `toml:"github_host"`
-	GitLabHost  string      `toml:"gitlab_host"`
-	AzureHost   string      `toml:"azure_devops_host"`
-	Keybindings keybindings `toml:"keybindings"`
+	GitHubHost  string      `json:"github_host"`
+	GitLabHost  string      `json:"gitlab_host"`
+	AzureHost   string      `json:"azure_devops_host"`
+	Keybindings keybindings `json:"keybindings"`
 }
 
-// keybindings sets the keys of each action. The TOML keys are the names of
-// the actions, as in herdr-reviewr. A nil list keeps the default keys.
+// keybindings sets the keys of each action. The JSON keys are the names of
+// the actions. A nil list keeps the default keys.
 type keybindings struct {
 	// Move.
-	Down     []string `toml:"down"`
-	Up       []string `toml:"up"`
-	PageDown []string `toml:"page-down"`
-	PageUp   []string `toml:"page-up"`
-	HalfDown []string `toml:"half-down"`
-	HalfUp   []string `toml:"half-up"`
-	Collapse []string `toml:"collapse"`
-	Expand   []string `toml:"expand"`
-	NextHunk []string `toml:"next-hunk"`
-	PrevHunk []string `toml:"prev-hunk"`
-	NextFile []string `toml:"next-file"`
-	PrevFile []string `toml:"prev-file"`
-	Focus    []string `toml:"focus"`
+	Down     []string `json:"down"`
+	Up       []string `json:"up"`
+	PageDown []string `json:"page-down"`
+	PageUp   []string `json:"page-up"`
+	HalfDown []string `json:"half-down"`
+	HalfUp   []string `json:"half-up"`
+	Collapse []string `json:"collapse"`
+	Expand   []string `json:"expand"`
+	NextHunk []string `json:"next-hunk"`
+	PrevHunk []string `json:"prev-hunk"`
+	NextFile []string `json:"next-file"`
+	PrevFile []string `json:"prev-file"`
+	Focus    []string `json:"focus"`
 
 	// Scopes and tabs.
-	ScopeUncommitted []string `toml:"scope-uncommitted"`
-	ScopeBranch      []string `toml:"scope-branch"`
-	ScopeLastTurn    []string `toml:"scope-last-turn"`
-	ScopeCommits     []string `toml:"scope-commits"`
-	BasePick         []string `toml:"base-pick"`
-	CommitPick       []string `toml:"commit-pick"`
-	TabChanges       []string `toml:"tab-changes"`
-	TabAllFiles      []string `toml:"tab-all-files"`
-	TabPR            []string `toml:"tab-pr"`
+	ScopeUncommitted []string `json:"scope-uncommitted"`
+	ScopeBranch      []string `json:"scope-branch"`
+	ScopeLastTurn    []string `json:"scope-last-turn"`
+	ScopeCommits     []string `json:"scope-commits"`
+	BasePick         []string `json:"base-pick"`
+	CommitPick       []string `json:"commit-pick"`
+	TabChanges       []string `json:"tab-changes"`
+	TabAllFiles      []string `json:"tab-all-files"`
+	TabPR            []string `json:"tab-pr"`
 
 	// Comments.
-	Select      []string `toml:"select"`
-	Comment     []string `toml:"comment"`
-	Edit        []string `toml:"edit"`
-	Delete      []string `toml:"delete"`
-	NextComment []string `toml:"next-comment"`
-	PrevComment []string `toml:"prev-comment"`
-	Comments    []string `toml:"comments"`
-	Send        []string `toml:"send"`
-	Copy        []string `toml:"copy"`
+	Select      []string `json:"select"`
+	Comment     []string `json:"comment"`
+	Edit        []string `json:"edit"`
+	Delete      []string `json:"delete"`
+	NextComment []string `json:"next-comment"`
+	PrevComment []string `json:"prev-comment"`
+	Comments    []string `json:"comments"`
+	Send        []string `json:"send"`
+	Copy        []string `json:"copy"`
 
 	// View and other actions.
-	Search            []string `toml:"search"`
-	Find              []string `toml:"find"`
-	GotoLine          []string `toml:"goto-line"`
-	Rendered          []string `toml:"rendered"`
-	Split             []string `toml:"split"`
-	Wrap              []string `toml:"wrap"`
-	NavigatorPosition []string `toml:"navigator-position"`
-	NavigatorHide     []string `toml:"navigator-hide"`
-	NavigatorGrow     []string `toml:"navigator-grow"`
-	NavigatorShrink   []string `toml:"navigator-shrink"`
-	OpenPR            []string `toml:"open-pr"`
-	Refresh           []string `toml:"refresh"`
-	Keys              []string `toml:"keys"`
-	Quit              []string `toml:"quit"`
-	QuitDiscard       []string `toml:"quit-discard"`
+	Search            []string `json:"search"`
+	Find              []string `json:"find"`
+	GotoLine          []string `json:"goto-line"`
+	Rendered          []string `json:"rendered"`
+	Split             []string `json:"split"`
+	Wrap              []string `json:"wrap"`
+	NavigatorPosition []string `json:"navigator-position"`
+	NavigatorHide     []string `json:"navigator-hide"`
+	NavigatorGrow     []string `json:"navigator-grow"`
+	NavigatorShrink   []string `json:"navigator-shrink"`
+	OpenPR            []string `json:"open-pr"`
+	Refresh           []string `json:"refresh"`
+	Keys              []string `json:"keys"`
+	Quit              []string `json:"quit"`
+	QuitDiscard       []string `json:"quit-discard"`
 }
 
 // minListWidth is the smallest width of the file list, in columns.
 const minListWidth = 16
 
-// defaultConfig returns the configuration that applies when there is no
-// configuration file.
+// defaultConfig returns the configuration that applies to each setting
+// that --config does not set.
 func defaultConfig() config {
 	return config{
 		Layout:        LayoutUnified,
 		DefaultScope:  ScopeUncommitted,
-		Theme:         themeTerminal,
 		MarkdownView:  markdownViewSource,
 		FileList:      positionRight,
 		FileListWidth: 32,
 	}
 }
 
-// ConfigPath returns the path of the configuration file:
-// $REXDIFF_CONFIG, else $XDG_CONFIG_HOME/rexdiff/config.toml, else
-// ~/.config/rexdiff/config.toml.
-func ConfigPath() string {
-	if p := os.Getenv("REXDIFF_CONFIG"); p != "" {
-		return p
-	}
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" {
-		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".config")
-	}
-	return filepath.Join(dir, "rexdiff", "config.toml")
-}
-
-// loadConfig reads the file at path over the default configuration. If
-// the file does not exist, loadConfig returns the default configuration.
-// As in herdr-reviewr, an unknown key or a bad value is an error.
-func loadConfig(path string) (config, error) {
+// parseConfig reads the JSON text over the default configuration. An
+// empty text means the default configuration. An unknown key, a key in
+// the wrong case, or a bad value is an error.
+func parseConfig(text string) (config, error) {
 	c := defaultConfig()
-	if path == "" {
+	if text == "" {
 		return c, nil
 	}
-	b, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return c, nil
+	// set tells which keys the text has, so that a blank text that the
+	// user sets is an error, and a text that is not set is not.
+	var set map[string]jsontext.Value
+	if err := json.Unmarshal([]byte(text), &set); err != nil {
+		return config{}, configError(err)
 	}
-	if err != nil {
+	if err := json.Unmarshal([]byte(text), &c, json.RejectUnknownMembers(true)); err != nil {
+		return config{}, configError(err)
+	}
+	if err := c.check(set); err != nil {
 		return config{}, fmt.Errorf("config: %w", err)
-	}
-	md, err := toml.Decode(string(b), &c)
-	if err != nil {
-		return config{}, fmt.Errorf("config %s: %w", path, err)
-	}
-	if keys := md.Undecoded(); len(keys) > 0 {
-		return config{}, fmt.Errorf("config %s: unknown key %q", path, keys[0])
-	}
-	if err := c.check(md); err != nil {
-		return config{}, fmt.Errorf("config %s: %w", path, err)
 	}
 	return c, nil
 }
 
+// configError turns an error of the JSON decoder into an error in the
+// words of the configuration, for example "keybindings.send" for the key.
+func configError(err error) error {
+	se, ok := errors.AsType[*json.SemanticError](err)
+	if !ok {
+		return fmt.Errorf("config: %w", err)
+	}
+	key := strings.ReplaceAll(strings.TrimPrefix(string(se.JSONPointer), "/"), "/", ".")
+	if errors.Is(err, json.ErrUnknownName) {
+		return fmt.Errorf("config: unknown key %q", key)
+	}
+	if key == "" || se.GoType == nil {
+		return errors.New("config: expected a table of settings")
+	}
+	want := "a table"
+	switch se.GoType.Kind() {
+	case reflect.String:
+		want = "text"
+	case reflect.Int:
+		want = "a whole number"
+	case reflect.Bool:
+		want = "true or false"
+	case reflect.Slice:
+		want = "a list of keys" // an empty Lua table is an object
+	}
+	return fmt.Errorf("config: invalid value for %s: expected %s, not %s",
+		key, want, jsonKinds[se.JSONKind])
+}
+
+// jsonKinds names the kinds of JSON values in the words of Lua.
+var jsonKinds = map[jsontext.Kind]string{
+	'"': "text",
+	'0': "a number",
+	'{': "a table",
+	'[': "a list",
+	't': "a boolean",
+	'f': "a boolean",
+	'n': "nil",
+}
+
 // check returns an error for the first value that rexdiff does not accept.
-// md tells which keys the file sets.
-func (c config) check(md toml.MetaData) error {
+// set has the keys that the configuration sets.
+func (c config) check(set map[string]jsontext.Value) error {
 	if err := c.checkChoices(); err != nil {
 		return err
 	}
-	if err := c.checkTexts(md); err != nil {
+	if err := c.checkTexts(set); err != nil {
 		return err
 	}
-	if err := c.checkHosts(md); err != nil {
+	if err := c.checkHosts(set); err != nil {
 		return err
 	}
 	return c.checkKeybindings()
 }
 
 // checkChoices checks the values that have fixed choices or a range. They
-// are the layout, the scope, the theme, and the file list.
+// are the layout, the scope, the markdown view, and the file list.
 func (c config) checkChoices() error {
 	choices := []struct {
 		key, value string
@@ -235,9 +251,6 @@ func (c config) checkChoices() error {
 			return invalid(k.key, "one of "+strings.Join(k.allowed, ", "), k.value)
 		}
 	}
-	if c.Theme != themeTerminal && styles.Registry[strings.ToLower(c.Theme)] == nil {
-		return invalid("theme", "terminal or a chroma style name", c.Theme)
-	}
 	if c.FileListWidth < minListWidth {
 		want := strconv.Itoa(minListWidth) + " or more"
 		return invalid("file_list_width", want, strconv.Itoa(c.FileListWidth))
@@ -246,8 +259,9 @@ func (c config) checkChoices() error {
 }
 
 // checkTexts checks the commands and the review prefix. A command can use
-// only its placeholders. A text that the file sets must not be blank.
-func (c config) checkTexts(md toml.MetaData) error {
+// only its placeholders. A text that the configuration sets must not be
+// blank.
+func (c config) checkTexts(set map[string]jsontext.Value) error {
 	commands := []struct {
 		key, value, want string
 		known            []string
@@ -266,26 +280,26 @@ func (c config) checkTexts(md toml.MetaData) error {
 		},
 	}
 	for _, k := range commands {
-		blank := md.IsDefined(k.key) && strings.TrimSpace(k.value) == ""
+		blank := set[k.key] != nil && strings.TrimSpace(k.value) == ""
 		if blank || !placeholders(k.value, k.known...) {
 			return invalid(k.key, k.want, k.value)
 		}
 	}
-	if md.IsDefined("review_prefix") && strings.TrimSpace(c.ReviewPrefix) == "" {
+	if set["review_prefix"] != nil && strings.TrimSpace(c.ReviewPrefix) == "" {
 		return invalid("review_prefix", "text", c.ReviewPrefix)
 	}
 	return nil
 }
 
 // checkHosts checks the hostnames of the self-hosted forges.
-func (c config) checkHosts(md toml.MetaData) error {
+func (c config) checkHosts(set map[string]jsontext.Value) error {
 	hosts := []struct{ key, value string }{
 		{"github_host", c.GitHubHost},
 		{"gitlab_host", c.GitLabHost},
 		{"azure_devops_host", c.AzureHost},
 	}
 	for _, k := range hosts {
-		if md.IsDefined(k.key) && !hostname(k.value) {
+		if set[k.key] != nil && !hostname(k.value) {
 			return invalid(k.key, "a bare hostname", k.value)
 		}
 	}
@@ -349,28 +363,6 @@ func hostLabel(s string) bool {
 		letter := 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z'
 		return !letter && !('0' <= r && r <= '9') && r != '-'
 	})
-}
-
-// modTime returns the modification time of the file at path, or the zero
-// time if there is no file.
-func modTime(path string) time.Time {
-	info, err := os.Stat(path)
-	if err != nil {
-		return time.Time{}
-	}
-	return info.ModTime()
-}
-
-// themeTerminal is the theme that uses the colours of the terminal.
-const themeTerminal = "terminal"
-
-// syntax returns the chroma style of the theme, or "" for the terminal
-// palette.
-func (c config) syntax() string {
-	if c.Theme == themeTerminal {
-		return ""
-	}
-	return c.Theme
 }
 
 // focusAgent tells if the focus moves to the agent after a send.

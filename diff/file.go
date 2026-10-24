@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/internal/diffview"
@@ -26,7 +25,7 @@ func RenderFile(path, src string, o Options) *Diff {
 		"\r", "\u240d",
 		"\t", strings.Repeat(" ", tabWidth),
 	).Replace(src)
-	hl := strings.Split(highlight(path, src, o.Theme), "\n")
+	hl := strings.Split(highlight(path, src), "\n")
 	hl = hl[:min(len(hl), len(Lines(src)))] // chroma can add a line break at the end
 	digits := len(fmt.Sprint(len(hl)))
 	numWidth := digits + 2 // a space on each side of the number
@@ -77,20 +76,14 @@ func fileLineParts(l string, code int, o Options) []string {
 // highlight colours the whole file at once, so that tokens that span lines
 // get the correct colour. If it cannot highlight src, it returns src with
 // its control characters replaced.
-func highlight(path, src string, t Theme) string {
+func highlight(path, src string) string {
 	it, err := diffview.Lexer(path, src).Tokenise(nil, src)
 	if err != nil {
 		return escapeKeepNewlines(src)
 	}
-	var f chroma.Formatter
-	var st *chroma.Style
-	if t.terminal() {
-		f = diffview.ANSIFormatter(lipgloss.NoColor{}, escapeKeepNewlines)
-	} else {
-		f, st = diffview.Formatter(lipgloss.NoColor{}, escapeKeepNewlines), t.chroma()
-	}
+	f := diffview.ANSIFormatter(lipgloss.NoColor{}, escapeKeepNewlines)
 	var b strings.Builder
-	if f.Format(&b, st, it) != nil {
+	if f.Format(&b, nil, it) != nil {
 		return escapeKeepNewlines(src)
 	}
 	return b.String()

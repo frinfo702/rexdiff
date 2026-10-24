@@ -7,19 +7,11 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// ANSISyntax highlights the code with the 16-colour palette of the terminal,
-// in place of a chroma style.
-func (dv *DiffView) ANSISyntax() *DiffView {
-	dv.ansiSyntax = true
-	clear(dv.syntaxCache)
-	return dv
-}
-
 // Wrap makes long lines continue on the next screen lines, instead of
 // cutting them. The x offset does not apply.
-func (dv *DiffView) Wrap() *DiffView {
-	dv.wrap = true
-	return dv
+func (v *View) Wrap() *View {
+	v.wrap = true
+	return v
 }
 
 // mix blends a toward b by t (0..1).

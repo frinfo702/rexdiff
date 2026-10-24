@@ -4,7 +4,7 @@
 // [Render] and [RenderFile] return a [Diff]. Each line in [Diff.Lines] has a
 // [Row] that tells which source lines it shows. Use the rows to put a cursor
 // or a [Comment] on a source line. The colours come from the terminal
-// palette, unless [Theme.Syntax] names a chroma style.
+// palette.
 package diff
 
 import (
@@ -100,10 +100,10 @@ func Render(path, old, new string, o Options) *Diff {
 		dv = dv.Wrap()
 	}
 	dv = o.Theme.apply(dv)
-	out := dv.String()
+	out, rows, g := dv.Render()
 
 	d := &Diff{split: o.Split}
-	for _, r := range dv.Rows() {
+	for _, r := range rows {
 		d.Rows = append(d.Rows, Row{
 			Kind:      kindOf(r.Kind),
 			Old:       r.Before,
@@ -114,7 +114,6 @@ func Render(path, old, new string, o Options) *Diff {
 	if len(d.Rows) > 0 {
 		d.Lines = strings.Split(out, "\n")
 	}
-	g := dv.Geometry()
 	d.oldNum, d.newNum, d.newNumAt = g.BeforeNum, g.AfterNum, g.AfterNumStart
 	return d
 }

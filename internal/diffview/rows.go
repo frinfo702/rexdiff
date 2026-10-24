@@ -22,15 +22,15 @@ type Row struct {
 	Continued     bool
 }
 
-// Rows returns one row for each line of the output of String. Call it after
-// String.
-func (dv *DiffView) Rows() []Row {
-	rows := dv.lineRows()
-	if !dv.wrap {
+// rows returns one row for each line of the output of text. Call it after
+// text.
+func (v *View) rows() []Row {
+	rows := v.lineRows()
+	if !v.wrap {
 		return rows
 	}
 	var out []Row
-	h := dv.heights
+	h := v.heights
 	for _, r := range rows {
 		n := 1
 		if r.Kind != RowHunk && len(h) > 0 {
@@ -46,17 +46,17 @@ func (dv *DiffView) Rows() []Row {
 
 // lineRows returns one row for each source line, and one for each hunk
 // header.
-func (dv *DiffView) lineRows() []Row {
-	if dv.layout == layoutSplit {
-		return dv.splitRows()
+func (v *View) lineRows() []Row {
+	if v.layout == layoutSplit {
+		return v.splitRows()
 	}
-	return dv.unifiedRows()
+	return v.unifiedRows()
 }
 
 // unifiedRows returns the rows of the unified layout.
-func (dv *DiffView) unifiedRows() []Row {
+func (v *View) unifiedRows() []Row {
 	var rows []Row
-	for _, h := range dv.unified.Hunks {
+	for _, h := range v.unified.Hunks {
 		rows = append(rows, Row{Kind: RowHunk})
 		b, a := h.FromLine, h.ToLine
 		for _, l := range h.Lines {
@@ -78,9 +78,9 @@ func (dv *DiffView) unifiedRows() []Row {
 }
 
 // splitRows returns the rows of the split layout.
-func (dv *DiffView) splitRows() []Row {
+func (v *View) splitRows() []Row {
 	var rows []Row
-	for _, h := range dv.splitHunks {
+	for _, h := range v.splitHunks {
 		rows = append(rows, Row{Kind: RowHunk})
 		b, a := h.fromLine, h.toLine
 		for _, l := range h.lines {
@@ -120,15 +120,15 @@ type Geometry struct {
 	AfterNumStart int // column where the new line numbers start
 }
 
-// Geometry returns the columns of the line numbers. Call it after String.
-func (dv *DiffView) Geometry() Geometry {
+// geometry returns the columns of the line numbers. Call it after text.
+func (v *View) geometry() Geometry {
 	g := Geometry{
-		BeforeNum: dv.beforeNumDigits + lineNumPadding*2,
-		AfterNum:  dv.afterNumDigits + lineNumPadding*2,
+		BeforeNum: v.beforeNumDigits + lineNumPadding*2,
+		AfterNum:  v.afterNumDigits + lineNumPadding*2,
 	}
 	g.AfterNumStart = g.BeforeNum
-	if dv.layout == layoutSplit {
-		g.AfterNumStart = g.BeforeNum + dv.fullCodeWidth
+	if v.layout == layoutSplit {
+		g.AfterNumStart = g.BeforeNum + v.fullCodeWidth
 	}
 	return g
 }

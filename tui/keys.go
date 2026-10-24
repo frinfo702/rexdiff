@@ -26,6 +26,9 @@ type keyMap struct {
 	Search, Find, GotoLine, Rendered, Split, Wrap key.Binding
 	NavPosition, NavHide, NavGrow, NavShrink      key.Binding
 	OpenPR, Refresh, Keys, Quit, QuitDiscard      key.Binding
+	// Upgrade installs a newer release. It works only while the footer
+	// tells of one.
+	Upgrade key.Binding
 
 	// The comment box. Cancel also clears the selection.
 	Save, Newline, Cancel key.Binding
@@ -97,6 +100,7 @@ func defaultKeys() keyMap {
 		NavShrink:   bind([]string{">"}, ">", "narrow list"),
 		OpenPR:      bind([]string{"o"}, "o", "open PR in browser"),
 		Refresh:     bind([]string{"r"}, "r", "refresh"),
+		Upgrade:     bind([]string{"U"}, "U", "update rexdiff"),
 		Keys:        bind([]string{"?"}, "?", "all keys"),
 		Quit:        bind([]string{"q", "ctrl+c"}, "q", "quit"),
 		QuitDiscard: bind([]string{"Q"}, "Q", "quit, drop comments"),
@@ -128,8 +132,8 @@ type overlayKeyMap struct {
 	Quit, Stay key.Binding
 }
 
-// overlayKeys is the keys of the overlays. The configuration file does
-// not change them.
+// overlayKeys is the keys of the overlays. The settings do not change
+// them.
 var overlayKeys = overlayKeyMap{
 	Choose:   key.NewBinding(key.WithKeys("enter")),
 	Close:    key.NewBinding(key.WithKeys("esc")),
@@ -143,10 +147,10 @@ var overlayKeys = overlayKeyMap{
 	Stay:     key.NewBinding(key.WithKeys("esc", "n")),
 }
 
-// binding is an action of the configuration file and the key binding that
+// binding is an action of the keybindings setting and the key binding that
 // it changes.
 type binding struct {
-	name string // the name in the configuration file
+	name string // the name in the keybindings setting
 	keys []string
 	key  *key.Binding
 }

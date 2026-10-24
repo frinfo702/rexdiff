@@ -44,8 +44,8 @@ var userEnv = []string{
 	"REX_SESSION",
 	"REX_BLOCK",
 	"REX_AGENT_BLOCK",
-	"REXDIFF_CONFIG",
 	"REXDIFF_LOG",
+	"REXDIFF_RESUME",
 }
 
 // TestScripts runs the scripts in testdata/script. Each script runs in a

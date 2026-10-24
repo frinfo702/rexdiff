@@ -80,7 +80,7 @@ func (m *model) onEvent(e rex.Event) {
 func (m *model) startTurn(block, app string) {
 	a := m.agent(block)
 	if !a.hasCwd && m.rex != nil {
-		a.cwd, _ = m.rex.Cwd(m.ctx, block)
+		a.cwd, _ = m.rex.Cwd(m.ctx, block) // no cwd: the agent is not in the repo
 		a.hasCwd = true
 	}
 	if !m.inRepo(a.cwd) {
@@ -111,6 +111,7 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	if !msg.send {
 		return nil
 	}
+	m.sends--
 	if msg.err != nil {
 		m.flashCopy(msg.err.Error())
 		return nil
@@ -125,12 +126,17 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	if len(here) == 0 {
 		here = msg.agents
 	}
-	switch len(here) {
-	case 0:
+	switch {
+	case len(here) == 0:
 		m.flashCopy("no agent in this session")
 		return nil
-	case 1:
+	case len(here) == 1:
 		return m.deliver(here[0])
+	case m.mode != modeNormal:
+		// The user began a comment or an overlay while the agents loaded.
+		// A picker over it would hide it, and lose a comment in writing.
+		m.flash("several agents: close the box, then press s to pick one")
+		return nil
 	}
 	m.openAgentPicker(here)
 	return nil
@@ -145,6 +151,7 @@ func (m *model) reviewText() string {
 // the paste, it checks the agent again, because a prompt of the
 // agent would take the text.
 func (m *model) deliver(a rex.Agent) tea.Cmd {
+	m.sends++
 	c, ctx := m.rex, m.ctx
 	text := m.reviewText()
 	var ids []int
@@ -168,7 +175,7 @@ func (m *model) deliver(a rex.Agent) tea.Cmd {
 			return sentMsg{agent: a, err: err}
 		}
 		if focus {
-			c.Focus(ctx, a.Block)
+			_ = c.Focus(ctx, a.Block) // best effort: the review is pasted
 		}
 		return sentMsg{agent: a, ids: ids}
 	}
@@ -176,8 +183,9 @@ func (m *model) deliver(a rex.Agent) tea.Cmd {
 
 // onSent removes the comments that were sent, but only if the send
 // succeeded. The comments that the user added or changed during the send
-// stay.
+// stay: a saved edit gives a comment a new ID, which msg does not have.
 func (m *model) onSent(msg sentMsg) {
+	m.sends--
 	if msg.err != nil {
 		m.flashCopy(msg.err.Error())
 		return
@@ -204,6 +212,7 @@ func (m *model) startSend() tea.Cmd {
 		return nil
 	}
 	m.flash("sending…")
+	m.sends++
 	return m.listAgents(agentsMsg{send: true})
 }
 

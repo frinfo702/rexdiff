@@ -1,19 +1,14 @@
-# -h shows the usage and the path of the configuration file, and exits 0.
+# -h shows the usage and the flags, and exits 0.
 exec rexdiff -h
 stderr '^usage: rexdiff \[flags\] \[repo\]'
 stderr '-layout value'
-stderr 'config: '$WORK'/.config/rexdiff/config.toml'
+stderr '-config string'
 ! stdout .
 
-# XDG_CONFIG_HOME and REXDIFF_CONFIG move the configuration file.
-env XDG_CONFIG_HOME=$WORK/xdg
-exec rexdiff -h
-stderr 'config: '$WORK'/xdg/rexdiff/config.toml'
-env REXDIFF_CONFIG=$WORK/my.toml
-exec rexdiff -h
-stderr 'config: '$WORK'/my.toml'
+# -version prints the version. A build for development has none.
+exec rexdiff -version
+stdout '^\(devel\)$'
 
-# install -h shows the flags of install and writes nothing.
+# install -h writes nothing.
 exec rexdiff install -h
-stderr '-placement string'
 ! exists .config/rex

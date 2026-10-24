@@ -47,18 +47,17 @@ func isUnsafeControl(r rune) bool {
 }
 
 // fuzzOptions makes Options from the fuzz values.
-func fuzzOptions(layout, width, offset uint8, chroma bool) diff.Options {
+func fuzzOptions(layout, width, offset uint8, colored bool) diff.Options {
 	o := diff.Options{
 		Split:  layout&1 != 0,
 		Wrap:   layout&2 != 0,
 		Width:  int(width % 60),
 		Offset: int(offset % 20),
 	}
-	if chroma {
+	if colored {
 		o.Theme = diff.Theme{
 			Background: color.Black,
 			Foreground: color.White,
-			Syntax:     "monokai",
 		}
 	}
 	return o
@@ -118,9 +117,9 @@ func FuzzRender(f *testing.F) {
 		p uint8,
 		old, new string,
 		layout, width, offset uint8,
-		chroma bool,
+		colored bool,
 	) {
-		o := fuzzOptions(layout, width, offset, chroma)
+		o := fuzzOptions(layout, width, offset, colored)
 		d := diff.Render(paths[int(p)%len(paths)], old, new, o)
 		checkLines(t, d, o)
 		checkRows(t, d.Rows, old, new)
@@ -181,9 +180,9 @@ func FuzzRenderFile(f *testing.F) {
 		p uint8,
 		src string,
 		layout, width, offset uint8,
-		chroma bool,
+		colored bool,
 	) {
-		o := fuzzOptions(layout, width, offset, chroma)
+		o := fuzzOptions(layout, width, offset, colored)
 		d := diff.RenderFile(paths[int(p)%len(paths)], src, o)
 		checkLines(t, d, o)
 		checkRows(t, d.Rows, src, src)

@@ -43,7 +43,7 @@ func TestRenderRowsFollowLines(t *testing.T) {
 	themes := []diff.Theme{
 		{},
 		{Background: color.White, Foreground: color.Black},
-		{Background: color.Black, Syntax: "monokai"},
+		{Background: color.Black, Foreground: color.White},
 	}
 	tests := []struct {
 		split bool

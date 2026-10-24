@@ -52,7 +52,7 @@ func (m *model) contentFor(path string, s diff.Side) string {
 		}
 		return f.New
 	}
-	content, _ := m.repo.ReadFile(path)
+	content, _ := m.repo.ReadFile(path) // an unreadable file gives a comment no code
 	return content
 }
 
@@ -119,7 +119,7 @@ func (m *model) editComment(c *diff.Comment) tea.Cmd {
 }
 
 // updateComment handles a key while the comment box is open.
-func (m model) updateComment(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateComment(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, m.keys.Save):
 		d := m.draft
@@ -132,14 +132,14 @@ func (m model) updateComment(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.comments.Add(c)
 		}
 		m.closeComment()
-		return m, nil
+		return nil
 	case key.Matches(msg, m.keys.Cancel):
 		m.closeComment()
-		return m, nil
+		return nil
 	}
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
-	return m, cmd
+	return cmd
 }
 
 // closeComment closes the comment box and clears the selection.

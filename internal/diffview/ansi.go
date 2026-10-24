@@ -41,18 +41,27 @@ func ansiFor(t chroma.TokenType) (c string, italic, ok bool) {
 	return "", false, false
 }
 
-// ANSIFormatter is like [Formatter], but it ignores the chroma style and uses
-// the ANSI palette colours.
+// ANSIFormatter returns a chroma formatter that colours the tokens with the
+// ANSI palette colours, on the background bgColor. It ignores the chroma
+// style. If processValue is not nil, it changes the text of each token
+// first.
 func ANSIFormatter(bgColor color.Color, processValue func(string) string) chroma.Formatter {
 	format := func(w io.Writer, _ *chroma.Style, it chroma.Iterator) error {
 		plain := lipgloss.NewStyle().Background(bgColor)
-		styleOf := func(t chroma.TokenType) (lipgloss.Style, bool) {
-			if c, italic, ok := ansiFor(t); ok {
-				return plain.Foreground(lipgloss.Color(c)).Italic(italic), true
+		for token := it(); token != chroma.EOF; token = it() {
+			value := token.Value
+			if processValue != nil {
+				value = processValue(value)
 			}
-			return plain, true
+			s := plain
+			if c, italic, ok := ansiFor(token.Type); ok {
+				s = plain.Foreground(lipgloss.Color(c)).Italic(italic)
+			}
+			if _, err := io.WriteString(w, renderLines(s, value)); err != nil {
+				return err
+			}
 		}
-		return writeTokens(w, it, processValue, styleOf)
+		return nil
 	}
 	return chroma.FormatterFunc(format)
 }
