@@ -19,7 +19,6 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// tab is one of the tabs of the program.
 type tab int
 
 const (
@@ -59,7 +58,7 @@ type pane struct {
 	anchor int        // the start of the visual selection, or -1
 	xoff   int        // the sideways scroll, in columns
 	note   string     // shown instead of the lines, if there are no lines
-	// free is true after the wheel moved the view. Then the cursor can
+	// free is true after the wheel moves the view. Then the cursor can
 	// be off the screen until the next key or click.
 	free bool
 }
@@ -70,7 +69,7 @@ func (p *pane) set(lines []string, rows []diff.Row) {
 	p.lines, p.rows, p.diff = lines, rows, nil
 	p.cur = min(p.cur, max(len(lines)-1, 0))
 	p.top = min(p.top, max(len(lines)-1, 0))
-	if p.anchor >= len(rows) { // the file got shorter
+	if p.anchor >= len(rows) { // the file is shorter than before
 		p.anchor = -1
 	}
 }
@@ -240,7 +239,7 @@ type model struct {
 }
 
 // newModel returns the model of the program with the options o and the
-// configuration cfg.
+// settings cfg.
 func newModel(ctx context.Context, o Options, cfg config) model {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
@@ -271,8 +270,8 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 		m.base = o.Repo.DefaultBase(ctx)
 	}
 	if o.Rex != nil && o.Agent != "" {
-		// An agent that Rex does not know is not selected first; the
-		// picker still lists the agents.
+		// If Rex does not know the agent, the picker selects no agent
+		// first. The picker still lists all the agents.
 		m.beside, _ = o.Rex.Resolve(ctx, o.Agent)
 	}
 	m.changes.anchor, m.viewer.anchor, m.prPane.anchor = -1, -1, -1
@@ -294,11 +293,11 @@ type (
 	agentsMsg struct {
 		agents []rex.Agent
 		err    error
-		send   bool // listed for a send, not to learn the states
+		send   bool // true if the list is for a send, not to learn the states
 	}
 	sentMsg struct {
 		agent rex.Agent
-		ids   []int // the comments that were sent
+		ids   []int // the IDs of the sent comments
 		err   error
 	}
 	grepMsg struct {
@@ -313,8 +312,8 @@ type (
 	editorDoneMsg struct{ err error }
 )
 
-// requestColors ask the terminal for its colours. The replies change the
-// tints of the diff.
+// requestColors are the commands that ask the terminal for its colours.
+// The replies change the tints of the diff.
 var requestColors = []tea.Cmd{
 	tea.RequestBackgroundColor,
 	tea.RequestForegroundColor,
@@ -436,7 +435,7 @@ func (m *model) reloadIfChanged() {
 	m.renderChanges()
 }
 
-// loadFiles makes sure that the list of all files is loaded.
+// loadFiles reads the list of all files if the model does not have it.
 func (m *model) loadFiles() {
 	if m.allFiles == nil {
 		m.allFiles, _ = m.repo.Files(m.ctx) // an error shows an empty list
@@ -450,14 +449,14 @@ func (m *model) reloadFiles() {
 	m.refreshViewer()
 }
 
-// Update handles a message.
+// Update handles a message. After an install, it restarts the program
+// when no work can get lost.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmd := m.handle(msg)
 	if m.phase != phaseInstalled {
 		return m, cmd
 	}
-	// After an install, restart as soon as no work would be lost. A tick
-	// only schedules the next tick, which is no work.
+	// A tick only starts the next tick, so it is no work.
 	pending := cmd
 	if _, tick := msg.(tickMsg); tick {
 		pending = nil
@@ -591,7 +590,6 @@ const (
 // onTick reloads the current tab, if it changed.
 func (m *model) onTick() tea.Cmd {
 	m.ticks++
-	// A pane without focus reloads less often, like herdr-reviewr.
 	every := 1
 	if !m.focused {
 		every = blurredTicks

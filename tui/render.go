@@ -17,7 +17,8 @@ import (
 // left of the main pane.
 const gutter = 2
 
-// listWidth is the width of the file list; 0 if it does not show.
+// listWidth returns the width of the file list, or 0 if the list does not
+// show.
 func (m *model) listWidth() int {
 	if m.listHidden || m.tab == tabPR {
 		return 0
@@ -165,7 +166,8 @@ func (m *model) refreshViewer() {
 	}
 }
 
-// markdown returns a glamour renderer for the terminal theme, or nil.
+// markdown returns a glamour renderer for the terminal theme, or nil. The
+// renderer wraps at wrap columns.
 func (m *model) markdown(wrap int) *glamour.TermRenderer {
 	style := "dark"
 	if m.bg != nil && !m.dark {
@@ -192,7 +194,7 @@ func renderMarkdown(r *glamour.TermRenderer, src string) []string {
 }
 
 // setMarkdown shows src as rendered markdown. The rendered lines take no
-// comments; press m to see the source.
+// comments. Press m to see the source.
 func (m *model) setMarkdown(p *pane, src string) {
 	lines := renderMarkdown(m.markdown(m.codeWidth()-2), diff.Plain(src))
 	p.path = ""

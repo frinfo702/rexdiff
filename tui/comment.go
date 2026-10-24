@@ -17,8 +17,8 @@ type targetLine struct {
 
 // target returns the line that a comment on row i of the current pane
 // attaches to, or nil. If the row changes a line on side pref, it uses
-// that side. Else it prefers the new side, as herdr-reviewr does. Thus a
-// comment on an unchanged line is on the new side.
+// that side. Else it prefers the new side. So a comment on an unchanged
+// line is on the new side.
 func (m *model) target(i int, pref diff.Side) *targetLine {
 	p := m.cur()
 	if p.path == "" || i < 0 || i >= len(p.rows) {

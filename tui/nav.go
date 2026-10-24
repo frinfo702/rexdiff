@@ -151,8 +151,8 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		p.xoff = max(p.xoff-scrollStep, 0)
 		m.rerender()
 	case key.Matches(msg, k.Wrap) && p.diff != nil:
-		// As in herdr-reviewr: rendered markdown is wrapped already, and
-		// the sideways scroll applies only without wrap.
+		// The wrap key works only on a diff, because rendered markdown
+		// has its own wrap. The sideways scroll works only without wrap.
 		m.wrap = !m.wrap
 		m.changes.xoff, m.viewer.xoff = 0, 0
 		m.rerender()
@@ -445,7 +445,6 @@ func (m *model) runFind(q string) {
 		m.flash("no match for " + q)
 		return
 	}
-	// The first hit at or after the cursor, else the first hit.
 	atCursor := func(h int) bool { return h >= p.cur }
 	m.find.i = max(slices.IndexFunc(m.find.hits, atCursor), 0)
 	p.cur = m.find.hits[m.find.i]

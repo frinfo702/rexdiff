@@ -23,15 +23,15 @@ const appName = "rexdiff"
 
 // Options configure Run.
 type Options struct {
-	Repo *vcs.Repo // the repository to review; it must not be nil
+	Repo *vcs.Repo // the repository to review, not nil
 	// Rex is the Rex session of the process, or nil outside Rex. Without
-	// Rex, the review cannot be sent; it can only be copied.
+	// Rex, the user cannot send the review. The user can only copy it.
 	Rex *rex.Client
 	// Config is the settings as JSON, from the top of rexdiff.lua. An
 	// empty text means the default settings.
 	Config string
-	// Layout and Scope, if not empty, win over the configuration. Use them
-	// for the command-line flags.
+	// Layout and Scope override the settings if they are not empty. Set
+	// them from the command-line flags.
 	Layout Layout
 	Scope  Scope
 	// Agent is the block ID or the label of the agent that the program
@@ -68,19 +68,19 @@ func (o Options) check() error {
 	return nil
 }
 
-// CheckConfig returns the error of the configuration text, a JSON object,
-// or nil if rexdiff accepts it.
+// CheckConfig returns the error of the settings text, a JSON object, or
+// nil if rexdiff accepts it.
 func CheckConfig(text string) error {
 	_, err := parseConfig(text)
 	return err
 }
 
 // Run shows the review program in the terminal. It returns when the user
-// quits or when ctx is done. If the configuration is not valid, Run
-// returns the error before it starts, as it does for options with no
-// Repo, or with a Layout or a Scope that it does not know. After an update, Run returns the
-// file of the saved state. The caller then runs the new rexdiff with
-// Options.Resume set to it.
+// quits or when ctx is done. Run returns an error before it starts if the
+// settings are not valid. It also returns an error if Repo is nil, or if
+// it does not know the Layout or the Scope. After an update, Run returns
+// the file of the saved state. The caller then runs the new rexdiff with
+// Options.Resume set to that file.
 func Run(ctx context.Context, o Options) (resume string, err error) {
 	if err := o.check(); err != nil {
 		return "", err

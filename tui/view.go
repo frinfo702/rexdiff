@@ -32,7 +32,8 @@ var (
 // truncate cuts s to w columns, with an ellipsis.
 func truncate(s string, w int) string { return ansi.Truncate(s, max(w, 0), "…") }
 
-// selStyle highlights with a tint of the terminal background.
+// selStyle returns the style of a selected row: a tint of the terminal
+// background.
 func (m *model) selStyle() lipgloss.Style {
 	if m.bg == nil {
 		return lipgloss.NewStyle().Reverse(true)
@@ -52,7 +53,7 @@ const (
 	headerTabChanges
 	headerTabFiles
 	headerTabPR
-	headerScope0  // the first scope; add the scope
+	headerScope0  // the first scope. Add the index of the scope.
 	headerBase    = headerScope0 + headerAction(len(scopes))
 	headerCommits = headerBase + 1
 	headerAgent   = headerBase + 2
@@ -68,7 +69,7 @@ type headerSpan struct {
 type headerLine struct {
 	b     strings.Builder
 	spans []headerSpan
-	x     int // the width so far
+	x     int // the width so far, in columns
 }
 
 // add adds s. A click on s does action.
@@ -104,7 +105,7 @@ func (m *model) header() (string, []headerSpan) {
 			l.add(dimStyle.Render(string(pr.Forge)+" "), headerNone)
 		}
 	}
-	// At the right: where a send goes.
+	// The right end shows where a send goes.
 	if right := m.agentLabel(); right != "" {
 		if pad := m.w - l.x - lipgloss.Width(right) - 1; pad > 0 {
 			l.add(strings.Repeat(" ", pad), headerNone)
@@ -150,7 +151,8 @@ func (m *model) commitsLabel() string {
 // shortSHA returns the first 7 characters of a commit hash.
 func shortSHA(s string) string { return s[:min(len(s), 7)] }
 
-// turnLabel tells about the last turn of an agent in the header.
+// turnLabel returns the text about the last turn of an agent, for the
+// header.
 func (m *model) turnLabel() string {
 	if m.turn == nil {
 		return dimStyle.Render("waiting for a turn")
@@ -200,7 +202,7 @@ func (m *model) listLines(h int) []string {
 	w := m.listWidth()
 	var title string
 	var n int
-	var row func(i int) string // only the rows on the screen are made
+	var row func(i int) string // the loop makes only the rows on the screen
 	switch m.tab {
 	case tabChanges:
 		title, n = fmt.Sprintf("Changes (%d)", len(m.files)), len(m.files)
@@ -339,8 +341,9 @@ func (m *model) highlighted() (lo, hi int) {
 	return -1, -1
 }
 
-// rowMark returns the gutter mark of row i, which shows line t, or nil.
-// The mark shows the cursor, the rows lo to hi, a find hit, or a comment.
+// rowMark returns the gutter mark of row i. t is the line that row i
+// shows, or nil. The mark shows the cursor, the rows lo to hi, a find hit,
+// or a comment.
 func (m *model) rowMark(i int, t *targetLine, lo, hi int) string {
 	p := m.cur()
 	_, hit := slices.BinarySearch(m.find.hits, i) // the hits are in order
@@ -411,9 +414,9 @@ func (m *model) commentLines(c *diff.Comment) []string {
 }
 
 // ensureVisible scrolls the main pane so that the cursor and the comment
-// box below it show. As in herdr-reviewr, the box shows below the last row
-// of its line. When the box is open, a line taller than the screen shows
-// only its end. When the box is closed, it shows only its first rows.
+// box below it show. The box shows below the last row of its line. When
+// the box is open, a line taller than the screen shows only its end. When
+// the box is closed, the line shows only its first rows.
 func (m *model) ensureVisible() {
 	p := m.cur()
 	h := m.bodyHeight()
@@ -450,8 +453,8 @@ func (m *model) footer() string {
 }
 
 // wrapWords breaks s into lines of width w or less, at spaces only.
-// ansi.Wrap and lipgloss let a line end with a hyphen past w, which cuts
-// "--" off the edge of the screen. A word wider than w is cut, and a
+// ansi.Wrap and lipgloss let a line end past w at a hyphen. Then the edge
+// of the screen cuts off a "--". A word wider than w is cut, and a
 // character wider than w gets a line of its own.
 func wrapWords(s string, w int) string {
 	w = max(w, 1)

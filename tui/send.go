@@ -10,8 +10,8 @@ import (
 	"github.com/rednafi/rexdiff/rex"
 )
 
-// maxSend is the largest review that rexdiff pastes into an agent. Copy a
-// larger review.
+// maxSend is the largest review, in bytes, that rexdiff pastes into an
+// agent. The user must copy a larger review.
 const maxSend = 256 << 10
 
 // listAgents returns a command that lists the agents of the session, other
@@ -80,7 +80,8 @@ func (m *model) onEvent(e rex.Event) {
 func (m *model) startTurn(block, app string) {
 	a := m.agent(block)
 	if !a.hasCwd && m.rex != nil {
-		a.cwd, _ = m.rex.Cwd(m.ctx, block) // no cwd: the agent is not in the repo
+		// An error gives "", and inRepo counts "" as in the repository.
+		a.cwd, _ = m.rex.Cwd(m.ctx, block)
 		a.hasCwd = true
 	}
 	if !m.inRepo(a.cwd) {
@@ -133,8 +134,8 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	case len(here) == 1:
 		return m.deliver(here[0])
 	case m.mode != modeNormal:
-		// The user began a comment or an overlay while the agents loaded.
-		// A picker over it would hide it, and lose a comment in writing.
+		// The user can open the comment box or an overlay while the agents
+		// load. A picker on top would hide the box and lose the comment.
 		m.flash("several agents: close the box, then press s to pick one")
 		return nil
 	}
@@ -148,8 +149,8 @@ func (m *model) reviewText() string {
 }
 
 // deliver returns a command that pastes the review into agent a. Before
-// the paste, it checks the agent again, because a prompt of the
-// agent would take the text.
+// the paste, it checks the agent again. A prompt of the agent would take
+// the text.
 func (m *model) deliver(a rex.Agent) tea.Cmd {
 	m.sends++
 	c, ctx := m.rex, m.ctx
@@ -175,15 +176,15 @@ func (m *model) deliver(a rex.Agent) tea.Cmd {
 			return sentMsg{agent: a, err: err}
 		}
 		if focus {
-			_ = c.Focus(ctx, a.Block) // best effort: the review is pasted
+			_ = c.Focus(ctx, a.Block) // ignore the error, because the paste worked
 		}
 		return sentMsg{agent: a, ids: ids}
 	}
 }
 
-// onSent removes the comments that were sent, but only if the send
-// succeeded. The comments that the user added or changed during the send
-// stay: a saved edit gives a comment a new ID, which msg does not have.
+// onSent removes the sent comments if the send worked. The comments that
+// the user added or changed during the send stay. A saved edit gives a
+// comment a new ID, and msg does not have that ID.
 func (m *model) onSent(msg sentMsg) {
 	m.sends--
 	if msg.err != nil {
@@ -226,7 +227,7 @@ func (m *model) copyComments() tea.Cmd {
 	return tea.SetClipboard(m.reviewText())
 }
 
-// flashCopy flashes why the review cannot go to an agent, and tells the
+// flashCopy shows why the review cannot go to an agent, and tells the
 // user to copy it.
 func (m *model) flashCopy(why string) { m.flash(why + ", press y to copy") }
 

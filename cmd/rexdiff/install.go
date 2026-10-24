@@ -17,8 +17,9 @@ import (
 // The install command adds a Rex action, "Toggle rexdiff", to the command
 // palette and binds it to a key. The action opens rexdiff beside the agent
 // in focus. If rexdiff runs in the session, the action closes each block
-// that runs it instead. It finds these blocks by the program status that
-// rexdiff reports. A Rex session is the same as a herdr workspace.
+// that runs rexdiff instead. The action finds these blocks by the program
+// status that rexdiff reports. A Rex session is the same as a herdr
+// workspace.
 //
 // The action is in rexdiff.lua, beside Rex's init.lua, and init.lua loads
 // it with one line. rexdiff.lua has the settings of the user at the top and
@@ -34,10 +35,11 @@ const (
 )
 
 // defaultSettings is the top of a new rexdiff.lua.
-const defaultSettings = `-- Installed by "rexdiff install". Remove with "rexdiff uninstall".
+const defaultSettings = `-- "rexdiff install" wrote this file. To remove it, run "rexdiff uninstall".
 --
--- The settings of rexdiff. Edit them, then run "rex config reload". The
--- README of rexdiff lists them. Install and upgrades keep this part.
+-- These are the settings of rexdiff. The README of rexdiff lists them.
+-- To change a setting, edit it, then run "rex config reload".
+-- Install and upgrades keep this part.
 local settings = {
   -- key = "shift+cmd+r", -- the key of the toggle, or false for none
   -- placement = "split", -- split, zoomed, tab, or overlay
@@ -59,12 +61,12 @@ local function must(res, err)
   return res
 end
 
--- call calls method on the terminal block id.
+-- call calls method on the terminal block with the ID id.
 local function call(method, id)
   return must(rex.block.call(TERM, method, { block_id = id }))
 end
 
--- runs_rexdiff tells if the terminal block id runs rexdiff. rexdiff
+-- runs_rexdiff returns true if the terminal block id runs rexdiff. rexdiff
 -- reports app=rexdiff to Rex with OSC 7501. Rex keeps an idle status after
 -- its program stops, so the block counts only while the process that
 -- reported the status is in the foreground.
@@ -89,9 +91,9 @@ local function reviewers()
   return ids
 end
 
--- check fails the action if rexdiff does not accept the settings, a JSON
--- object. The error reaches the user here, while a pane that rexdiff
--- leaves at once would close with it.
+-- check fails the action if rexdiff does not accept config, the settings
+-- as a JSON object. Here the user sees the error. If rexdiff stops at once
+-- in a new pane, the pane closes and the error is lost.
 local function check(config)
   local r, err = rex.exec({ BIN, "--check", "--config", config })
   if r == nil then error(err, 0) end
@@ -99,8 +101,8 @@ local function check(config)
 end
 
 -- open_rexdiff opens rexdiff at placement, beside the agent in ctx, with
--- the settings in config. rexdiff opens in the directory of the agent, as
--- the rex package of rexdiff finds it.
+-- the settings in config. rexdiff starts in the current directory of the
+-- agent. The rex package of rexdiff finds the directory the same way.
 local function open_rexdiff(ctx, placement, config)
   local p = call("process", ctx.block_id)
   local cwd = (p.foreground or {}).cwd or (p.child or {}).cwd
@@ -183,8 +185,8 @@ func luaCode(bin string) string {
 	return codeMark + "\n" + fmt.Sprintf(codeTemplate, binLine(bin))
 }
 
-// binLine returns the line of rexdiff.lua that names bin. It tells which
-// rexdiff a file runs.
+// binLine returns the line of rexdiff.lua that names bin. upgrade uses it
+// to find which rexdiff the file runs.
 func binLine(bin string) string { return "local BIN = " + luaQuote(bin) }
 
 // luaQuote returns s as a Lua string. Go's %q writes escapes, such as
@@ -221,7 +223,6 @@ func newLua(path, old, bin string) (string, error) {
 	return settings + luaCode(bin), err
 }
 
-// luaPath returns the path of rexdiff.lua.
 func luaPath() string { return filepath.Join(filepath.Dir(rex.ConfigPath()), luaFile) }
 
 // readFile returns the content of the file at path, or "" if there is no
@@ -242,7 +243,7 @@ func executable() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// go run deletes its binary at exit.
+	// go run deletes its binary at exit, so the action cannot run it.
 	if strings.Contains(bin, string(filepath.Separator)+"go-build") {
 		return "", errors.New("install the binary first, for example with go install, " +
 			"then run rexdiff install")
@@ -250,7 +251,8 @@ func executable() (string, error) {
 	return bin, nil
 }
 
-// install writes the action that runs bin, the path of rexdiff.
+// install writes rexdiff.lua with the action that runs bin, the path of
+// rexdiff. It adds the require line to init.lua.
 func install(
 	ctx context.Context,
 	bin string,
@@ -270,8 +272,8 @@ func install(
 			"in the settings in %s)", fs.Arg(0), luaPath())
 	}
 
-	// Make the new rexdiff.lua before writing any file, so that a bad
-	// rexdiff.lua changes nothing.
+	// Make the new content first. Then a bad rexdiff.lua stops the install
+	// before it changes a file.
 	lua := luaPath()
 	old, err := readFile(lua)
 	if err != nil {

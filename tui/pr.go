@@ -1,6 +1,7 @@
 package tui
 
-// The PR tab shows the pull request of the branch. It cannot change it.
+// The PR tab shows the pull request of the branch. The tab cannot change
+// the pull request.
 
 import (
 	"fmt"

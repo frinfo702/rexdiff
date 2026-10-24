@@ -18,8 +18,8 @@ const lineNumberColor = "8"
 // and syntax colours. Each row is a [KindEqual] row, with the same line
 // number on the two sides. The line numbers count as the [SideNew] side.
 func RenderFile(path, src string, o Options) *Diff {
-	// Chroma makes a lone CR a line break, so show it as a symbol. Then the
-	// lines are the same as [Lines] gives.
+	// Chroma makes a lone CR a line break. RenderFile shows a lone CR as a
+	// symbol, so that the lines are the same as [Lines] gives.
 	src = strings.NewReplacer(
 		"\r\n", "\n",
 		"\r", "\u240d",

@@ -37,7 +37,7 @@ func newRepo(t *testing.T) (*vcs.Repo, string) {
 	write(t, dir, "ignored.txt", "x\n")
 	write(t, dir, "build/out", "x\n")
 
-	// Open from a subdirectory: the repo must find its root.
+	// Open from a subdirectory. Open must find the root.
 	r, err := vcs.Open(t.Context(), filepath.Join(dir, "build"))
 	if err != nil {
 		t.Fatal(err)
@@ -179,9 +179,9 @@ func TestScopes(t *testing.T) {
 	}
 }
 
-// TestMissingCommit removes the objects of the commits. Head and Parent
-// must fail, and not return the empty tree, which shows every file as
-// added.
+// TestMissingCommit checks that Head and Parent fail when a commit object
+// is missing. The empty tree is not correct, because it shows every file
+// as added.
 func TestMissingCommit(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
@@ -209,6 +209,8 @@ func TestMissingCommit(t *testing.T) {
 	}
 }
 
+// TestDiffSkipsBinaryAndBigFiles checks that Diff and ReadFile mark binary
+// and big files, and do not read their content.
 func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 	r, dir := newRepo(t)
 	write(t, dir, "bin", "a\x00b")
@@ -238,6 +240,8 @@ func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 	}
 }
 
+// TestWorktree checks Files, Grep, ReadFile, and Contains in the working
+// tree.
 func TestWorktree(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
@@ -292,6 +296,7 @@ func TestWorktree(t *testing.T) {
 	}
 }
 
+// TestRefs checks Branches, DefaultBase, and Resolve.
 func TestRefs(t *testing.T) {
 	r, _ := newRepo(t)
 	ctx := t.Context()
@@ -306,6 +311,7 @@ func TestRefs(t *testing.T) {
 	}
 }
 
+// TestEditor checks that Editor returns core.editor, or "" if it is not set.
 func TestEditor(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
@@ -319,6 +325,8 @@ func TestEditor(t *testing.T) {
 	}
 }
 
+// TestDiffRenameAndSubmodule checks the old path of a rename and the
+// content that Diff gives for a submodule.
 func TestDiffRenameAndSubmodule(t *testing.T) {
 	dir := t.TempDir()
 	git(t, dir, "init", "-q")
@@ -364,13 +372,15 @@ func TestDiffRenameAndSubmodule(t *testing.T) {
 	}
 }
 
+// TestOpenOutsideARepo checks that Open fails outside a repository.
 func TestOpenOutsideARepo(t *testing.T) {
 	if _, err := vcs.Open(t.Context(), t.TempDir()); err == nil {
 		t.Error("Open: no error outside a repository")
 	}
 }
 
-// A new repository has no commit and no index yet.
+// TestNewRepo checks Head and Snapshot in a repository with no commit and
+// no index.
 func TestNewRepo(t *testing.T) {
 	dir := t.TempDir()
 	git(t, dir, "init", "-q")
@@ -387,6 +397,7 @@ func TestNewRepo(t *testing.T) {
 // TestSnapshotRacyEdit checks that Snapshot sees an edit that keeps the
 // size of a file. The edit is in the same second as the last write of the
 // index.
+//
 // git checks such "racily clean" files by their content. It finds them by
 // the modification time of the index, so the copy of the index must keep
 // that time.

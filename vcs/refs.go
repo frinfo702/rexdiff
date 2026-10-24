@@ -149,7 +149,8 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int) ([]Match, error) {
 		// git reads each line as a pattern, but no line has a newline.
 		return nil, nil
 	}
-	// --no-column stops grep.column in the configuration, which adds a field.
+	// --no-column overrides the git setting grep.column. That setting adds a
+	// field to each match.
 	out, err := r.run(ctx, nil,
 		"grep", "-n", "--no-column", "-z", "-I", "-i", "-F", "--untracked", "--no-color",
 		"-e", q)

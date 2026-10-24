@@ -9,7 +9,7 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 )
 
-// lexerCache keeps the lexer of each file name, nil if none matches. To
+// lexerCache keeps the lexer of each file name, or nil if none matches. To
 // match a name is slow, because lexers.Match tests the patterns of each
 // lexer. The mutex makes the cache safe for more than one goroutine.
 var (
@@ -36,9 +36,10 @@ func matchLexer(fileName string) chroma.Lexer {
 }
 
 // renderLines styles each line of value alone, and joins them with plain
-// newlines. A token can contain newlines, for example a chroma CommentSingle
-// ends with one. Lip Gloss pads all lines of a multi-line string to one
-// width. This adds spaces to the line after a comment.
+// newlines. A token can contain newlines. For example, a chroma
+// CommentSingle ends with one. Lip Gloss pads all lines of a multi-line
+// string to one width. Without renderLines, this padding adds spaces to
+// the line after a comment.
 func renderLines(s lipgloss.Style, value string) string {
 	if !strings.Contains(value, "\n") {
 		return s.Render(value)

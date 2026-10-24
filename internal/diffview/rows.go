@@ -115,9 +115,9 @@ func splitKind(l *splitLine) RowKind {
 // Geometry gives the columns of the line numbers in the output of String.
 // Use it to tell a line number from the code.
 type Geometry struct {
-	BeforeNum     int // width of the old line-number column
-	AfterNum      int // width of the new line-number column
-	AfterNumStart int // column where the new line numbers start
+	BeforeNum     int // the width of the old line-number column, in cells
+	AfterNum      int // the width of the new line-number column, in cells
+	AfterNumStart int // the column where the new line numbers start, from 0
 }
 
 // geometry returns the columns of the line numbers. Call it after text.

@@ -75,7 +75,7 @@ type Result string
 const (
 	ResultPass    Result = "pass"
 	ResultFail    Result = "fail"    // also an error, a cancel, or a timeout
-	ResultPending Result = "pending" // waiting or running
+	ResultPending Result = "pending" // in the queue, or not finished
 	ResultSkip    Result = "skip"    // skipped, or neutral
 )
 
@@ -307,7 +307,8 @@ func (r *Repo) gitLab(ctx context.Context) (*PullRequest, error) {
 		Base:   v.Target,
 		Body:   v.Description,
 	}
-	// The comments are optional: the merge request is useful without them.
+	// The comments are optional. If glab cannot get them, return the merge
+	// request without them.
 	var ds []gitLabDiscussion
 	args := []string{"mr", "note", "list", "--output", "json"}
 	if err := r.decode(ctx, nil, &ds, "glab", args...); err != nil {

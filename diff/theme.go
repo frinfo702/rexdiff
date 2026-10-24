@@ -10,11 +10,11 @@ import (
 // the dark or the light diff colours.
 type Theme struct {
 	// Background and Foreground are the colours of the terminal. They are nil
-	// if the terminal does not report them. Then no background is tinted.
+	// if the terminal does not report them. Then the diff tints no background.
 	Background, Foreground color.Color
 	// Green and Red are the ANSI colours 2 and 1 of the terminal. Inserted and
-	// deleted lines are tinted toward them. If they are nil, fixed colours
-	// are used.
+	// deleted lines get a tint toward them. If they are nil, the diff uses
+	// fixed colours.
 	Green, Red color.Color
 }
 

@@ -23,7 +23,7 @@ type Comment struct {
 	Stale bool
 
 	code    []string // the text of the lines Start to End
-	snippet []string // the rows as unified diff lines; if empty, Review uses code
+	snippet []string // the rows as unified diff lines, or empty to use code
 }
 
 // NewComment returns a comment with no text on side s of the file at path.
@@ -149,7 +149,9 @@ func (cs *Comments) Count(path string) int {
 // one. If the version does not have the text, the comment stays and
 // becomes stale.
 func (cs *Comments) Relocate(path, old, new string) {
-	var lines [2][]string // the lines of each side; split when a comment needs them
+	// The lines of each side. Relocate splits a side only if a comment
+	// needs it.
+	var lines [2][]string
 	for _, c := range cs.items {
 		if c.Path != path || len(c.code) == 0 {
 			continue
@@ -198,7 +200,6 @@ func matchAt(lines, want []string, at int) bool {
 	return at >= 0 && end <= len(lines) && slices.Equal(lines[at:end], want)
 }
 
-// abs returns the absolute value of x.
 func abs(x int) int {
 	if x < 0 {
 		return -x

@@ -19,7 +19,7 @@ import (
 type Kind int
 
 const (
-	KindHunk   Kind = iota // a hunk header; it shows no source line
+	KindHunk   Kind = iota // a hunk header. It shows no source line.
 	KindEqual              // a line that is the same on the two sides
 	KindInsert             // a line that only the new side has
 	KindDelete             // a line that only the old side has
@@ -118,7 +118,6 @@ func Render(path, old, new string, o Options) *Diff {
 	return d
 }
 
-// kindOf returns the Kind of a diffview row.
 func kindOf(k diffview.RowKind) Kind {
 	switch k {
 	case diffview.RowHunk:

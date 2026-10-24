@@ -119,12 +119,13 @@ func TestRenderTabsAndOffset(t *testing.T) {
 }
 
 func TestSideAt(t *testing.T) {
-	// Unified: " 1 " old numbers, " 1 " new numbers, then the code.
+	// The unified layout has " 1 " old numbers, " 1 " new numbers, and the
+	// code.
 	u := diff.Render("x.go", oldSrc, newSrc, diff.Options{Width: 80})
-	// Split: old numbers, old code, new numbers, new code.
+	// The split layout has old numbers, old code, new numbers, and new code.
 	split := diff.Options{Split: true, Width: 80}
 	s := diff.Render("x.go", oldSrc, newSrc, split)
-	// File: line numbers, then the code.
+	// A file has line numbers, and then the code.
 	f := diff.RenderFile("x.go", oldSrc, diff.Options{Width: 80})
 	tests := []struct {
 		name     string

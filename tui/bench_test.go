@@ -13,7 +13,7 @@ import (
 //	go test ./tui -run '^$' -bench Review -cpuprofile cpu.out -memprofile mem.out
 func BenchmarkReview(b *testing.B) {
 	m, dir := newTestModel(b)
-	// 20 new files of 2,000 lines each.
+	// The benchmark makes 20 new files of 2,000 lines each.
 	var src strings.Builder
 	for i := range 2000 {
 		src.WriteString("\tx := compute(" + strings.Repeat("a", i%40) + ")\n")
@@ -22,7 +22,7 @@ func BenchmarkReview(b *testing.B) {
 	for i := range 20 {
 		write(b, dir, "big"+string(rune('a'+i))+".go", content)
 	}
-	// Show a large file: reload keeps the selected file.
+	// Select a large file. The reload keeps the selected file.
 	m.reload()
 	m.pickFile(1)
 	down := tea.KeyPressMsg{Code: 'j', Text: "j"}

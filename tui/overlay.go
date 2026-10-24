@@ -41,7 +41,7 @@ const (
 // pickItem is one row of the list of an overlay.
 type pickItem struct {
 	label  string
-	detail string // dim text after the label
+	detail string // the dim text after the label
 	tag    string // a short mark at the end, for example "current"
 	// id is what the row picks: a path, a ref, a commit, or a block.
 	id      string
@@ -154,7 +154,7 @@ func (o *overlay) setSearch(files []vcs.Entry, hits []vcs.Match) {
 	o.setItems(items)
 }
 
-// open shows ov.
+// open shows ov and gives the keys to it.
 func (m *model) open(ov *overlay) {
 	m.overlay, m.mode = ov, modeOverlay
 }

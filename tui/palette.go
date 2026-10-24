@@ -10,8 +10,8 @@ import (
 )
 
 // requestPalette asks the terminal for its ANSI red and green (OSC 4), as
-// pi's system theme does. Bubble Tea has no command for this. It gives the
-// replies to Update as unknown OSC events.
+// the system theme of pi does. Bubble Tea has no command for this request.
+// Bubble Tea gives the replies to Update as unknown OSC events.
 func requestPalette() tea.Msg {
 	return tea.RawMsg{Msg: "\x1b]4;1;?\x07\x1b]4;2;?\x07"}
 }

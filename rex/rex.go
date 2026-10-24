@@ -27,7 +27,7 @@ import (
 type Client struct {
 	Block   string // the block of this process, or ""
 	session string // the ID of the session
-	bin     string // the path of the rex command; "" means "rex" in PATH
+	bin     string // the path of the rex command, or "" for "rex" in PATH
 }
 
 // FromEnv returns a client for the session of this process. Rex sets
@@ -46,9 +46,9 @@ func FromEnv() *Client {
 }
 
 // binFromEnv returns the path of the rex command. Rex sets REX_BIN_DIR
-// in its terminals. Other programs, such as brew, do not have it. Then
-// the path is "" for rex in PATH. If rex is not in PATH, it is the rex
-// of the Rex server app on macOS.
+// in its terminals. Other programs, for example brew, do not have it.
+// Then the path is "" for rex in PATH. If rex is not in PATH, the path
+// is the rex of the Rex server app on macOS.
 func binFromEnv() string {
 	if dir := os.Getenv("REX_BIN_DIR"); dir != "" {
 		return filepath.Join(dir, "rex")
@@ -90,7 +90,7 @@ func (c *Client) runRex(ctx context.Context, args ...string) ([]byte, error) {
 }
 
 // runError is a failed run of rex. Its text is the first line that rex
-// wrote to stderr, and it wraps the error of the process, for errors.As.
+// writes to stderr. It wraps the error of the process, for errors.As.
 type runError struct {
 	msg string
 	err error
@@ -137,7 +137,7 @@ type State string
 // other values, for example "error".
 const (
 	StateIdle    State = "idle"    // waits for the next instruction of the user
-	StateWorking State = "working" // runs
+	StateWorking State = "working" // does a task
 	StateDone    State = "done"    // finished a task, and the user did not look yet
 	StateBlocked State = "blocked" // cannot continue until the user does something
 )
@@ -422,7 +422,8 @@ func (c *Client) watchOnce(ctx context.Context, fn func(Event)) {
 		}
 	}
 	if lines.Err() != nil {
-		// A line is too long. Stop rex, because rex can wait for us to read.
+		// A line is too long. Stop rex, because rex can wait until Watch
+		// reads the rest of its output.
 		cmd.Process.Kill()
 	}
 	cmd.Wait()

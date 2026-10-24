@@ -60,9 +60,8 @@ func run(t *testing.T, m model, cmd tea.Cmd) (model, tea.Cmd) {
 	return *next.(*model), cmd
 }
 
-// TestUpdate checks the update from the footer: the prompt, the install in
-// the background, and the restart, which waits while the user writes a
-// comment.
+// TestUpdate checks the prompt, the install, and the restart of an update
+// from the footer.
 func TestUpdate(t *testing.T) {
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
@@ -71,7 +70,7 @@ func TestUpdate(t *testing.T) {
 		t.Fatalf("footer = %q, want %q", got, prompt)
 	}
 
-	// U starts the install. The footer tells of it.
+	// The key U starts the install, and the footer tells about it.
 	next, cmd := m.Update(tea.KeyPressMsg{Code: 'U', Text: "U"})
 	m = *next.(*model)
 	if got := lastLine(m); !strings.Contains(got, "updating rexdiff to v0.2.0…") {
@@ -86,14 +85,14 @@ func TestUpdate(t *testing.T) {
 	if restart != nil || m.restartState != "" {
 		t.Fatal("rexdiff restarts while the user writes a comment")
 	}
-	// Saving the comment lets the restart go.
+	// The restart waits until the user saves the comment.
 	m = press(t, m, "f", "i", "x", "enter")
 	if m.restartState == "" {
 		t.Fatal("no restart after the comment")
 	}
 	t.Cleanup(func() { os.Remove(m.restartState) })
 
-	// The new rexdiff reads the work back: the comment and the place.
+	// The new rexdiff reads back the comment and the place.
 	saved, err := loadState(m.restartState)
 	if err != nil {
 		t.Fatal(err)
@@ -137,8 +136,8 @@ func TestUpdateClick(t *testing.T) {
 	}
 }
 
-// TestUpdateFails checks that a failed install says why, keeps the
-// program, and lets the user try again.
+// TestUpdateFails checks that a failed install shows the reason, does not
+// restart, and lets the user try again.
 func TestUpdateFails(t *testing.T) {
 	u := &fakeUpdater{
 		latest:     update.Release{Tag: "v0.2.0"},
@@ -159,8 +158,8 @@ func TestUpdateFails(t *testing.T) {
 	}
 }
 
-// TestNoUpdate checks that the footer is quiet without a newer release,
-// after a failed check, and without an updater, and that U does nothing.
+// TestNoUpdate checks that the footer shows no release and U does nothing
+// without a newer release, after a failed check, or without an updater.
 func TestNoUpdate(t *testing.T) {
 	for _, u := range []*fakeUpdater{
 		{latest: update.Release{Tag: "v0.1.0"}},
@@ -181,8 +180,8 @@ func TestNoUpdate(t *testing.T) {
 }
 
 // TestCommentsJSON checks that comments keep their code and their rows
-// in JSON, so that they follow their lines and review the same after a
-// restart.
+// in JSON, so that they follow their lines and give the same review after
+// a restart.
 func TestCommentsJSON(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "j", "j", "j", "j", "c", "x", "enter")
@@ -197,14 +196,14 @@ func TestCommentsJSON(t *testing.T) {
 	if back.Review("p") != m.comments.Review("p") || back.Len() != 1 {
 		t.Errorf("review after JSON = %q, want %q", back.Review("p"), m.comments.Review("p"))
 	}
-	// A new comment gets a new ID after the restart too.
+	// After the restart, a new comment also gets a new ID.
 	if c := back.Add(diff.Comment{Path: "a.go", Start: 1, End: 1}); c.ID != 2 {
 		t.Errorf("ID of a new comment = %d, want 2", c.ID)
 	}
 }
 
-// TestRestartWaits checks that the restart does not drop work: it waits for
-// a send that runs, and for a message whose command is not done.
+// TestRestartWaits checks that the restart waits for a running send and for
+// a message whose command is not done.
 func TestRestartWaits(t *testing.T) {
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
@@ -219,8 +218,8 @@ func TestRestartWaits(t *testing.T) {
 	}
 	os.Remove(m.restartState)
 
-	// In the PR tab, the key r returns the command that loads the PR, so
-	// it does not restart; a message without a command does.
+	// In the PR tab, the key r returns the command that loads the PR. Thus
+	// r does not restart, but a message without a command does.
 	m = updaterModel(t, u)
 	m.tab = tabPR
 	m.phase = phaseInstalled
@@ -235,7 +234,7 @@ func TestRestartWaits(t *testing.T) {
 }
 
 // TestRestorePRPlace checks that the place in the PR tab comes back after
-// a restart, though the PR loads after the restore.
+// a restart, although the PR loads after the restore.
 func TestRestorePRPlace(t *testing.T) {
 	m, _ := newTestModel(t)
 	saved := &savedState{PR: savedPane{Cur: 7, Top: 3}, Comments: new(diff.Comments)}
@@ -265,7 +264,7 @@ func TestUpdateClickRule(t *testing.T) {
 }
 
 // TestRestartSaveFails checks that a failed save of the state tells the
-// user, and stops trying, so that rexdiff goes on with the old version.
+// user and stops the restart, so that rexdiff continues with the old version.
 func TestRestartSaveFails(t *testing.T) {
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
@@ -373,7 +372,7 @@ func TestSendKeepsEdits(t *testing.T) {
 			t.Errorf("save first %v: comments after the send = %q, want the edited comment", saveFirst, got)
 		}
 	}
-	// A comment that the user did not touch goes with the send.
+	// The send removes a comment that the user did not change.
 	m, _ := newTestModel(t)
 	m = press(t, m, "j", "j", "j", "j", "c", "x", "enter")
 	m.sends = 1
@@ -384,7 +383,7 @@ func TestSendKeepsEdits(t *testing.T) {
 }
 
 // TestPickerWaitsForComment checks that the agent picker does not open over
-// a comment that the user began while the agents loaded.
+// a comment that the user starts while the agents load.
 func TestPickerWaitsForComment(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "j", "j", "j", "j", "c", "h", "i")

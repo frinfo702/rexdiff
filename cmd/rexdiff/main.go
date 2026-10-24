@@ -2,7 +2,8 @@
 // Rex. You can comment on the changed lines, then paste the comments into the
 // agent. "rexdiff install" adds a "Toggle rexdiff" action and a key to the Rex
 // configuration, in rexdiff.lua beside Rex's init.lua. The settings of rexdiff
-// are at the top of rexdiff.lua. The action passes them in --config.
+// are at the top of rexdiff.lua. The action gives them to rexdiff in the
+// --config flag.
 //
 //	rexdiff [flags] [repo]
 //	rexdiff install
@@ -85,8 +86,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	defer closeLog()
 
-	// In Rex, replace the code of the action if it differs from the code
-	// of this rexdiff.
+	// In Rex, upgrade replaces the code of the action if it differs from
+	// the code of this rexdiff.
 	client := rex.FromEnv()
 	var notice string
 	bin, binErr := executable()
@@ -95,7 +96,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	var updater tui.Updater
 	if u := update.Detect(bin, version); u != nil {
-		updater = u // not a nil *Updater in a non-nil interface
+		updater = u // a nil *update.Updater would make a non-nil interface
 	}
 	resume, err := tui.Run(ctx, tui.Options{
 		Repo:    repo,
@@ -114,19 +115,19 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err != nil || resume == "" {
 		return err
 	}
-	// After an update, run the new rexdiff in this process, with the same
+	// After an update, run the new rexdiff in this process with the same
 	// flags. resumeEnv gives it the saved state.
 	closeLog()
 	if err = os.Setenv(resumeEnv, resume); err == nil {
 		err = update.Restart(bin, args) // returns only if it fails
 	}
-	fmt.Print("\x1b[?1049l\x1b[?25h") // leave the screen that Run kept
+	fmt.Print("\x1b[?1049l\x1b[?25h") // leave the screen that Run kept, show the cursor
 	return fmt.Errorf("start the new rexdiff: %w; your comments are saved in %s", err, resume)
 }
 
-// resumeEnv is the variable that gives a restarted rexdiff the file of the
-// state from before the update. A variable keeps the flags of the user as
-// they are.
+// resumeEnv is the variable that gives a restarted rexdiff the path of the
+// file with the state from before the update. rexdiff uses a variable, not a
+// flag, so that the arguments of the user do not change.
 const resumeEnv = "REXDIFF_RESUME"
 
 // resumeFile returns the file in resumeEnv, or "", and unsets the variable,
@@ -157,7 +158,7 @@ type flags struct {
 }
 
 // parseFlags parses the arguments of the diff viewer. It writes the usage
-// and errors to stderr. After -h, it returns flag.ErrHelp.
+// and errors to stderr. For -h, it returns flag.ErrHelp.
 func parseFlags(args []string, stderr io.Writer) (flags, error) {
 	var f flags
 	fs := flag.NewFlagSet("rexdiff", flag.ContinueOnError)
@@ -198,7 +199,7 @@ func oneOf[T ~string](p *T, allowed ...T) func(string) error {
 	}
 }
 
-// join returns the values, separated by commas.
+// join returns the values separated by ", ".
 func join[T ~string](values []T) string {
 	var b strings.Builder
 	for i, v := range values {

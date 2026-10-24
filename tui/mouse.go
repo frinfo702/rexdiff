@@ -23,7 +23,7 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		return m.clickOverlay(mouse)
 	}
 	if m.mode == modeComment {
-		// As in herdr-reviewr, a click does nothing while the user writes.
+		// A click does nothing while the comment box is open.
 		return nil
 	}
 	if mouse.Y == 0 {
@@ -103,7 +103,7 @@ func (m *model) onDrag(mouse tea.Mouse) {
 }
 
 // onRelease ends a drag. A drag on the line numbers opens the comment
-// box; a drag on the code copies the lines.
+// box. A drag on the code copies the lines.
 func (m *model) onRelease() tea.Cmd {
 	d := m.drag
 	m.drag.active = false
@@ -180,7 +180,7 @@ func (m *model) onWheel(mouse tea.Mouse) {
 	p := m.cur()
 	h := m.bodyHeight()
 	p.top = min(max(p.top+wheelStep*d, 0), max(len(p.lines)-h, 0))
-	// As in herdr-reviewr, the wheel moves the view and not the cursor.
+	// The wheel moves the view and not the cursor.
 	p.free = true
 }
 

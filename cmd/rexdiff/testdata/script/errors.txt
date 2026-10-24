@@ -24,7 +24,7 @@ exec git init -q repo
 ! exec rexdiff -config '{"layuot": "split"}' repo
 stderr '^rexdiff: config: unknown key "layuot"$'
 
-# install takes no arguments: the key and the placement are settings.
+# install takes no arguments. The key and the placement are settings.
 ! exec rexdiff install --placement=tab
 stderr 'flag provided but not defined: -placement'
 ! exec rexdiff install extra

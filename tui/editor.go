@@ -14,7 +14,7 @@ import (
 )
 
 // openEditor opens the file at path, at line. It uses the editor of the
-// configuration, else $VISUAL, $EDITOR, core.editor, or vi. In Rex, the
+// settings, else $VISUAL, $EDITOR, core.editor, or vi. In Rex, the
 // editor opens in a new block beside rexdiff.
 func (m *model) openEditor(path string, line int) tea.Cmd {
 	abs := filepath.Join(m.repo.Root(), path)
@@ -41,7 +41,7 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 	return tea.ExecProcess(exec.Command("sh", "-c", script), done)
 }
 
-// openURL opens url with the URL opener of the configuration, else with
+// openURL opens url with the URL opener of the settings, else with
 // the opener of the system.
 func openURL(cfg config, url string) error {
 	if cfg.URLOpener != "" {

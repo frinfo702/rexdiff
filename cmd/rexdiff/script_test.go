@@ -36,8 +36,8 @@ func fakeRex() {
 	fmt.Println("config reloaded")
 }
 
-// userEnv are the variables of the user that change what rexdiff and rex
-// do. The scripts start with them empty.
+// userEnv lists the variables of the user that change what rexdiff and rex
+// do. Each script starts with them empty.
 var userEnv = []string{
 	"REX_BIN_DIR",
 	"REX_CONFIG",

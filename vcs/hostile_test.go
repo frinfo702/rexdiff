@@ -20,7 +20,8 @@ func commitAll(t *testing.T, dir string) {
 	git(t, dir, "commit", "-qm", "all")
 }
 
-// A rev that starts with "-" is a rev. git must not read it as an option.
+// TestRevIsNotAnOption checks that git does not read a rev that starts
+// with "-" as an option.
 func TestRevIsNotAnOption(t *testing.T) {
 	r, _ := newRepo(t)
 	ctx := t.Context()
@@ -101,6 +102,8 @@ func TestHostilePaths(t *testing.T) {
 	}
 }
 
+// TestDiffFileKinds checks what Diff gives for links, file modes,
+// directories, line ends, and empty files.
 func TestDiffFileKinds(t *testing.T) {
 	r, dir := newRepo(t)
 	git(t, dir, "config", "core.autocrlf", "false")
@@ -150,8 +153,8 @@ func TestDiffFileKinds(t *testing.T) {
 	}
 }
 
-// A git repository in the working tree that has no commit cannot be added.
-// Snapshot must add the other files.
+// TestSnapshotNestedRepo checks that Snapshot adds the other files when git
+// cannot add a nested repository with no commit.
 func TestSnapshotNestedRepo(t *testing.T) {
 	r, dir := newRepo(t)
 	commitAll(t, dir)
@@ -203,6 +206,8 @@ func TestReadFileStaysInRoot(t *testing.T) {
 	}
 }
 
+// TestOpenRootWithNewline checks Open and Diff in a root whose path has a
+// newline.
 func TestOpenRootWithNewline(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "a\nb")
 	git(t, filepath.Dir(dir), "init", "-q", dir)
@@ -219,8 +224,8 @@ func TestOpenRootWithNewline(t *testing.T) {
 	}
 }
 
-// TestGitWorktree checks a working tree that "git worktree add" made. It
-// has its own index.
+// TestGitWorktree checks a working tree that "git worktree add" made. Such
+// a working tree has its own index.
 func TestGitWorktree(t *testing.T) {
 	_, dir := newRepo(t)
 	ctx := t.Context()
@@ -244,6 +249,7 @@ func TestGitWorktree(t *testing.T) {
 	}
 }
 
+// TestDetachedHead checks Diff and Commits when HEAD is detached.
 func TestDetachedHead(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
@@ -295,8 +301,8 @@ func TestGrepIsLiteral(t *testing.T) {
 	}
 }
 
-// A subject can have any byte, for example the separator of the fields of
-// the log.
+// TestCommitsHostileSubject checks that Commits keeps each byte of a
+// subject, for example the field separator of the log.
 func TestCommitsHostileSubject(t *testing.T) {
 	r, dir := newRepo(t)
 	subjects := []string{"a\x1fb", "\x1b[31mred\x1b[0m", "tab\there"}

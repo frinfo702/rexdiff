@@ -1,5 +1,5 @@
-// Package diffview draws a diff in the terminal. It is vendored from crush and
-// changed for rexdiff. See ../VENDORED.md.
+// Package diffview draws a diff in the terminal. The code comes from
+// charmbracelet/crush, with changes for rexdiff. See ../VENDORED.md.
 package diffview
 
 import (
@@ -61,16 +61,16 @@ type View struct {
 
 	codeWidth       int
 	fullCodeWidth   int  // with the leading symbols
-	extraColOnAfter bool // in the split layout, the new side is one cell wider
+	extraColOnAfter bool // the new side of the split layout is one cell wider
 	beforeNumDigits int
 	afterNumDigits  int
-	heights         []int // the screen lines of each row, for Rows
+	heights         []int // the number of screen lines of each row, for rows
 
-	// The lexer is cached, because to match a file name is slow.
+	// The View keeps the lexer, because to match a file name is slow.
 	cachedLexer chroma.Lexer
 
-	// syntaxCache keeps the highlighted lines, so that equal lines are
-	// highlighted once.
+	// syntaxCache keeps the highlighted lines, so that the View highlights
+	// each equal line once.
 	syntaxCache map[syntaxKey]string
 }
 
@@ -104,7 +104,8 @@ func (v *View) After(path, content string) *View {
 	return v
 }
 
-// clearCaches clears the caches when the content changes.
+// clearCaches clears the lexer, the syntax cache, and the diff. Call it when
+// the content changes.
 func (v *View) clearCaches() {
 	v.cachedLexer = nil
 	clear(v.syntaxCache)
@@ -142,7 +143,8 @@ func (v *View) Render() (string, []Row, Geometry) {
 	return out, v.rows(), v.geometry()
 }
 
-// text returns the rendered diff.
+// text returns the rendered diff. It also sets the fields that rows and
+// geometry use.
 func (v *View) text() string {
 	v.heights = v.heights[:0]
 	v.normalizeLineEndings()
@@ -187,7 +189,8 @@ func (v *View) replaceTabs() {
 	}
 }
 
-// computeDiff computes the difference between the two versions.
+// computeDiff computes the diff of the two versions once. Then it returns
+// the error of the first call.
 func (v *View) computeDiff() error {
 	if v.isComputed {
 		return v.err
@@ -290,7 +293,7 @@ func (v *View) detectSplitCodeWidth() {
 // resizeCodeWidth sets the code width so that the lines fit in the width.
 func (v *View) resizeCodeWidth() {
 	fullNumWidth := v.beforeNumDigits + v.afterNumDigits
-	fullNumWidth += lineNumPadding * 4 // left and right padding for both line numbers
+	fullNumWidth += lineNumPadding * 4 // two sides of two line numbers
 
 	switch v.layout {
 	case layoutUnified:
@@ -389,8 +392,8 @@ func (v *View) splitHeader(h *udiff.Hunk) string {
 
 // splitSide renders line l on one side of the split layout, one string for
 // each screen line. l is nil if that side has no line, and n is its line
-// number. The fill func renders an empty screen line, for when the other
-// side has more screen lines.
+// number. The fill function renders an empty screen line. Use it when the
+// other side has more screen lines.
 func (v *View) splitSide(
 	l *udiff.Line,
 	n, digits, width int,
@@ -429,7 +432,7 @@ func (v *View) kindStyle(k udiff.OpKind) (lineStyle, string) {
 }
 
 // writeRow writes the screen lines of one row to b, and keeps their number
-// for Rows.
+// for rows.
 func (v *View) writeRow(b *strings.Builder, lines []string) {
 	for _, l := range lines {
 		b.WriteString(l)
@@ -502,8 +505,8 @@ func hunkLineCounts(h *udiff.Hunk) (before, after int) {
 }
 
 // highlightCode returns source with syntax colours on the background
-// bgColor. The syntax cache keeps the result, so equal lines are
-// highlighted once. If highlighting fails, it returns source as it is.
+// bgColor. The syntax cache keeps the result, so highlightCode highlights
+// each equal line once. If chroma fails, it returns source as it is.
 func (v *View) highlightCode(source string, bgColor color.Color) string {
 	// Chroma makes a lone CR a line break, so show it as a symbol first.
 	source = strings.ReplaceAll(source, "\r", "\u240d")
@@ -554,9 +557,10 @@ func (v *View) chromaLexer() chroma.Lexer {
 }
 
 // Lexer returns the coalesced lexer for the file at path. If no lexer
-// matches the name, it selects one from the content, else the fallback.
+// matches the name, it selects one from the content. If no lexer matches
+// the content, it returns the fallback lexer.
 func Lexer(path, content string) chroma.Lexer {
-	// matchLexer is memoized and already coalesced.
+	// matchLexer caches the lexer, and the lexer is already coalesced.
 	if l := matchLexer(path); l != nil {
 		return l
 	}

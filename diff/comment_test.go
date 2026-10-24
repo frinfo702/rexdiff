@@ -63,8 +63,8 @@ func TestReviewMatchesHerdr(t *testing.T) {
 	}
 }
 
-// A comment on continued rows only has no diff lines. Review then writes
-// the lines of its range.
+// TestReviewContinuedRows checks a comment on only continued rows. The
+// comment has no diff lines, so Review writes the lines of its range.
 func TestReviewContinuedRows(t *testing.T) {
 	old, new := "", strings.Repeat("word ", 20)+"\n"
 	d := diff.Render("a.go", old, new, diff.Options{Width: 30, Wrap: true})
@@ -112,7 +112,7 @@ func TestComments(t *testing.T) {
 	}
 }
 
-// TestNewComment makes comments from the rows of a change, in the two
+// TestNewComment checks comments from the rows of a change, in the two
 // layouts, on each side.
 func TestNewComment(t *testing.T) {
 	old := "a\nb\nc\nd\n"
@@ -136,7 +136,7 @@ func TestNewComment(t *testing.T) {
 				t.Errorf("split %v, side %d: Review:\n%s\nwant:\n%s",
 					split, s, got, want)
 			}
-			// The comment has the lines of its side: it follows them.
+			// The comment follows the lines of its side.
 			var cs diff.Comments
 			got := cs.Add(c)
 			cs.Relocate("x.txt", moved+old, moved+new)
@@ -145,7 +145,7 @@ func TestNewComment(t *testing.T) {
 					split, s, got)
 			}
 		}
-		// Only the inserted lines: the range is on the new side.
+		// A comment on only the inserted lines has its range on the new side.
 		var ins []diff.Row
 		for _, r := range rows {
 			if r.Kind == diff.KindInsert || r.Kind == diff.KindChange {
@@ -201,8 +201,8 @@ func TestRelocateFollowsMovedCode(t *testing.T) {
 	}
 }
 
-// The snippet must be the real diff, with raw text and tabs, in both
-// layouts. It must match the lines of git diff.
+// TestSnippetIsTheRealDiff checks that the snippet is the real diff, with
+// raw text and tabs, in both layouts. The snippet must match git diff.
 func TestSnippetIsTheRealDiff(t *testing.T) {
 	old := "func a() {\n\treturn 1\n}\n"
 	new := "func a() {\n\t// two\n\treturn 2\n}\n"

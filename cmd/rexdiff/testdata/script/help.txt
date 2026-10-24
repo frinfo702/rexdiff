@@ -9,6 +9,6 @@ stderr '-config string'
 exec rexdiff -version
 stdout '^\(devel\)$'
 
-# install -h writes nothing.
+# install -h writes no file.
 exec rexdiff install -h
 ! exists .config/rex

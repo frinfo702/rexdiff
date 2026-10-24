@@ -46,7 +46,7 @@ const (
 	positionLeft  position = "left"
 )
 
-// The values that the configuration accepts, in the order of the help.
+// The values that the settings accept, in the order of the error messages.
 var (
 	layouts       = []Layout{LayoutUnified, LayoutSplit}
 	configScopes  = []Scope{ScopeUncommitted, ScopeBranch, ScopeLastTurn}
@@ -54,9 +54,9 @@ var (
 	positions     = []position{positionRight, positionLeft}
 )
 
-// config is the configuration of rexdiff. It is at the top of rexdiff.lua,
-// beside Rex's init.lua, and the toggle action passes it to rexdiff as
-// JSON in --config.
+// config holds the settings of rexdiff. The settings are at the top of
+// rexdiff.lua, beside the init.lua of Rex. The toggle action gives them to
+// rexdiff as JSON in --config.
 type config struct {
 	Layout       Layout `json:"layout"`
 	DefaultScope Scope  `json:"default_scope"`
@@ -144,8 +144,8 @@ type keybindings struct {
 // minListWidth is the smallest width of the file list, in columns.
 const minListWidth = 16
 
-// defaultConfig returns the configuration that applies to each setting
-// that --config does not set.
+// defaultConfig returns the value of each setting that --config does not
+// set.
 func defaultConfig() config {
 	return config{
 		Layout:        LayoutUnified,
@@ -156,16 +156,16 @@ func defaultConfig() config {
 	}
 }
 
-// parseConfig reads the JSON text over the default configuration. An
-// empty text means the default configuration. An unknown key, a key in
-// the wrong case, or a bad value is an error.
+// parseConfig reads the JSON text over the default settings. An empty
+// text gives the default settings. An unknown key, a key in the wrong
+// case, or a bad value gives an error.
 func parseConfig(text string) (config, error) {
 	c := defaultConfig()
 	if text == "" {
 		return c, nil
 	}
-	// set tells which keys the text has, so that a blank text that the
-	// user sets is an error, and a text that is not set is not.
+	// set tells which keys the text has. A blank text that the user sets
+	// is an error. A text that the user does not set is not an error.
 	var set map[string]jsontext.Value
 	if err := json.Unmarshal([]byte(text), &set); err != nil {
 		return config{}, configError(err)
@@ -179,8 +179,8 @@ func parseConfig(text string) (config, error) {
 	return c, nil
 }
 
-// configError turns an error of the JSON decoder into an error in the
-// words of the configuration, for example "keybindings.send" for the key.
+// configError changes an error of the JSON decoder into an error that
+// uses the names of the settings, for example "keybindings.send".
 func configError(err error) error {
 	se, ok := errors.AsType[*json.SemanticError](err)
 	if !ok {
@@ -202,7 +202,7 @@ func configError(err error) error {
 	case reflect.Bool:
 		want = "true or false"
 	case reflect.Slice:
-		want = "a list of keys" // an empty Lua table is an object
+		want = "a list of keys" // an empty Lua table encodes as a JSON object
 	}
 	return fmt.Errorf("config: invalid value for %s: expected %s, not %s",
 		key, want, jsonKinds[se.JSONKind])
@@ -220,7 +220,7 @@ var jsonKinds = map[jsontext.Kind]string{
 }
 
 // check returns an error for the first value that rexdiff does not accept.
-// set has the keys that the configuration sets.
+// set has the keys that the text sets.
 func (c config) check(set map[string]jsontext.Value) error {
 	if err := c.checkChoices(); err != nil {
 		return err
@@ -259,8 +259,7 @@ func (c config) checkChoices() error {
 }
 
 // checkTexts checks the commands and the review prefix. A command can use
-// only its placeholders. A text that the configuration sets must not be
-// blank.
+// only its placeholders. A text that the user sets must not be blank.
 func (c config) checkTexts(set map[string]jsontext.Value) error {
 	commands := []struct {
 		key, value, want string
@@ -317,7 +316,6 @@ func (c config) checkKeybindings() error {
 	return nil
 }
 
-// invalid returns the error for a bad value of key.
 func invalid(key, want, value string) error {
 	return fmt.Errorf("invalid value for %s: expected %s, not %q", key, want, value)
 }
@@ -368,7 +366,6 @@ func hostLabel(s string) bool {
 // focusAgent tells if the focus moves to the agent after a send.
 func (c config) focusAgent() bool { return c.FocusAgent == nil || *c.FocusAgent }
 
-// names returns the values as strings.
 func names[T ~string](values ...T) []string {
 	s := make([]string, len(values))
 	for i, v := range values {

@@ -1,11 +1,11 @@
 // Package update finds a newer release of rexdiff, installs it, and starts
 // it in place of the running program.
 //
-// [Detect] tells how rexdiff was installed. Its [Updater] finds the latest
-// [Release] and installs it the same way: with Homebrew, with go install,
-// or by downloading the archive of the release from GitHub and checking it
-// with the checksums of the release. [Restart] runs the new binary in the
-// same process, so the terminal and the process ID stay.
+// [Detect] finds how the user installed rexdiff. Its [Updater] finds the
+// latest [Release] and installs it the same way. It uses Homebrew or go
+// install. Else it downloads the archive of the release from GitHub and
+// checks it with the checksums of the release. [Restart] runs the new binary
+// in the same process, so the terminal and the process ID stay.
 package update
 
 import (
@@ -33,22 +33,22 @@ import (
 )
 
 // latestURL is the GitHub API address of the latest release of rexdiff.
-// The variable REXDIFF_LATEST_URL replaces it, to test a release before it
-// is out.
+// REXDIFF_LATEST_URL replaces it (see [Detect]).
 const latestURL = "https://api.github.com/repos/rednafi/rexdiff/releases/latest"
 
 // modulePath is the path of the main package, for go install.
 const modulePath = "github.com/rednafi/rexdiff/cmd/rexdiff"
 
-// Limits of the network and of the commands.
+// Limits of the network and of the commands. The sizes are in bytes.
 const (
 	checkTimeout   = 5 * time.Second
 	installTimeout = 5 * time.Minute
-	maxArchive     = 64 << 20 // the largest archive that Download takes
-	maxBinary      = 128 << 20
+	maxArchive     = 64 << 20  // the largest archive that download accepts
+	maxBinary      = 128 << 20 // the largest binary in an archive
 )
 
-// method is how rexdiff was installed, and so how an update installs it.
+// method is how the user installed rexdiff. An update installs it the same
+// way.
 type method string
 
 const (
@@ -57,34 +57,35 @@ const (
 	methodDownload method = "download" // an archive of a release
 )
 
-// Release is a release of rexdiff on GitHub. [Updater.Latest] makes one;
-// a Release made by hand has no files, so Install cannot install it.
+// Release is a release of rexdiff on GitHub. Get one from [Updater.Latest].
+// A Release that you make yourself has no files, so Install cannot install
+// it.
 type Release struct {
 	Tag    string // for example "v0.2.0"
 	assets []asset
 }
 
-// asset is a file of a release.
+// asset is a file that is attached to a GitHub release.
 type asset struct {
 	Name string `json:"name"`
 	URL  string `json:"browser_download_url"`
 }
 
-// Updater installs releases of a rexdiff. Use [Detect] to make one.
+// Updater installs releases of rexdiff. Use [Detect] to make one.
 type Updater struct {
-	bin       string // the path of rexdiff, as the user runs it; it can be a link
+	bin       string // the path of rexdiff as the user runs it, maybe a symlink
 	version   string // the version of the running rexdiff, for example "v0.1.0"
 	method    method
 	brew      string // the brew of the Caskroom of bin, for methodBrew
 	latestURL string
-	// run runs a command and returns its output. Tests change it.
+	// run runs a command and returns its output. Tests replace it.
 	run func(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
 }
 
-// Version returns the version of rexdiff, like "v0.2.0". stamped is the
-// version that the release build sets, for example "0.2.0", or "". Without
-// it, Version returns the version of the module that go install records,
-// or "" for a build for development.
+// Version returns the version of rexdiff, for example "v0.2.0". stamped is
+// the version that the release build sets, for example "0.2.0", or "". If
+// stamped is "", Version returns the module version that go install
+// records. For a build for development, Version returns "".
 func Version(stamped string) string {
 	if stamped != "" {
 		return "v" + strings.TrimPrefix(stamped, "v")
@@ -101,17 +102,18 @@ func Version(stamped string) string {
 // [Version]. Detect returns nil if rexdiff cannot update itself, for
 // example a build for development.
 //
-// The Updater installs a release the way rexdiff was installed: with
-// Homebrew if bin links into a Caskroom, with go install if stamped is ""
-// and the version comes from go install, and else by download. The
-// variable REXDIFF_LATEST_URL, if set, is the address of the latest
-// release, to test a release before it is out.
+// The Updater installs a release the same way as the user installed
+// rexdiff. If bin links into a Caskroom, it uses Homebrew. If stamped is ""
+// and the version comes from go install, it uses go install. Else it
+// downloads the release. If REXDIFF_LATEST_URL is set, the Updater gets the
+// latest release from that address. Use it to test a release before it is
+// out.
 func Detect(bin, stamped string) *Updater {
 	return detect(bin, Version(stamped), stamped == "")
 }
 
-// detect returns the Updater of the rexdiff at bin of the version. goInstall
-// tells that the version comes from go install.
+// detect is [Detect] with the version already found. goInstall is true if
+// the version comes from go install.
 func detect(bin, version string, goInstall bool) *Updater {
 	if _, valid := numbers(version); bin == "" || !valid {
 		return nil
@@ -138,7 +140,7 @@ func detect(bin, version string, goInstall bool) *Updater {
 }
 
 // Latest returns the latest release, and whether it is newer than the
-// running rexdiff. It gives up after five seconds.
+// running rexdiff. Latest stops and returns an error after five seconds.
 func (u *Updater) Latest(ctx context.Context) (Release, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
@@ -158,21 +160,22 @@ func (u *Updater) Latest(ctx context.Context) (Release, bool, error) {
 }
 
 // Install installs the release r, and checks that the binary of rexdiff is
-// then the version of r. Install does not stop the running rexdiff. The
+// then the version of r. Install does not stop the running rexdiff. A
 // cancel of ctx does not stop an install that runs, because a stopped brew
-// can leave a broken cask; Install gives up after five minutes.
+// can leave a broken cask. Install stops after five minutes.
 func (u *Updater) Install(ctx context.Context, r Release) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), installTimeout)
 	defer cancel()
 	var err error
 	switch u.method {
 	case methodBrew:
-		// No hints and no questions: nobody sees the output.
+		// Turn off the hints and the prompts of brew, because no user sees
+		// the output.
 		env := []string{"HOMEBREW_NO_ENV_HINTS=1", "NONINTERACTIVE=1"}
 		brew := cmp.Or(u.brew, "brew")
-		// brew upgrade knows the casks as of the last update of the taps,
-		// which can be a day old, so it would not see the release. Update
-		// the taps first, and only once.
+		// brew updates its taps at most once a day. Thus brew upgrade can
+		// miss a new release. Update the taps first. Then
+		// HOMEBREW_NO_AUTO_UPDATE stops a second update.
 		if _, err = u.command(ctx, env, brew, "update", "--quiet"); err == nil {
 			env = append(env, "HOMEBREW_NO_AUTO_UPDATE=1")
 			_, err = u.command(ctx, env, brew, "upgrade", "--cask", "rexdiff")
@@ -181,12 +184,13 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 		// GOBIN puts the new binary where the old one is.
 		env := []string{"GOBIN=" + filepath.Dir(u.bin)}
 		goTool := "go"
-		if _, err := exec.LookPath(goTool); err != nil { // not in the PATH of Rex
+		// Rex starts panes with a PATH without Go.
+		if _, err := exec.LookPath(goTool); err != nil {
 			goTool = tool("go", "/opt/homebrew/bin", "/usr/local/go/bin", "/usr/local/bin")
 		}
 		_, err = u.command(ctx, env, goTool, "install", modulePath+"@"+r.Tag)
 	default:
-		return u.download(ctx, r) // it checks the version before it replaces
+		return u.download(ctx, r) // it checks the version before the replace
 	}
 	if err != nil {
 		return err
@@ -224,9 +228,9 @@ func (u *Updater) command(ctx context.Context, env []string, name string, args .
 	return out, fmt.Errorf("%s: %w", filepath.Base(name), err)
 }
 
-// tool returns the path of the program name in dirs, or else the name, for
-// a look in PATH. dirs come first because Rex starts rexdiff with the PATH
-// of the Rex app, which has no directory of Homebrew or of Go.
+// tool returns the path of the program name in dirs. Else it returns name,
+// and exec looks for it in PATH. tool looks in dirs first, because Rex
+// starts panes with a PATH without Homebrew or Go.
 func tool(name string, dirs ...string) string {
 	for _, dir := range dirs {
 		path := filepath.Join(dir, name)
@@ -251,8 +255,8 @@ func lastLine(out []byte) string {
 }
 
 // download downloads the archive of r for this system, checks it with the
-// checksums of r, and puts its binary in place of the real file of the
-// binary.
+// checksums of r, and puts its binary in place of the file that u.bin
+// links to.
 func (u *Updater) download(ctx context.Context, r Release) error {
 	name := fmt.Sprintf("rexdiff-%s-%s-%s.tar.gz", r.Tag, runtime.GOOS, runtime.GOARCH)
 	archiveURL, sumsURL := assetURL(r, name), assetURL(r, "sha256sums.txt")
@@ -296,7 +300,7 @@ func assetURL(r Release, name string) string {
 	return ""
 }
 
-// checksum returns the SHA-256 of the file name in a sha256sums.txt.
+// checksum returns the hex SHA-256 of the file name in a sha256sums.txt.
 func checksum(sums []byte, name string) (string, bool) {
 	for line := range strings.SplitSeq(string(sums), "\n") {
 		sum, file, ok := strings.Cut(strings.TrimSpace(line), "  ")
@@ -307,7 +311,7 @@ func checksum(sums []byte, name string) (string, bool) {
 	return "", false
 }
 
-// binaryOf returns the file rexdiff in a .tar.gz archive.
+// binaryOf returns the content of the file rexdiff in a .tar.gz archive.
 func binaryOf(archive []byte) ([]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
@@ -333,14 +337,14 @@ func binaryOf(archive []byte) ([]byte, error) {
 }
 
 // replaceFile puts content in place of the file at path, in one rename, so
-// that path is never a half-written file. check runs on the new file first;
-// if it fails, path stays as it was.
+// that path is never a half-written file. check runs on the new file first.
+// If check fails, path does not change.
 func replaceFile(path string, content []byte, check func(tmp string) error) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".rexdiff-update-*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name()) // no effect after the rename
+	defer os.Remove(tmp.Name()) // does nothing after the rename
 	if _, err := tmp.Write(content); err != nil {
 		tmp.Close()
 		return err
@@ -391,8 +395,8 @@ func Restart(bin string, args []string) error {
 
 // newer reports whether the version tag is newer than the version have.
 // Both are like "v1.2.3". A version that is not "v" and three numbers is
-// never newer, so a build for development does not ask to update, and a tag
-// that names no archive of GoReleaser is not offered.
+// never newer. Thus a build for development does not ask to update. Also,
+// rexdiff does not offer a tag that names no archive of GoReleaser.
 func newer(tag, have string) bool {
 	t, ok1 := numbers(tag)
 	h, ok2 := numbers(have)
@@ -420,7 +424,7 @@ func numbers(v string) ([3]int, bool) {
 	}
 	for i, p := range parts {
 		if p == "" || strings.Trim(p, "0123456789") != "" {
-			return n, false // Atoi takes a sign, a version does not
+			return n, false // Atoi accepts a sign, but a version has none
 		}
 		x, err := strconv.Atoi(p)
 		if err != nil {

@@ -18,6 +18,7 @@ import (
 	"testing"
 )
 
+// TestNewer checks which tags are newer than the running version.
 func TestNewer(t *testing.T) {
 	tests := []struct {
 		tag, have string
@@ -34,7 +35,7 @@ func TestNewer(t *testing.T) {
 		{"v0.2.0", "v0.0.0-20261024-abcdef", false},
 		{"", "v0.1.0", false},
 		{"v0.2.0", "", false},
-		{"v+1.0.0", "v0.9.0", false}, // Atoi takes the sign
+		{"v+1.0.0", "v0.9.0", false}, // Atoi accepts a sign
 		{"v1.-0.0", "v0.9.0", false},
 	}
 	for _, tc := range tests {
@@ -44,7 +45,8 @@ func TestNewer(t *testing.T) {
 	}
 }
 
-// file writes content to a new file at path, and returns path.
+// file writes content to a new file at path with mode 0755, and returns
+// path.
 func file(t *testing.T, path, content string) string {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -56,8 +58,8 @@ func file(t *testing.T, path, content string) string {
 	return path
 }
 
-// TestDetect checks that Detect tells a Homebrew cask by the Caskroom that
-// its link points into, and go install by its flag.
+// TestDetect checks that detect finds a Homebrew cask by the Caskroom of
+// its link, and go install by its flag.
 func TestDetect(t *testing.T) {
 	dir := t.TempDir()
 	cask := file(t, filepath.Join(dir, "Caskroom", "rexdiff", "0.1.0", "rexdiff"), "")
@@ -95,7 +97,7 @@ func TestDetect(t *testing.T) {
 	}
 }
 
-// TestLatest checks the release check against a GitHub API.
+// TestLatest checks Latest against a fake GitHub API.
 func TestLatest(t *testing.T) {
 	answer := func(code int, body string) *Updater {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -167,7 +169,7 @@ func TestInstallCommands(t *testing.T) {
 		t.Errorf("go call = %q, want GOBIN=/home/u/go/bin go install github.com/rednafi/rexdiff/cmd/rexdiff@v0.2.0", gorun.calls[0])
 	}
 
-	// A failure has the last line of the output, which tells why.
+	// The error of a failed command has the last line of the output.
 	failing := &fakeRun{fail: "brew"}
 	u = &Updater{bin: "/b/rexdiff", method: methodBrew, run: failing.run}
 	err := u.Install(t.Context(), r)
@@ -184,7 +186,8 @@ func TestInstallCommands(t *testing.T) {
 	}
 }
 
-// archive returns a .tar.gz with the file rexdiff.
+// archive returns a .tar.gz with a README.md and a file rexdiff that has
+// content.
 func archive(t *testing.T, content string) []byte {
 	t.Helper()
 	var b bytes.Buffer
@@ -271,8 +274,8 @@ func TestDownload(t *testing.T) {
 		t.Errorf("target file after a bad download = %q, want the old binary", b)
 	}
 
-	// A new binary of another version is not put in place, so the next
-	// start does not run it.
+	// download does not replace the old binary with a binary of another
+	// version, so the next start does not run it.
 	stale := &fakeRun{version: "v0.1.9"}
 	u.run = stale.run
 	if err := u.Install(t.Context(), release("")); err == nil || !strings.Contains(err.Error(), "left rexdiff v0.1.9, not v0.2.0") {
@@ -347,7 +350,7 @@ func TestDetectBrew(t *testing.T) {
 	prefix := t.TempDir()
 	cask := file(t, filepath.Join(prefix, "Caskroom", "rexdiff", "0.2.0", "rexdiff"), "")
 	brew := file(t, filepath.Join(prefix, "bin", "brew"), "#!/bin/sh\n")
-	brew, _ = filepath.EvalSymlinks(brew) // detect follows the links, as of /var on macOS
+	brew, _ = filepath.EvalSymlinks(brew) // detect follows /var on macOS
 	link := filepath.Join(prefix, "bin", "rexdiff")
 	if err := os.Symlink(cask, link); err != nil {
 		t.Fatal(err)

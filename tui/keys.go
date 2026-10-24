@@ -6,9 +6,9 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// keyMap uses herdr-reviewr's action names and defaults so its [keybindings]
-// config carries over. The configuration does not change the keys of the
-// comment box and of the find.
+// keyMap uses the action names and the default keys of herdr-reviewr. The
+// keybindings setting uses the same names. The settings do not change the
+// keys of the comment box and of the find.
 type keyMap struct {
 	// Move.
 	Down, Up, PageDown, PageUp, HalfDown, HalfUp, Top, Bottom  key.Binding
@@ -27,13 +27,13 @@ type keyMap struct {
 	NavPosition, NavHide, NavGrow, NavShrink      key.Binding
 	OpenPR, Refresh, Keys, Quit, QuitDiscard      key.Binding
 	// Upgrade installs a newer release. It works only while the footer
-	// tells of one.
+	// tells about a newer release.
 	Upgrade key.Binding
 
 	// The comment box. Cancel also clears the selection.
 	Save, Newline, Cancel key.Binding
 
-	// The steps through the hits of a find.
+	// FindNext and FindPrev move to the next and the previous hit of a find.
 	FindNext, FindPrev key.Binding
 }
 
@@ -49,7 +49,6 @@ func hint(b key.Binding, helpKey, desc string) key.Binding {
 	return b
 }
 
-// defaultKeys returns the keys of herdr-reviewr.
 func defaultKeys() keyMap {
 	return keyMap{
 		Down:     bind([]string{"j", "down"}, "j/k", "move"),
@@ -118,17 +117,16 @@ func defaultKeys() keyMap {
 	}
 }
 
-// overlayKeyMap is the keys of the overlays.
 type overlayKeyMap struct {
 	Choose, Close, Up, Down key.Binding
 
-	// The lists that have no input.
+	// ListDown, ListUp, and Delete work in the lists that have no input.
 	ListDown, ListUp, Delete key.Binding
 
 	// Mark starts or clears a range in the commit picker.
 	Mark key.Binding
 
-	// The prompt before a quit.
+	// Quit and Stay are the answers to the prompt before a quit.
 	Quit, Stay key.Binding
 }
 
@@ -220,7 +218,7 @@ func (k *keyMap) applyConfig(c keybindings) {
 	}
 }
 
-// helpKeys adapts the keymap to help.KeyMap for the current mode and tab.
+// helpKeys implements help.KeyMap for the mode and the tab of the program.
 type helpKeys struct {
 	k       keyMap
 	mode    mode

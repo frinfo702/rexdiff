@@ -144,7 +144,7 @@ func TestScopes(t *testing.T) {
 		t.Errorf("branch scope vs %s shows %v, want [a.go b.go]", m.base, got)
 	}
 
-	// The commit picker lists the newest commit first; enter picks it.
+	// The commit picker lists the newest commit first. The enter key picks it.
 	m = press(t, m, "G", "enter")
 	if got := paths(m); m.scope != scopeCommits || !slices.Equal(got, []string{"b.go"}) {
 		t.Errorf("commits scope shows %v, want [b.go]", got)
@@ -158,7 +158,7 @@ func TestScopes(t *testing.T) {
 	}
 	m = press(t, m, "esc")
 
-	// A turn of an agent: the scope shows only what changed during it.
+	// The turn scope shows only what changed during the turn of an agent.
 	m = press(t, m, "t")
 	if !strings.Contains(m.changes.note, "no agent turn") {
 		t.Errorf("turn scope before a turn: note %q, want a note that no turn ran", m.changes.note)
@@ -177,13 +177,13 @@ func TestScopes(t *testing.T) {
 func TestComment(t *testing.T) {
 	m, _ := newTestModel(t)
 
-	// Unified: three rows for the change.
+	// The unified layout uses three rows for the change.
 	m = press(t, m, "]", "v", "j", "j", "c")
 	if m.mode != modeComment {
 		t.Fatal("c did not open the comment box")
 	}
 	m = press(t, m, "h", "i", "enter")
-	// Split: the same change takes two rows.
+	// The split layout uses two rows for the same change.
 	m = press(t, m, "|", "home", "]", "v", "j", "c", "o", "k", "enter")
 
 	cs := m.comments.All()
@@ -229,8 +229,8 @@ func TestTabs(t *testing.T) {
 	}
 }
 
-// TestPRChecks shows the checks of a pull request: the counts, and the
-// names of the checks that failed.
+// TestPRChecks checks that the PR tab shows the counts of the checks of a
+// pull request, and the names of the checks that failed.
 func TestPRChecks(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "3")
@@ -327,8 +327,8 @@ func TestClickOldNumber(t *testing.T) {
 	}
 }
 
-// TestClickCommentBox clicks while the comment box is open. As in
-// herdr-reviewr, no click changes the draft or closes the box.
+// TestClickCommentBox clicks while the comment box is open. No click
+// changes the draft or closes the box.
 func TestClickCommentBox(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "]", "c", "h", "i")
@@ -412,9 +412,9 @@ func errorHas(err error, texts ...string) bool {
 	return true
 }
 
-// TestParseConfig checks the configuration that the Rex action passes as
-// JSON: each action of herdr-reviewr has a key, and an unknown key or a bad
-// value is an error.
+// TestParseConfig checks the settings that the Rex action sends as JSON.
+// Each action of herdr-reviewr has a key. An unknown key or a bad value is
+// an error.
 func TestParseConfig(t *testing.T) {
 	// The actions in herdr-reviewr's src/keymap.rs.
 	names := strings.Fields(`base-pick collapse comment comments commit-pick copy
@@ -510,8 +510,8 @@ func TestParseConfig(t *testing.T) {
 	}
 }
 
-// TestConfigFlags checks that the flags win over the configuration, and
-// that the configuration sets the keys and the file list.
+// TestConfigFlags checks that the flags win over the settings, and that
+// the settings set the keys and the file list.
 func TestConfigFlags(t *testing.T) {
 	m, _ := newTestModel(t)
 	cfg, err := parseConfig(`{
@@ -576,7 +576,7 @@ func TestNotice(t *testing.T) {
 func TestPalette(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = step(t, m, tea.BackgroundColorMsg{Color: color.Black})
-	// Black mixed 16% toward pure green.
+	// The tint is black, mixed 16% toward pure green.
 	const tint = "48;2;0;40;0m"
 	if strings.Contains(m.View().Content, tint) {
 		t.Fatal("the view has the tint before the terminal reports its green")
@@ -611,8 +611,8 @@ func twoHunks(t *testing.T, m model, dir, long string) model {
 	return m
 }
 
-// TestWrap checks wrap as in herdr-reviewr. The w key toggles it, and the
-// cursor moves by source lines. A comment on wrapped lines gets the same
+// TestWrap checks that the w key toggles wrap, and that the cursor moves
+// by source lines. A comment on wrapped lines gets the same
 // snippet.
 func TestWrap(t *testing.T) {
 	m, _, long := wrapModel(t)
@@ -720,7 +720,7 @@ func TestTallLine(t *testing.T) {
 			m.changes.top, m.changes.cur)
 	}
 
-	// As in herdr-reviewr, a cursor on the line shows its first rows. The
+	// A cursor on the line shows its first rows. The
 	// comment box shows below the last row. A c on a line with a comment
 	// edits the comment.
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
@@ -746,8 +746,8 @@ func TestTallLine(t *testing.T) {
 }
 
 // TestHostileText puts escape sequences in outside data: a file name, a
-// comment, an agent, and an error from Rex. The screen must
-// not get them raw. The diff tests check the review text.
+// comment, an agent, and an error from Rex. The screen must not get them
+// raw. The diff tests check the review text.
 func TestHostileText(t *testing.T) {
 	const osc = "\x1b]0;owned\x07" // sets the title of the terminal
 	raw := func(where string, m model) {

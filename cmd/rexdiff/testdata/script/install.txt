@@ -61,7 +61,7 @@ exec rexdiff install
 stdout 'reload Rex''s config yourself: rex config reload'
 exists .config/rex/rexdiff.lua
 
-# REX_CONFIG moves the configuration of Rex.
+# REX_CONFIG sets the path of the configuration file of Rex.
 env REX_CONFIG=$WORK/other/init.lua
 exec rexdiff install
 exists other/rexdiff.lua

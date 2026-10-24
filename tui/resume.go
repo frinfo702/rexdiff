@@ -2,7 +2,7 @@ package tui
 
 // After an update, rexdiff starts again in the same terminal. The old
 // program saves the comments and the place of the user in a file, and the
-// new one reads it, so that the user goes on where they were.
+// new one reads it, so that the user continues from the same place.
 
 import (
 	"encoding/json/v2"
@@ -12,8 +12,8 @@ import (
 	"github.com/rednafi/rexdiff/diff"
 )
 
-// savedState is what a restart keeps: the comments, the scope, the view,
-// and the places in the panes.
+// savedState holds the comments, the scope, the view, and the places in
+// the panes for a restart.
 type savedState struct {
 	Tab   tab        `json:"tab"`
 	Scope Scope      `json:"scope"`
@@ -22,7 +22,8 @@ type savedState struct {
 	To    string     `json:"to"`
 	Turn  *savedTurn `json:"turn"`
 
-	// The files by path, because the lists can change in a restart.
+	// The state keeps the files by path, because the lists can change in a
+	// restart.
 	ChangePath string    `json:"change_path"`
 	FilePath   string    `json:"file_path"`
 	Changes    savedPane `json:"changes"`
@@ -58,7 +59,6 @@ type savedPane struct {
 	Xoff int `json:"xoff"`
 }
 
-// place returns the place in p.
 func (p *pane) place() savedPane { return savedPane{p.cur, p.top, p.xoff} }
 
 // restore moves p to the place s, within its lines.
@@ -153,6 +153,6 @@ func (m *model) restorePlaces(s *savedState) {
 	m.refreshViewer()
 	m.changes.restore(s.Changes)
 	m.viewer.restore(s.Viewer)
-	m.prPlace = &s.PR // the PR loads later; onPR restores the place
+	m.prPlace = &s.PR // the PR loads later, and onPR restores the place
 	m.rerender()
 }

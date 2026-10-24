@@ -1,8 +1,9 @@
 package tui
 
-// The footer tells of a newer release. A key or a click installs it in the
-// background, and then rexdiff starts again in place, with the comments and
-// the place of the user. The update package installs; this file shows it.
+// The footer tells the user about a newer release. A key or a click
+// installs it in the background. Then rexdiff starts again in the same
+// pane, with the comments and the place of the user. The update package
+// installs the release. This file shows the state of the update.
 
 import (
 	"context"
@@ -13,7 +14,7 @@ import (
 	"github.com/rednafi/rexdiff/update"
 )
 
-// Updater finds and installs releases. *update.Updater is one.
+// Updater finds and installs releases. *update.Updater implements it.
 type Updater interface {
 	// Latest returns the latest release, and whether it is newer.
 	Latest(ctx context.Context) (update.Release, bool, error)
@@ -21,21 +22,21 @@ type Updater interface {
 	Install(ctx context.Context, r update.Release) error
 }
 
-// updatePhase is how far the update of rexdiff is.
+// updatePhase is the step of the update of rexdiff.
 type updatePhase int
 
 const (
 	phaseIdle       updatePhase = iota
 	phaseInstalling             // the release installs in the background
-	phaseInstalled              // restart when the user is ready
+	phaseInstalled              // rexdiff restarts when the user is ready
 )
 
 // installedMsg tells that the install of the release ended.
 type installedMsg struct{ err error }
 
 // checkRelease returns a command that asks for the latest release. Its
-// message is the *update.Release if it is newer. A failure is silent:
-// rexdiff works the same without the check.
+// message is the *update.Release if it is newer. A failure shows nothing,
+// because rexdiff works the same without the check.
 func (m *model) checkRelease() tea.Cmd {
 	u, ctx := m.updater, m.ctx
 	return func() tea.Msg {
@@ -68,7 +69,7 @@ func (m *model) install() tea.Cmd {
 	return func() tea.Msg { return installedMsg{u.Install(ctx, r)} }
 }
 
-// onInstalled readies the restart, or tells why the install failed. After
+// onInstalled prepares the restart, or tells why the install failed. After
 // a failure, the user can try again.
 func (m *model) onInstalled(msg installedMsg) {
 	if msg.err != nil {
@@ -79,10 +80,11 @@ func (m *model) onInstalled(msg installedMsg) {
 	m.phase = phaseInstalled
 }
 
-// restartIfReady saves the state for the restart into m.restartState, and
-// reports whether rexdiff can quit for it. It waits while the user writes
-// a comment or uses an overlay, while a send runs, and while pending, the
-// command of the last message, runs, so that no work is lost.
+// restartIfReady saves the state for the restart into m.restartState. It
+// reports whether rexdiff can quit for the restart. It waits while the
+// user writes a comment or uses an overlay. It also waits while a send
+// runs, and while pending (the command of the last message) runs. Thus no
+// work is lost.
 func (m *model) restartIfReady(pending tea.Cmd) bool {
 	if m.mode != modeNormal || pending != nil || m.sends > 0 {
 		return false

@@ -20,8 +20,8 @@ func fakeRexDir(t *testing.T, log string) string {
 	return dir
 }
 
-// TestUpgrade checks that rexdiff replaces the code of rexdiff.lua when it
-// runs a newer code, and keeps the settings.
+// TestUpgrade checks that upgrade replaces the code of rexdiff.lua if it
+// differs from the code of the binary, and keeps the settings.
 func TestUpgrade(t *testing.T) {
 	dir := t.TempDir()
 	reloads := filepath.Join(dir, "reloads")
@@ -46,7 +46,7 @@ func TestUpgrade(t *testing.T) {
 	}
 	ctx := t.Context()
 
-	// No rexdiff.lua: nothing to upgrade.
+	// Without rexdiff.lua, upgrade does nothing.
 	if n := upgrade(ctx, bin); n != "" {
 		t.Fatalf("upgrade without rexdiff.lua = %q, want no notice", n)
 	}
@@ -54,8 +54,8 @@ func TestUpgrade(t *testing.T) {
 		t.Fatal("upgrade made a rexdiff.lua")
 	}
 
-	// Old code for the same binary: upgrade replaces it, keeps the settings,
-	// and reloads Rex.
+	// If the file has old code for the same binary, upgrade replaces the
+	// code, keeps the settings, and reloads Rex.
 	old := strings.Replace(luaCode(bin), "local function must", "local function old_must", 1)
 	write(settings + old)
 	if n := upgrade(ctx, bin); n != "" {
@@ -68,7 +68,7 @@ func TestUpgrade(t *testing.T) {
 		t.Errorf("rex calls = %q, want one config reload", b)
 	}
 
-	// The same code: upgrade does not write or reload.
+	// If the code is the same, upgrade does not write the file or reload Rex.
 	if n := upgrade(ctx, bin); n != "" {
 		t.Fatalf("second upgrade = %q, want no notice", n)
 	}
@@ -76,8 +76,8 @@ func TestUpgrade(t *testing.T) {
 		t.Errorf("rex calls = %q, want no second reload", b)
 	}
 
-	// The file runs another rexdiff, for example a build for development:
-	// upgrade leaves it alone.
+	// If the file runs another rexdiff, for example a build for
+	// development, upgrade does not change it.
 	other := settings + old
 	other = strings.Replace(other, luaQuote(bin), luaQuote("/tmp/dev/rexdiff"), 1)
 	write(other)
@@ -85,8 +85,8 @@ func TestUpgrade(t *testing.T) {
 		t.Errorf("upgrade of the file of another rexdiff = %q; want no notice, no change", n)
 	}
 
-	// Without the line above the code, upgrade changes nothing and says
-	// what is wrong and what to do.
+	// Without the line above the code, upgrade changes nothing. Its notice
+	// tells what is wrong and what to do.
 	noMark := strings.Replace(settings+old, codeMark+"\n", "", 1)
 	if !strings.Contains(noMark, luaQuote(bin)) {
 		t.Fatal("the test file does not run bin")

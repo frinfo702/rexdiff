@@ -151,7 +151,7 @@ func (r *Repo) Head(ctx context.Context) (string, error) {
 		return t, nil
 	}
 	// rev-parse exits with 1 if HEAD names no commit yet. A broken HEAD,
-	// for example one whose commit is missing, stays an error.
+	// for example one whose commit is missing, is an error.
 	_, rerr := r.run(ctx, nil, "rev-parse", "-q", "--verify", "HEAD")
 	if exitedWith(rerr, 1) {
 		return emptyTree, nil
@@ -241,6 +241,7 @@ func (r *Repo) copyIndex(dst string) error {
 // uses, for example 'A'.
 type Status byte
 
+// The values of Status that [Repo.Diff] returns.
 const (
 	StatusAdded    Status = 'A'
 	StatusModified Status = 'M'
@@ -284,7 +285,7 @@ func (r *Repo) Diff(ctx context.Context, from, to string) ([]File, error) {
 	// then its path. A rename has its old and new paths.
 	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
 	var files []File
-	var ids []string // the objects to read, old and new for each file; "" for none
+	var ids []string // old and new object of each file, or "" for none
 	var blobs []blob // the content of each ID
 	for len(fields) >= 2 {
 		meta := strings.Fields(strings.TrimPrefix(fields[0], ":"))
@@ -450,7 +451,7 @@ func (r *Repo) ReadFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Do not read a device or a named pipe: the read can block or not end.
+	// Do not read a device or a named pipe. The read can block or not end.
 	if !st.Mode().IsRegular() {
 		return "", fmt.Errorf("%s is not a regular file", path)
 	}

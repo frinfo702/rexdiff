@@ -45,6 +45,7 @@ func azArgs(branch string) string {
 	return "repos pr list --source-branch " + branch + " --status all --top 1 --output json"
 }
 
+// TestPullRequest checks the pull request that each forge tool gives.
 func TestPullRequest(t *testing.T) {
 	dir := t.TempDir()
 	fakePath(t, dir)
@@ -149,6 +150,8 @@ func TestPullRequest(t *testing.T) {
 	}
 }
 
+// TestPullRequestErrors checks the error for a missing remote, an unknown
+// forge, a missing pull request, and a missing tool.
 func TestPullRequestErrors(t *testing.T) {
 	dir := t.TempDir()
 	fakePath(t, dir)
@@ -194,7 +197,7 @@ func TestPullRequestErrors(t *testing.T) {
 }
 
 // fakePath sets PATH to dir and the system directories, and links git into
-// dir. Then only the fake forge tools are found.
+// dir. Then PATH has the fake forge tools and no real ones.
 func fakePath(t *testing.T, dir string) {
 	t.Helper()
 	p, err := exec.LookPath("git")

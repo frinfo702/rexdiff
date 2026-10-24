@@ -14,7 +14,7 @@ func (v *View) Wrap() *View {
 	return v
 }
 
-// mix blends a toward b by t (0..1).
+// mix mixes a toward b by the amount t, from 0 to 1.
 func mix(a, b color.Color, t float64) color.Color {
 	ar, ag, ab, _ := a.RGBA()
 	br, bg, bb, _ := b.RGBA()
@@ -40,10 +40,10 @@ const (
 
 // TerminalStyle makes a diff style from the terminal colours: the
 // background, the foreground, and the ANSI green and red. The text colours
-// are ANSI palette indices, so the terminal selects the real colours. The
-// tints of inserted and deleted lines are mixed from the background toward
-// green and red. If green or red is nil, a fixed green or red is used. If
-// bg is nil, nothing is tinted.
+// are ANSI palette indices, so the terminal selects the real colours.
+// TerminalStyle mixes the tints of inserted and deleted lines from the
+// background toward green and red. If green or red is nil, it uses a fixed
+// green or red. If bg is nil, it adds no tint.
 func TerminalStyle(bg, fg, green, red color.Color, dark bool) Style {
 	none := lipgloss.NoColor{}
 	green = cmp.Or(green, lipgloss.Color(fallbackGreen))

@@ -70,6 +70,8 @@ esac
 	return rex.FromEnv(), dir
 }
 
+// TestAgents checks that Agents returns only the terminal blocks that send
+// an app name, without the block of the client.
 func TestAgents(t *testing.T) {
 	c, _ := fakeRex(t)
 	agents, err := c.Agents(t.Context())
@@ -99,6 +101,7 @@ func TestAgents(t *testing.T) {
 	}
 }
 
+// TestCommands checks the rex calls of Resolve, Paste, Focus, and Split.
 func TestCommands(t *testing.T) {
 	c, dir := fakeRex(t)
 	ctx := t.Context()
@@ -144,6 +147,8 @@ func blockEvent(block, name, payload string) string {
 		`","name":"` + name + `","payload":` + payload + `}}}}`
 }
 
+// TestWatch checks that Watch reports only the changes of the status of
+// the program, and closed blocks.
 func TestWatch(t *testing.T) {
 	c, dir := fakeRex(t)
 	events := strings.Join([]string{
@@ -189,6 +194,7 @@ func TestWatch(t *testing.T) {
 	}
 }
 
+// TestFromEnv checks that FromEnv uses the environment that Rex sets.
 func TestFromEnv(t *testing.T) {
 	t.Setenv("REX_SESSION", "")
 	if c := rex.FromEnv(); c != nil {
@@ -209,8 +215,9 @@ func TestFromEnv(t *testing.T) {
 	}
 }
 
-// Outside a Rex terminal, as under brew, REX_BIN_DIR is not set and rex
-// is not in PATH. ReloadConfig then runs the rex of the Rex server app.
+// TestReloadConfigOutsideRex checks that ReloadConfig runs the rex of the
+// Rex server app outside a Rex terminal. There, for example under brew,
+// REX_BIN_DIR is not set and rex is not in PATH.
 func TestReloadConfigOutsideRex(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("the Rex server app is on macOS")
