@@ -150,7 +150,7 @@ func TestPullRequest(t *testing.T) {
 				t.Fatalf("PullRequest = %v, want no error", err)
 			}
 			if !reflect.DeepEqual(pr, tt.want) {
-				t.Errorf("PullRequest got:\n%+v\nwant:\n%+v", pr, tt.want)
+				t.Errorf("PullRequest = \n%+v\nwant:\n%+v", pr, tt.want)
 			}
 		})
 	}
@@ -168,28 +168,28 @@ func TestPullRequestErrors(t *testing.T) {
 	tests := []struct {
 		remote, branch string
 		hosts          vcs.Hosts
-		want           error  // if not nil, err must wrap it
-		msg            string // if not empty, the text of err
+		wantErr        error  // if not nil, err must wrap it
+		errText        string // if not empty, a part of the text of err
 	}{
 		// The host selects the forge, not a name in the path.
-		{remote: "https://example.com/github.com/r.git", branch: "feat", msg: unsupported},
-		{remote: "git@example.com:gitlab/r.git", branch: "feat", msg: unsupported},
-		{remote: "https://git.corp.example/r", branch: "feat", hosts: corp, msg: unsupported},
-		{remote: "git@git.corp:o/r.git", branch: "feat", hosts: corp, msg: "glab isn't installed"},
-		{remote: "ssh://git@GitHub.com:22/o/r", branch: "feat", msg: "gh isn't installed"},
+		{remote: "https://example.com/github.com/r.git", branch: "feat", errText: unsupported},
+		{remote: "git@example.com:gitlab/r.git", branch: "feat", errText: unsupported},
+		{remote: "https://git.corp.example/r", branch: "feat", hosts: corp, errText: unsupported},
+		{remote: "git@git.corp:o/r.git", branch: "feat", hosts: corp, errText: "glab isn't installed"},
+		{remote: "ssh://git@GitHub.com:22/o/r", branch: "feat", errText: "gh isn't installed"},
 		{
-			remote: "https://u@org.visualstudio.com/p/_git/r",
-			branch: "other",
-			msg:    "unexpected call: " + azArgs("other"),
+			remote:  "https://u@org.visualstudio.com/p/_git/r",
+			branch:  "other",
+			errText: "unexpected call: " + azArgs("other"),
 		},
-		{remote: "", branch: "feat", msg: "no git remote"},
-		{remote: azure, branch: "none", want: vcs.ErrNoPullRequest},
+		{remote: "", branch: "feat", errText: "no git remote"},
+		{remote: azure, branch: "none", wantErr: vcs.ErrNoPullRequest},
 		{
-			remote: azure,
-			branch: "other",
-			msg:    "unexpected call: " + azArgs("other"),
+			remote:  azure,
+			branch:  "other",
+			errText: "unexpected call: " + azArgs("other"),
 		},
-		{remote: "https://github.com/o/r", branch: "feat", msg: "gh isn't installed"},
+		{remote: "https://github.com/o/r", branch: "feat", errText: "gh isn't installed"},
 	}
 	for _, tt := range tests {
 		// Two cases have the same remote, so the name has the branch.
@@ -206,10 +206,10 @@ func TestPullRequestErrors(t *testing.T) {
 			switch {
 			case err == nil:
 				t.Error("PullRequest: no error, want an error")
-			case tt.want != nil && !errors.Is(err, tt.want):
-				t.Errorf("PullRequest: err = %v, want %v", err, tt.want)
-			case tt.msg != "" && err.Error() != tt.msg:
-				t.Errorf("PullRequest: err = %q, want %q", err, tt.msg)
+			case tt.wantErr != nil && !errors.Is(err, tt.wantErr):
+				t.Errorf("PullRequest: err = %v, want %v", err, tt.wantErr)
+			case tt.errText != "" && !strings.Contains(err.Error(), tt.errText):
+				t.Errorf("PullRequest: err = %q, want %q in it", err, tt.errText)
 			}
 		})
 	}

@@ -1,7 +1,8 @@
 // Package test runs the rexdiff program as a user does. Each test starts
 // the binary in a terminal, types keys, clicks, and reads the screen. A
 // fake rex stands in for Rex, and the other tools are fakes on PATH. git
-// is real.
+// is real. The tests run one at a time, because each runs a program in a
+// terminal.
 package test
 
 import (
@@ -23,24 +24,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-
-	"github.com/rednafi/rexdiff/internal/testgit"
 )
-
-var (
-	home     string // the HOME of the user, for the real Rex
-	buildDir string // the directory of the binaries that the tests build
-)
-
-func TestMain(m *testing.M) {
-	home = os.Getenv("HOME")
-	var err error
-	if buildDir, err = os.MkdirTemp("", "rexdiff-test"); err != nil {
-		panic(err)
-	}
-	defer func() { _ = os.RemoveAll(buildDir) }()
-	testgit.Main(m)
-}
 
 // buildDev builds rexdiff once.
 var buildDev = sync.OnceValues(func() (string, error) {

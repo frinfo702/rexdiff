@@ -39,7 +39,7 @@ func TestFiles(t *testing.T) {
 			t.Parallel()
 			got, total := search.Files(tt.paths, tt.recent, tt.q, tt.limit)
 			if !slices.Equal(got, tt.want) || total != tt.wantTotal {
-				t.Errorf("Files(%q, %q) = %q, %d; want %q, %d",
+				t.Errorf("Files(%q, %q) = %q, %d, want %q, %d",
 					tt.q, tt.recent, got, total, tt.want, tt.wantTotal)
 			}
 		})

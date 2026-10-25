@@ -65,12 +65,16 @@ func TestCell(t *testing.T) {
 		{"file", f, 1, "new_name", false, diff.SideNew, 2, 1},
 	}
 	for _, tt := range tests {
-		x := column(t, tt.d, tt.row, tt.needle, tt.last)
-		side, line, char, ok := tt.d.Cell(tt.row, x)
-		if !ok || side != tt.side || line != tt.line || char != tt.char {
-			t.Errorf("%s: Cell(%d, %d) = %v, %d, %d, %v; want %v, %d, %d, true",
-				tt.name, tt.row, x, side, line, char, ok, tt.side, tt.line, tt.char)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			x := column(t, tt.d, tt.row, tt.needle, tt.last)
+			side, line, char, ok := tt.d.Cell(tt.row, x)
+			if !ok || side != tt.side || line != tt.line || char != tt.char {
+				t.Errorf("Cell(%d, %d) = %v, %d, %d, %v, want %v, %d, %d, true",
+					tt.row, x, side, line, char, ok,
+					tt.side, tt.line, tt.char)
+			}
+		})
 	}
 	// A cell of the tab gives the tab. A cell after the code gives the end.
 	x := column(t, u, 3, "new", false)
@@ -78,7 +82,7 @@ func TestCell(t *testing.T) {
 		t.Errorf("the tab: char %d, want 0", char)
 	}
 	if _, _, char, ok := u.Cell(3, 79); !ok || char != 14 {
-		t.Errorf("after the code: char %d, %v; want 14, true", char, ok)
+		t.Errorf("after the code: char %d, %v, want 14, true", char, ok)
 	}
 	// The numbers, the mark, and the hunk header are not code.
 	for _, c := range []struct{ row, x int }{{3, 0}, {3, 4}, {3, x - 5}, {0, 20}, {9, 20}} {
@@ -109,42 +113,50 @@ func TestCellMatchesScreen(t *testing.T) {
 		"wrap":   {Width: 60, Wrap: true},
 	}
 	src := map[diff.Side][]string{diff.SideOld: diff.Lines(old), diff.SideNew: diff.Lines(new)}
-	for _, l := range renderers(old, new) {
-		rn := l.name
-		for on, o := range opts {
-			d := l.render(o)
-			checked := 0
-			for i, l := range d.Lines {
-				plain := ansi.Strip(l)
-				for x := range ansi.StringWidth(plain) {
-					side, line, char, ok := d.Cell(i, x)
-					if !ok {
-						continue
-					}
-					got, _ := screenRune(plain, x)
-					text := []rune(src[side][line-1])
-					if char >= len(text) {
-						if got != ' ' {
-							t.Errorf("%s %s: line %d col %d shows %q, want past the end",
-								rn, on, i, x, got)
-						}
-						continue
-					}
-					want := text[char]
-					if want == '\t' {
-						want = ' '
-					}
-					if got != want && got != '…' {
-						t.Errorf("%s %s: line %d col %d shows %q, Cell gives %q",
-							rn, on, i, x, got, want)
-					}
-					checked++
+	for _, tt := range renderers(old, new) {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			for on, o := range opts {
+				checkCells(t, on, tt.render(o), src)
+			}
+		})
+	}
+}
+
+// checkCells checks that each code cell of d shows the character that
+// Cell gives. The lines of src are the source of each side.
+func checkCells(t *testing.T, on string, d *diff.Diff, src map[diff.Side][]string) {
+	t.Helper()
+	checked := 0
+	for i, l := range d.Lines {
+		plain := ansi.Strip(l)
+		for x := range ansi.StringWidth(plain) {
+			side, line, char, ok := d.Cell(i, x)
+			if !ok {
+				continue
+			}
+			got, _ := screenRune(plain, x)
+			text := []rune(src[side][line-1])
+			if char >= len(text) {
+				if got != ' ' {
+					t.Errorf("%s: line %d col %d shows %q, want past the end",
+						on, i, x, got)
 				}
+				continue
 			}
-			if checked < 20 {
-				t.Errorf("%s %s: %d code cells, want 20 or more", rn, on, checked)
+			want := text[char]
+			if want == '\t' {
+				want = ' '
 			}
+			if got != want && got != '…' {
+				t.Errorf("%s: line %d col %d shows %q, want %q from Cell",
+					on, i, x, got, want)
+			}
+			checked++
 		}
+	}
+	if checked < 20 {
+		t.Errorf("%s: %d code cells, want 20 or more", on, checked)
 	}
 }
 
@@ -167,7 +179,7 @@ func TestCellGraphemes(t *testing.T) {
 					x := ansi.StringWidth(plain[:k])
 					_, _, char, ok := d.Cell(i, x)
 					if !ok || char >= len(src) || src[char] != 'x' {
-						t.Errorf("%q wrap %v: Cell(%d, %d) = %d, %v; want the index of an x",
+						t.Errorf("%q wrap %v: Cell(%d, %d) = %d, %v, want the index of an x",
 							g, o.Wrap, i, x, char, ok)
 					}
 					found++
@@ -199,7 +211,7 @@ func TestCellOffsetInWideChar(t *testing.T) {
 				}
 				x := column(t, d, row, string(needle), false)
 				if _, _, got, ok := d.Cell(row, x); !ok || got != char {
-					t.Errorf("%s offset %d: Cell on %q = %d, %v; want %d, true",
+					t.Errorf("%s offset %d: Cell on %q = %d, %v, want %d, true",
 						name, off, needle, got, ok, char)
 				}
 			}

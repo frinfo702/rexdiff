@@ -122,7 +122,7 @@ func TestTracker(t *testing.T) {
 				}
 				started, ended := tr.Observe(st.states...)
 				if started != st.started || ended != st.ended {
-					t.Errorf("step %d (%q): started %v, ended %v; want %v, %v",
+					t.Errorf("step %d (%q): started %v, ended %v, want %v, %v",
 						i, st.states, started, ended, st.started, st.ended)
 				}
 			}

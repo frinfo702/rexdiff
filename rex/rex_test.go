@@ -105,7 +105,7 @@ func TestAgents(t *testing.T) {
 		},
 	}
 	if !slices.Equal(agents, want) {
-		t.Fatalf("Agents got:\n%+v\nwant:\n%+v", agents, want)
+		t.Errorf("Agents = \n%+v\nwant:\n%+v", agents, want)
 	}
 }
 
@@ -148,7 +148,7 @@ func TestCommands(t *testing.T) {
 		`api call -s S session.set_block_label {"block_id":"block:self","label":"rex\"diff"}`,
 	} {
 		if !strings.Contains(calls, want) {
-			t.Errorf("calls got:\n%s\nwant a call %s", calls, want)
+			t.Errorf("calls = \n%s\nwant a call %s", calls, want)
 		}
 	}
 }
@@ -182,10 +182,7 @@ func TestWatch(t *testing.T) {
 		`{"type":"session_event","payload":{"event":{"type":"block_closed",` +
 			`"payload":{"block_id":"block:pi"}}}}`,
 	}, "\n")
-	path := filepath.Join(dir, "events")
-	if err := os.WriteFile(path, []byte(events+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	testgit.WriteFile(t, dir, "events", events+"\n")
 
 	at := time.Date(2026, 10, 25, 21, 11, 3, 5e8, time.UTC)
 	once := []rex.Event{
@@ -207,7 +204,7 @@ func TestWatch(t *testing.T) {
 		t.Errorf("Watch = %v, want context.Canceled", err)
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("events got:\n%+v\nwant:\n%+v", got, want)
+		t.Errorf("events = \n%+v\nwant:\n%+v", got, want)
 	}
 }
 
@@ -253,7 +250,7 @@ func TestErrorKeepsCause(t *testing.T) {
 	err := c.Focus(t.Context(), "block:pi")
 	ee, ok := errors.AsType[*exec.ExitError](err)
 	if err == nil || err.Error() != "no Rex server" || !ok || ee.ExitCode() != 3 {
-		t.Errorf("Focus error = %v, exit error %v; want %q wrapping exit 3",
+		t.Errorf("Focus error = %v, exit error %v, want %q wrapping exit 3",
 			err, ok, "no Rex server")
 	}
 }

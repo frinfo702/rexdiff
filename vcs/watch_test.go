@@ -209,7 +209,7 @@ func TestWatcherNested(t *testing.T) {
 			t.Parallel()
 			r, dir := newRepo(t)
 			other := t.TempDir()
-			testgit.Git(t, other, "init", "-q")
+			testgit.NewRepo(t, other)
 			testgit.WriteFile(t, other, "f", "1\n")
 			testgit.Git(t, other, "add", ".")
 			testgit.Git(t, other, "commit", "-qm", "1")
@@ -239,7 +239,7 @@ func TestWatcherRunsNoGit(t *testing.T) {
 	for range 3 {
 		ch, err := w.Changed(t.Context())
 		if err != nil || ch != (vcs.Change{}) {
-			t.Fatalf("idle call: %+v, %v; want none, nil", ch, err)
+			t.Fatalf("idle call: %+v, %v, want none, nil", ch, err)
 		}
 	}
 }

@@ -36,9 +36,9 @@ func review(c diff.Comment) string {
 	return cs.Review("")
 }
 
-// TestReviewMatchesHerdr checks that Review writes the text format of
-// herdr-reviewr.
-func TestReviewMatchesHerdr(t *testing.T) {
+// TestReviewMatchesHerdrReviewr checks that Review writes the text format
+// of herdr-reviewr.
+func TestReviewMatchesHerdrReviewr(t *testing.T) {
 	t.Parallel()
 	var cs diff.Comments
 	cs.Add(comment("c.go", diff.SideNew,
@@ -60,7 +60,7 @@ func TestReviewMatchesHerdr(t *testing.T) {
 		"c.go:1-2\n" +
 		" ctx\n-\told[31m\n+\tnew\nfix]7501;state=idle this"
 	if got != want {
-		t.Errorf("Review got:\n%s\nwant:\n%s", got, want)
+		t.Errorf("Review = \n%s\nwant:\n%s", got, want)
 	}
 	if got := new(diff.Comments).Review(""); got != "" {
 		t.Errorf("Review with no comments = %q, want \"\"", got)
@@ -83,7 +83,7 @@ func TestReviewContinuedRows(t *testing.T) {
 	// The comment has no diff lines, so Review writes the lines of its range.
 	want := "a.go:1\n+" + strings.TrimSuffix(new, "\n") + "\nlong"
 	if got := review(c); len(cont) == 0 || got != want {
-		t.Errorf("%d continued rows, Review got:\n%s\nwant:\n%s",
+		t.Errorf("%d continued rows, Review = \n%s\nwant:\n%s",
 			len(cont), got, want)
 	}
 }
@@ -127,7 +127,7 @@ func TestComments(t *testing.T) {
 	}
 	cs.Remove(b.ID)
 	if cs.Find(b.ID) != nil || cs.Len() != 2 {
-		t.Errorf("after Remove(%d): Find = %v, Len = %d; want nil, 2",
+		t.Errorf("after Remove(%d): Find = %v, Len = %d, want nil, 2",
 			b.ID, cs.Find(b.ID), cs.Len())
 	}
 	if c := cs.Add(diff.Comment{}); c.ID == a.ID || c.ID == b.ID {
@@ -157,7 +157,7 @@ func TestNewComment(t *testing.T) {
 			}
 			want += "\n a\n-b\n-c\n+B\n+C\n d\n"
 			if got := review(c); got != want {
-				t.Errorf("split %v, side %d: Review got:\n%s\nwant:\n%s",
+				t.Errorf("split %v, side %d: Review = \n%s\nwant:\n%s",
 					split, s, got, want)
 			}
 		}
@@ -193,15 +193,13 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 		d := diff.Render("x.go", old, new, diff.Options{Split: split})
 		got := strings.Join(snippet(d.Rows, old, new), "\n")
 		if got != want {
-			t.Errorf("split %v: snippet got:\n%s\nwant:\n%s", split, got, want)
+			t.Errorf("split %v: snippet = \n%s\nwant:\n%s", split, got, want)
 		}
 	}
 
 	dir := t.TempDir()
 	for name, src := range map[string]string{"old": old, "new": new} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		testgit.WriteFile(t, dir, name, src)
 	}
 	// git diff exits with 1 when the files differ.
 	git := exec.CommandContext(t.Context(),
@@ -214,7 +212,7 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 	out, _ := git.Output()
 	_, body, _ := strings.Cut(string(out), "@@\n")
 	if strings.TrimSuffix(body, "\n") != want {
-		t.Errorf("git diff got:\n%s\nwant:\n%s", body, want)
+		t.Errorf("git diff = \n%s\nwant:\n%s", body, want)
 	}
 }
 

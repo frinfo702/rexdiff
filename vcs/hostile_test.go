@@ -40,10 +40,10 @@ func TestRevIsNotAnOption(t *testing.T) {
 			t.Errorf("Tree(%q) = %s, want an error", rev, id)
 		}
 		if id, err := r.MergeBaseTree(ctx, rev); err == nil {
-			t.Errorf("MergeBase(%q) = %s, want an error", rev, id)
+			t.Errorf("MergeBaseTree(%q) = %s, want an error", rev, id)
 		}
 		if id, err := r.ParentTree(ctx, rev); err == nil {
-			t.Errorf("Parent(%q) = %s, want an error", rev, id)
+			t.Errorf("ParentTree(%q) = %s, want an error", rev, id)
 		}
 		if _, err := r.Diff(ctx, rev, head(t, r)); err == nil {
 			t.Errorf("Diff(%q, HEAD): no error, want an error", rev)
@@ -84,7 +84,7 @@ func TestHostilePaths(t *testing.T) {
 		got[f.Path] = f.New
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Diff got:\n%q\nwant:\n%q", got, want)
+		t.Errorf("Diff = \n%q\nwant:\n%q", got, want)
 	}
 
 	es, err := r.Files(ctx)
@@ -97,11 +97,11 @@ func TestHostilePaths(t *testing.T) {
 			t.Errorf("Files has no %q, want it", p)
 		}
 		if got, err := r.ReadFile(p); got != s || err != nil {
-			t.Errorf("ReadFile(%q) = %q, %v; want %q", p, got, err, s)
+			t.Errorf("ReadFile(%q) = %q, %v, want %q", p, got, err, s)
 		}
 		q := strings.TrimSpace(s)
 		if ms, _, err := r.Grep(ctx, q, 10, time.Minute); err != nil || len(ms) != 1 || ms[0].Path != p {
-			t.Errorf("Grep(%q) = %+v, %v; want one match in %q", q, ms, err, p)
+			t.Errorf("Grep(%q) = %+v, %v, want one match in %q", q, ms, err, p)
 		}
 	}
 }
@@ -154,7 +154,7 @@ func TestDiffFileKinds(t *testing.T) {
 		{Path: "type", Status: vcs.StatusModified, Old: "a file\n", New: "a.txt"},
 	}
 	if got := changes(t, r, head(t, r), snapshot(t, r)); !reflect.DeepEqual(got, want) {
-		t.Errorf("Diff got:\n%+v\nwant:\n%+v", got, want)
+		t.Errorf("Diff = \n%+v\nwant:\n%+v", got, want)
 	}
 }
 
@@ -164,10 +164,10 @@ func TestSnapshotNestedRepo(t *testing.T) {
 	t.Parallel()
 	r, dir := newRepo(t)
 	commitAll(t, dir)
-	testgit.Git(t, dir, "init", "-q", "empty")
+	testgit.NewRepo(t, filepath.Join(dir, "empty"))
 	testgit.WriteFile(t, dir, "empty/x", "x\n")
 	testgit.WriteFile(t, dir, "full/y", "y\n")
-	testgit.Git(t, filepath.Join(dir, "full"), "init", "-q")
+	testgit.NewRepo(t, filepath.Join(dir, "full"))
 	commitAll(t, filepath.Join(dir, "full"))
 	testgit.WriteFile(t, dir, "z.txt", "z\n")
 
@@ -210,7 +210,7 @@ func TestReadFileStaysInRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if s, err := r.ReadFile("to-a"); s != "one\ntwo\n" || err != nil {
-		t.Errorf("ReadFile(to-a) = %q, %v; want the content of a.txt", s, err)
+		t.Errorf("ReadFile(to-a) = %q, %v, want the content of a.txt", s, err)
 	}
 }
 
@@ -232,11 +232,11 @@ func TestGitWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := uncommitted(t, r); got != "Ma.txt Astaged.txt" {
-		t.Errorf("Diff(Head, Snapshot) = %s, want Ma.txt Astaged.txt", got)
+		t.Errorf("Diff(HEAD, Snapshot) = %s, want Ma.txt Astaged.txt", got)
 	}
 	st := testgit.Git(t, wt, "status", "--porcelain")
 	if st != " M a.txt\nA  staged.txt\n" {
-		t.Errorf("git status in the worktree got:\n%s\nwant:\n%s",
+		t.Errorf("git status in the worktree = \n%s\nwant:\n%s",
 			st, " M a.txt\nA  staged.txt\n")
 	}
 }
@@ -248,11 +248,11 @@ func TestDetachedHead(t *testing.T) {
 	ctx := t.Context()
 	testgit.Git(t, dir, "checkout", "-q", "--detach", "main")
 	if got := uncommitted(t, r); got != "A.gitignore Ma.txt Anew.txt" {
-		t.Errorf("Diff(Head, Snapshot) = %s, want A.gitignore Ma.txt Anew.txt",
+		t.Errorf("Diff(HEAD, Snapshot) = %s, want A.gitignore Ma.txt Anew.txt",
 			got)
 	}
 	if cs, err := r.Commits(ctx, ""); err != nil || len(cs) != 1 || cs[0].Subject != "init" {
-		t.Errorf("Commits = %+v, %v; want init", cs, err)
+		t.Errorf("Commits = %+v, %v, want init", cs, err)
 	}
 }
 
@@ -327,10 +327,10 @@ func TestCommitsHostileSubject(t *testing.T) {
 func TestPullRequestBadJSON(t *testing.T) {
 	tests := []struct {
 		name, out string
-		want      error // nil for an error of any type
+		wantErr   error // nil for an error of any type
 		ok        bool  // true if PullRequest must not fail
 	}{
-		{name: "empty object", out: `{}`, want: vcs.ErrNoPullRequest},
+		{name: "empty object", out: `{}`, wantErr: vcs.ErrNoPullRequest},
 		{name: "not JSON", out: `warning: no pull request`},
 		{name: "huge number", out: `{"title": "T", "number": 1e30}`},
 		{
@@ -349,11 +349,11 @@ func TestPullRequestBadJSON(t *testing.T) {
 			pr, err := r.PullRequest(t.Context(), vcs.Hosts{})
 			switch {
 			case tt.ok && (err != nil || pr.Title != "T"):
-				t.Errorf("PullRequest = %+v, %v; want the title T", pr, err)
+				t.Errorf("PullRequest = %+v, %v, want the title T", pr, err)
 			case !tt.ok && err == nil:
 				t.Errorf("PullRequest = %+v, want an error", pr)
-			case tt.want != nil && !errors.Is(err, tt.want):
-				t.Errorf("PullRequest: err = %v, want %v", err, tt.want)
+			case tt.wantErr != nil && !errors.Is(err, tt.wantErr):
+				t.Errorf("PullRequest: err = %v, want %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -379,13 +379,13 @@ exec /bin/sleep 10
 	}
 	if ms, more, err := grep(5*time.Second, 50*time.Millisecond); err != nil || !more ||
 		len(ms) != 1 || ms[0].Text != "hit" {
-		t.Errorf("Grep past the budget = %+v, %v, %v; want the hit, more, no error", ms, more, err)
+		t.Errorf("Grep past the budget = %+v, %v, %v, want the hit, more, no error", ms, more, err)
 	}
 	t.Setenv("SLOW", "1")
 	if ms, more, err := grep(5*time.Second, time.Millisecond); err != nil || !more || len(ms) != 1 {
-		t.Errorf("Grep with no line at the budget = %+v, %v, %v; want the first hit, more", ms, more, err)
+		t.Errorf("Grep with no line at the budget = %+v, %v, %v, want the first hit, more", ms, more, err)
 	}
 	if ms, more, err := grep(100*time.Millisecond, time.Millisecond); err != nil || !more || len(ms) != 0 {
-		t.Errorf("Grep past the deadline = %+v, %v, %v; want none, more, no error", ms, more, err)
+		t.Errorf("Grep past the deadline = %+v, %v, %v, want none, more, no error", ms, more, err)
 	}
 }

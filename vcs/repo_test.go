@@ -23,7 +23,10 @@ import (
 var testRepo = testgit.NewFixture(func(tb testing.TB, dir string) {
 	tb.Helper()
 	testgit.NewRepo(tb, dir)
-	run := func(args ...string) { testgit.Git(tb, dir, args...) }
+	run := func(args ...string) {
+		tb.Helper()
+		testgit.Git(tb, dir, args...)
+	}
 	testgit.WriteFile(tb, dir, "a.txt", "one\n")
 	run("add", ".")
 	run("commit", "-qm", "init")
@@ -135,7 +138,7 @@ func TestScopes(t *testing.T) {
 		t.Errorf("uncommitted: %s, want A.gitignore Ma.txt Anew.txt", got)
 	}
 	if unc[1].Old != "one\n" || unc[1].New != "one\ntwo\n" {
-		t.Errorf("a.txt: Old %q, New %q; want %q, %q",
+		t.Errorf("a.txt: Old %q, New %q, want %q, %q",
 			unc[1].Old, unc[1].New, "one\n", "one\ntwo\n")
 	}
 
@@ -148,7 +151,7 @@ func TestScopes(t *testing.T) {
 	}
 	_, err = r.MergeBaseTree(ctx, "nosuchbranch")
 	if _, ok := errors.AsType[*exec.ExitError](err); !ok {
-		t.Errorf("MergeBase(nosuchbranch) = %v, want the error of git", err)
+		t.Errorf("MergeBaseTree(nosuchbranch) = %v, want the error of git", err)
 	}
 
 	// In a turn, rexdiff takes a snapshot and then the agent edits a file.
@@ -182,8 +185,8 @@ func TestScopes(t *testing.T) {
 	}
 }
 
-// TestMissingCommit checks that Head and Parent fail when a commit object
-// is missing.
+// TestMissingCommit checks that HeadTree and ParentTree fail when a commit
+// object is missing.
 func TestMissingCommit(t *testing.T) {
 	t.Parallel()
 	// The empty tree is not a correct result. It shows every file as added.
@@ -202,14 +205,14 @@ func TestMissingCommit(t *testing.T) {
 	}
 	remove(cs[1].SHA)
 	if id, err := r.ParentTree(ctx, "HEAD"); err == nil {
-		t.Errorf("Parent(HEAD) = %s with no parent commit, want an error", id)
+		t.Errorf("ParentTree(HEAD) = %s with no parent commit, want an error", id)
 	}
 	if id, err := r.ParentTree(ctx, "nope"); err == nil {
-		t.Errorf("Parent(nope) = %s, want an error", id)
+		t.Errorf("ParentTree(nope) = %s, want an error", id)
 	}
 	remove(cs[0].SHA)
 	if id, err := r.HeadTree(ctx); err == nil {
-		t.Errorf("Head = %s with no HEAD commit, want an error", id)
+		t.Errorf("HeadTree = %s with no HEAD commit, want an error", id)
 	}
 }
 
@@ -249,12 +252,12 @@ func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 	}
 	for _, p := range []string{"bytes", "lines", "big", "huge"} {
 		if f := got[p]; !f.TooBig || f.Old != "" || f.New != "" {
-			t.Errorf("%s: TooBig = %v, Old has %d bytes, New has %d bytes; want true, 0, 0",
+			t.Errorf("%s: TooBig = %v, Old has %d bytes, New has %d bytes, want true, 0, 0",
 				p, f.TooBig, len(f.Old), len(f.New))
 		}
 	}
 	if f := got["limit"]; f.TooBig || f.New != "z"+limit {
-		t.Errorf("limit: TooBig = %v, New has %d bytes; want false, %d",
+		t.Errorf("limit: TooBig = %v, New has %d bytes, want false, %d",
 			f.TooBig, len(f.New), len(limit)+1)
 	}
 	if f := got["small"]; f.New != "after\n" {
@@ -279,7 +282,10 @@ func TestFilesInConflict(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	testgit.NewRepo(t, dir)
-	run := func(args ...string) { testgit.Git(t, dir, args...) }
+	run := func(args ...string) {
+		t.Helper()
+		testgit.Git(t, dir, args...)
+	}
 	testgit.WriteFile(t, dir, "f.txt", "base\n")
 	run("add", ".")
 	run("commit", "-qm", "base")
@@ -352,7 +358,7 @@ func TestWorktree(t *testing.T) {
 		t.Errorf("ReadFile(a.txt) = %q, %v, want %q, nil",
 			s, err, "one\ntwo\n")
 	}
-	contains := []struct {
+	tests := []struct {
 		path string
 		want bool
 	}{
@@ -360,7 +366,7 @@ func TestWorktree(t *testing.T) {
 		{filepath.Dir(dir), false},
 		{dir + "x", false}, // a sibling with the same prefix
 	}
-	for _, tt := range contains {
+	for _, tt := range tests {
 		if got := r.Contains(tt.path); got != tt.want {
 			t.Errorf("Contains(%q) = %v, want %v", tt.path, got, tt.want)
 		}
@@ -451,7 +457,7 @@ func TestEditor(t *testing.T) {
 func TestDiffRenameAndSubmodule(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	testgit.Git(t, dir, "init", "-q")
+	testgit.NewRepo(t, dir)
 	testgit.WriteFile(t, dir, "old.txt", "one\ntwo\nthree\n")
 	const (
 		a = "1111111111111111111111111111111111111111"
@@ -490,7 +496,7 @@ func TestDiffRenameAndSubmodule(t *testing.T) {
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Diff got:\n%+v\nwant:\n%+v", got, want)
+		t.Errorf("Diff = \n%+v\nwant:\n%+v", got, want)
 	}
 }
 
@@ -502,15 +508,15 @@ func TestOpenOutsideARepo(t *testing.T) {
 	}
 }
 
-// TestNewRepo checks Open, Root, Head, and Snapshot in a repository with
-// no commit and no index. The path of a root can have a newline.
+// TestNewRepo checks Open, Root, HeadTree, and Snapshot in a repository
+// with no commit and no index. The path of a root can have a newline.
 func TestNewRepo(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"repo", "a\nb"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir := filepath.Join(t.TempDir(), name)
-			testgit.Git(t, filepath.Dir(dir), "init", "-q", dir)
+			testgit.NewRepo(t, dir)
 			testgit.WriteFile(t, dir, "a.txt", "one\n")
 			r, err := vcs.Open(t.Context(), dir)
 			if err != nil {
@@ -520,7 +526,7 @@ func TestNewRepo(t *testing.T) {
 				t.Errorf("Root = %q, want %q", r.Root(), want)
 			}
 			if got := uncommitted(t, r); got != "Aa.txt" {
-				t.Errorf("Diff(Head, Snapshot) = %s, want Aa.txt", got)
+				t.Errorf("Diff(HEAD, Snapshot) = %s, want Aa.txt", got)
 			}
 		})
 	}
@@ -574,13 +580,16 @@ func TestSnapshotRacyEdit(t *testing.T) {
 	}
 }
 
-// TestCommitsLikeHerdr checks the commits of the commit picker. They are
-// the first-parent commits after since, else the last 50.
-func TestCommitsLikeHerdr(t *testing.T) {
+// TestCommitsLikeHerdrReviewr checks the commits of the commit picker.
+// They are the first-parent commits after since, else the last 50.
+func TestCommitsLikeHerdrReviewr(t *testing.T) {
 	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
-	run := func(args ...string) { testgit.Git(t, dir, args...) }
+	run := func(args ...string) {
+		t.Helper()
+		testgit.Git(t, dir, args...)
+	}
 	run("checkout", "-qb", "side", "main")
 	run("commit", "-q", "--allow-empty", "-m", "side")
 	run("checkout", "-q", "feat")
@@ -611,17 +620,17 @@ func TestCommitsLikeHerdr(t *testing.T) {
 
 	cs, err = r.Commits(ctx, "")
 	if err != nil || len(cs) != vcs.LastCommits || cs[0].Subject != "c59" {
-		t.Errorf("Commits(\"\") = %d commits, %v; want the last %d", len(cs), err, vcs.LastCommits)
+		t.Errorf("Commits(\"\") = %d commits, %v, want the last %d", len(cs), err, vcs.LastCommits)
 	}
 
 	empty := t.TempDir()
-	testgit.Git(t, empty, "init", "-q")
+	testgit.NewRepo(t, empty)
 	er, err := vcs.Open(ctx, empty)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cs, err := er.Commits(ctx, ""); err != nil || len(cs) != 0 {
-		t.Errorf("Commits with no commit = %v, %v; want none, no error", cs, err)
+		t.Errorf("Commits with no commit = %v, %v, want none, no error", cs, err)
 	}
 }
 
@@ -645,7 +654,7 @@ func TestGrepLimit(t *testing.T) {
 	for _, tt := range tests {
 		ms, more, err := r.Grep(ctx, "hit", tt.limit, time.Minute)
 		if err != nil || len(ms) != tt.wantN || more != tt.wantMore {
-			t.Errorf("Grep(hit, %d) = %d matches, more %t, %v; want %d, %t, nil",
+			t.Errorf("Grep(hit, %d) = %d matches, more %t, %v, want %d, %t, nil",
 				tt.limit, len(ms), more, err, tt.wantN, tt.wantMore)
 		}
 	}
@@ -655,14 +664,14 @@ func TestGrepLimit(t *testing.T) {
 	}
 }
 
-// TestGrepCanceled checks that Grep returns the error of a canceled
+// TestGrepCancelled checks that Grep returns the error of a cancelled
 // context.
-func TestGrepCanceled(t *testing.T) {
+func TestGrepCancelled(t *testing.T) {
 	t.Parallel()
 	r, _ := newRepo(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if _, _, err := r.Grep(ctx, "one", 10, time.Minute); !errors.Is(err, context.Canceled) {
-		t.Errorf("Grep with a canceled context = %v, want %v", err, context.Canceled)
+		t.Errorf("Grep with a cancelled context = %v, want %v", err, context.Canceled)
 	}
 }

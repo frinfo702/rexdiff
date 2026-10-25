@@ -93,10 +93,14 @@ func TestFolds(t *testing.T) {
 		)},
 	}
 	for _, tt := range tests {
-		d := diff.Render("f.txt", old, new, diff.Options{Width: 60, Expanded: tt.expanded})
-		if got := layout(d); !slices.Equal(got, tt.want) {
-			t.Errorf("%s:\n got %v\nwant %v", tt.name, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			o := diff.Options{Width: 60, Expanded: tt.expanded}
+			d := diff.Render("f.txt", old, new, o)
+			if got := layout(d); !slices.Equal(got, tt.want) {
+				t.Errorf("layout = %v\nwant %v", got, tt.want)
+			}
+		})
 	}
 
 	// The header gives the number of hidden lines. A fold at the end has no
@@ -115,7 +119,7 @@ func TestFolds(t *testing.T) {
 	} {
 		d := diff.Render("f.txt", old, new, tt.o)
 		if got := headers(d); got != tt.want {
-			t.Errorf("split %v: headers got:\n%s\nwant:\n%s",
+			t.Errorf("split %v: headers = \n%s\nwant:\n%s",
 				tt.o.Split, got, tt.want)
 		}
 		for i, l := range d.Lines {
@@ -150,15 +154,19 @@ func TestFoldEdges(t *testing.T) {
 		{"all new", "", "a\nb\n", "@0/0+0 0:1 0:2"},
 	}
 	for _, tt := range tests {
-		d := diff.Render("f.txt", tt.old, tt.new, diff.Options{Width: 80})
-		if got := strings.Join(layout(d), " "); got != tt.want {
-			t.Errorf("%s:\n got %s\nwant %s", tt.name, got, tt.want)
-		}
-		// The split layout has the same folds.
-		split := diff.Render("f.txt", tt.old, tt.new, diff.Options{Width: 80, Split: true})
-		if got, want := folds(split), folds(d); !slices.Equal(got, want) {
-			t.Errorf("%s: the split layout has folds %v, want %v", tt.name, got, want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			d := diff.Render("f.txt", tt.old, tt.new, diff.Options{Width: 80})
+			if got := strings.Join(layout(d), " "); got != tt.want {
+				t.Errorf("layout = %s\nwant %s", got, tt.want)
+			}
+			// The split layout has the same folds.
+			o := diff.Options{Width: 80, Split: true}
+			split := diff.Render("f.txt", tt.old, tt.new, o)
+			if got, want := folds(split), folds(d); !slices.Equal(got, want) {
+				t.Errorf("split folds = %v, want %v", got, want)
+			}
+		})
 	}
 }
 

@@ -41,7 +41,8 @@ func TestWrite(t *testing.T) {
 				t.Fatal(err)
 			}
 			if string(got) != tt.want {
-				t.Errorf("%s got %q, want %q", tt.name, got, tt.want)
+				t.Errorf("Write(hi) with %s: output = %q, want %q",
+					tt.name, got, tt.want)
 			}
 		})
 	}

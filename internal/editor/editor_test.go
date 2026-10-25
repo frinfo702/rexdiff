@@ -42,7 +42,7 @@ func TestCommands(t *testing.T) {
 	for _, tt := range tests {
 		got, err := editor.Resolve(tt.template, "", tt.editor, "", abs, 12)
 		if err != nil || got.Script != tt.script || got.Window != tt.window {
-			t.Errorf("editor %q%q = %+v, %v; want script %q, window %v",
+			t.Errorf("editor %q%q = %+v, %v, want script %q, window %v",
 				tt.template, tt.editor, got, err, tt.script, tt.window)
 		}
 	}
@@ -90,7 +90,7 @@ func TestResolveOrder(t *testing.T) {
 	for _, tt := range tests {
 		got, err := editor.Resolve(tt.template, tt.visual, tt.env, tt.git, "/a", 1)
 		if err != nil || got.Program != tt.want {
-			t.Errorf("Resolve(%q, %q, %q, %q) = %q, %v; want %q",
+			t.Errorf("Resolve(%q, %q, %q, %q) = %q, %v, want %q",
 				tt.template, tt.visual, tt.env, tt.git, got.Program, err, tt.want)
 		}
 	}

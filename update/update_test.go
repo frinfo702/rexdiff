@@ -17,20 +17,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/update"
 )
 
-// file writes content to a new file at path with mode 0755, and returns
-// path.
-func file(t *testing.T, path, content string) string {
+// mkdir makes the directory dir and its parents, and returns dir.
+func mkdir(t *testing.T, dir string) string {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	return dir
 }
 
 // detect returns the Updater of the rexdiff at bin, with the latest
@@ -97,7 +94,7 @@ func TestLatest(t *testing.T) {
 		name, have, body string // a body of "" is a 404
 		tag              string // the tag of the release, or ""
 		newer            bool
-		err              string // a part of the error, or ""
+		errText          string // a part of the error, or ""
 	}{
 		{"minor", "0.1.0", release("v0.2.0"), "v0.2.0", true, ""},
 		{"patch", "v0.1.0", release("v0.1.1"), "v0.1.1", true, ""},
@@ -126,14 +123,14 @@ func TestLatest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			u := detect(t, fmt.Sprint(base, "/", i), "/bin/rexdiff", tt.have)
 			r, newer, err := u.Latest(t.Context())
-			if tt.err != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.err) {
-					t.Errorf("Latest: %v, want an error with %q", err, tt.err)
+			if tt.errText != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.errText) {
+					t.Errorf("Latest: %v, want an error with %q", err, tt.errText)
 				}
 				return
 			}
 			if err != nil || r.Tag != tt.tag || newer != tt.newer {
-				t.Errorf("Latest = %q, %v, %v; want %q, %v, nil",
+				t.Errorf("Latest = %q, %v, %v, want %q, %v, nil",
 					r.Tag, newer, err, tt.tag, tt.newer)
 			}
 		})
@@ -162,7 +159,7 @@ func TestInstallBrew(t *testing.T) {
 		version string // the version of the new rexdiff
 		cancel  bool   // cancel the context before Install
 		calls   string // the log of brew, or "" for no check
-		err     string // the error, or "" for none
+		errText string // a part of the error, or "" for none
 	}{
 		{"beside the Caskroom", true, logBrew, "v0.2.0", false, calls, ""},
 		{"in PATH", false, logBrew, "v0.2.0", false, calls, ""},
@@ -189,17 +186,14 @@ func TestInstallBrew(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			prefix := t.TempDir()
-			cask := filepath.Join(prefix, "Caskroom", "rexdiff", "0.2.0", "rexdiff")
-			file(t, cask, "#!/bin/sh\necho "+tt.version+"\n")
+			caskDir := mkdir(t, filepath.Join(prefix, "Caskroom", "rexdiff", "0.2.0"))
+			cask := testgit.Script(t, caskDir, "rexdiff", "echo "+tt.version+"\n")
 			path := filepath.Join(prefix, "path")
 			if tt.beside {
 				path = filepath.Join(prefix, "bin")
 			}
-			file(t, filepath.Join(path, "brew"), "#!/bin/sh\n"+tt.brew)
-			link := filepath.Join(prefix, "bin", "rexdiff")
-			if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			testgit.Script(t, mkdir(t, path), "brew", tt.brew)
+			link := filepath.Join(mkdir(t, filepath.Join(prefix, "bin")), "rexdiff")
 			if err := os.Symlink(cask, link); err != nil {
 				t.Fatal(err)
 			}
@@ -212,15 +206,19 @@ func TestInstallBrew(t *testing.T) {
 			}
 			u := detect(t, "http://127.0.0.1:1/latest", link, "0.1.0")
 			err := u.Install(ctx, update.Release{Tag: "v0.2.0"})
-			if tt.err == "" && err != nil || tt.err != "" && (err == nil || err.Error() != tt.err) {
-				t.Errorf("Install = %v, want %q", err, tt.err)
+			failed := err != nil
+			if tt.errText != "" {
+				failed = err == nil || !strings.Contains(err.Error(), tt.errText)
+			}
+			if failed {
+				t.Errorf("Install = %v, want an error with %q", err, tt.errText)
 			}
 			if tt.calls == "" {
 				return
 			}
 			got, _ := os.ReadFile(filepath.Join(prefix, "calls"))
 			if string(got) != tt.calls {
-				t.Errorf("brew calls got:\n%s\nwant:\n%s", got, tt.calls)
+				t.Errorf("brew calls = \n%s\nwant:\n%s", got, tt.calls)
 			}
 		})
 	}
@@ -234,6 +232,7 @@ func archive(t *testing.T, content string) []byte {
 	gz := gzip.NewWriter(&b)
 	tw := tar.NewWriter(gz)
 	add := func(name, content string, mode int64) {
+		t.Helper()
 		hdr := &tar.Header{Name: name, Mode: mode, Size: int64(len(content)), Typeflag: tar.TypeReg}
 		if err := tw.WriteHeader(hdr); err != nil {
 			t.Fatal(err)
@@ -286,7 +285,7 @@ func TestDownload(t *testing.T) {
 
 	tests := []struct {
 		name, dir string
-		err       string // a part of the error, or "" for none
+		errText   string // a part of the error, or "" for none
 	}{
 		{"good", "good", ""},
 		{"tampered", "bad", "does not match its checksum"},
@@ -300,7 +299,9 @@ func TestDownload(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			target := file(t, filepath.Join(dir, "real", "rexdiff"), "old binary")
+			const oldBin = "echo v0.1.0\n"
+			realDir := mkdir(t, filepath.Join(dir, "real"))
+			target := testgit.Script(t, realDir, "rexdiff", oldBin)
 			link := filepath.Join(dir, "rexdiff")
 			if err := os.Symlink(target, link); err != nil {
 				t.Fatal(err)
@@ -308,14 +309,14 @@ func TestDownload(t *testing.T) {
 			u := detect(t, base+"/"+tt.dir+"/latest", link, "0.1.0")
 			r, newer, err := u.Latest(t.Context())
 			if err != nil || !newer {
-				t.Fatalf("Latest = %+v, %v, %v; want a newer release", r, newer, err)
+				t.Fatalf("Latest = %+v, %v, %v, want a newer release", r, newer, err)
 			}
 			err = u.Install(t.Context(), r)
 			want := newBin
-			if tt.err != "" {
-				want = "old binary"
-				if err == nil || !strings.Contains(err.Error(), tt.err) {
-					t.Errorf("Install: %v, want an error with %q", err, tt.err)
+			if tt.errText != "" {
+				want = "#!/bin/sh\n" + oldBin
+				if err == nil || !strings.Contains(err.Error(), tt.errText) {
+					t.Errorf("Install: %v, want an error with %q", err, tt.errText)
 				}
 			} else if err != nil {
 				t.Fatal(err)
@@ -327,7 +328,7 @@ func TestDownload(t *testing.T) {
 				t.Errorf("after Install: %s is not a symlink, want a symlink", link)
 			}
 			if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o755 {
-				t.Errorf("Stat = %v, %v; want mode 0755", info, err)
+				t.Errorf("Stat = %v, %v, want mode 0755", info, err)
 			}
 			if entries, _ := os.ReadDir(filepath.Dir(target)); len(entries) != 1 {
 				t.Errorf("the directory has %d files, want only rexdiff", len(entries))

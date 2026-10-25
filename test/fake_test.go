@@ -119,7 +119,7 @@ func (r *fakeRex) addAgent(t *testing.T, block, label, app string) {
 // write writes content to the file name of the fake.
 func (r *fakeRex) write(t *testing.T, name, content string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(r.dir, name), []byte(content+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(r.dir, name), []byte(content+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -143,7 +143,7 @@ func (r *fakeRex) setState(t *testing.T, state string) {
 		"{{AT}}", time.Now().Format(time.RFC3339Nano),
 	}
 	r.write(t, "status.block:pi", recorded(t, "status.json", values...))
-	f, err := os.OpenFile(filepath.Join(r.dir, "events"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(filepath.Join(r.dir, "events"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
