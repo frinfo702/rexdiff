@@ -186,7 +186,8 @@ func TestEditorError(t *testing.T) {
 	}
 }
 
-// TestNewLineNear checks the line that e opens for each kind of row.
+// TestNewLineNear checks the line that the editor opens for each kind of
+// row.
 func TestNewLineNear(t *testing.T) {
 	rows := []diff.Row{
 		{Kind: diff.KindHunk},

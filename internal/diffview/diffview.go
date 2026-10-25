@@ -71,7 +71,7 @@ type View struct {
 	afterNumDigits  int
 	heights         []int // the number of screen lines of each row, for rows
 
-	// The View keeps the lexer, because to match a file name is slow.
+	// The View keeps the lexer. To match a file name is slow.
 	cachedLexer chroma.Lexer
 
 	cache *Cache
@@ -84,21 +84,22 @@ type Cache struct {
 	lines map[syntaxKey]string
 	size  int // the bytes of the lines and their sources
 
-	// lexer is the last lexer, because to select a lexer from the content
-	// is slow.
+	// lexer is the last lexer. To select a lexer from the content is
+	// slow.
 	lexer struct {
 		path, content string
 		l             chroma.Lexer
 	}
 }
 
-// maxCacheSize limits the memory of a Cache, in bytes. A full Cache
-// empties.
+// maxCacheSize limits the bytes of the lines and the sources in a Cache.
+// A put that goes above it empties the Cache first.
 const maxCacheSize = 32 << 20
 
 // put keeps the highlighted line s for key k.
 func (c *Cache) put(k syntaxKey, s string) {
-	// The source is part of the file. A copy does not keep the file.
+	// k.source is a part of the file string. A copy lets the cache keep
+	// the line without the whole file.
 	k.source = strings.Clone(k.source)
 	n := len(k.source) + len(s)
 	if c.lines == nil || c.size+n > maxCacheSize {
