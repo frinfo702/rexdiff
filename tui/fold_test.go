@@ -174,7 +174,7 @@ func TestFoldStaysOpen(t *testing.T) {
 		t.Errorf("after an undo next to the fold, folds = %v, want [3]", got)
 	}
 	// After the commit, the file has 41 lines. Changes at lines 12 and 26
-	// make a fold of old lines 16 to 22, inside the range that was open.
+	// make a fold of old lines 16 to 22, inside the open range.
 	git(t, dir, "commit", "-qam", "agent")
 	edit(func(s string) string {
 		lines := strings.Split(s, "\n")

@@ -488,8 +488,7 @@ func (v *View) codeLines(
 		code = ansi.GraphemeWidth.Cut(code, v.xOffset, len(code))
 		parts[0] = ansi.Truncate(code, width, ellipsis)
 		if v.xOffset > 0 && strings.TrimSpace(parts[0]) != "" {
-			sym, _ = strings.CutSuffix(sym, " ")
-			sym += ellipsis
+			sym = strings.TrimSuffix(sym, " ") + ellipsis
 		}
 	}
 	full := lipgloss.NewStyle().MaxWidth(width + leadingSymbolsSize)

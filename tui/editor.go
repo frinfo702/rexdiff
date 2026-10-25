@@ -118,6 +118,7 @@ func templateCommand(template, abs string, line int) editorCommand {
 func envCommand(editor, abs string, line int) editorCommand {
 	d := dialectOf(editor)
 	n, file := strconv.Itoa(line), shellQuote(abs)
+	at := shellQuote(abs + ":" + n)
 	var args string
 	switch d.line {
 	case argNone:
@@ -125,9 +126,9 @@ func envCommand(editor, abs string, line int) editorCommand {
 	case argPlus:
 		args = "+" + n + " " + file
 	case argSuffix:
-		args = shellQuote(abs + ":" + n)
+		args = at
 	case argGoto:
-		args = "-g " + shellQuote(abs+":"+n)
+		args = "-g " + at
 	case argFlag:
 		args = "--line " + n + " " + file
 	}

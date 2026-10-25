@@ -313,8 +313,8 @@ func hash(s string) uint64 {
 }
 
 // expanded tells if the lines of fold f of the file at path show: the
-// user expanded the fold, or a comment is on one of its lines.
-func (m *model) expanded(path string, f diff.Fold) bool {
+// user expanded the fold, or one of comments is on one of its lines.
+func (m *model) expanded(path string, comments []*diff.Comment, f diff.Fold) bool {
 	// A fold that overlaps a range shows. An undo of a change next to a
 	// range makes a larger fold, which shows as a whole.
 	if o := m.folds[path]; o != nil {
@@ -324,7 +324,7 @@ func (m *model) expanded(path string, f diff.Fold) bool {
 			}
 		}
 	}
-	for _, c := range m.comments.All() {
+	for _, c := range comments {
 		lo := f.New
 		if c.Side == diff.SideOld {
 			lo = f.Old

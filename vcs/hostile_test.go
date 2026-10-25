@@ -226,7 +226,7 @@ func TestOpenRootWithNewline(t *testing.T) {
 }
 
 // TestGitWorktree checks Diff and Snapshot in a working tree that
-// "git worktree add" made.
+// "git worktree add" creates.
 func TestGitWorktree(t *testing.T) {
 	// Such a working tree has its own index. Snapshot must not change it.
 	_, dir := newRepo(t)

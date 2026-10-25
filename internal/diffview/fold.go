@@ -42,7 +42,8 @@ func foldHunk(h *udiff.Hunk, expanded func(Fold) bool) (hunks []*udiff.Hunk, fol
 	var cur *udiff.Hunk
 	var above Fold
 	b, a := h.FromLine, h.ToLine
-	for i := 0; i < n; {
+	i := 0
+	for i < n {
 		if !keep[i] {
 			j := i
 			for j < n && !keep[j] {

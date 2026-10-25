@@ -114,7 +114,9 @@ func (r *Repo) Files(ctx context.Context) ([]Entry, error) {
 		args    []string
 		ignored bool
 	}{
-		{[]string{"ls-files", "-co", "--exclude-standard", "-z"}, false},
+		// In a merge conflict, git lists a path once for each stage.
+		// --deduplicate lists it once.
+		{[]string{"ls-files", "-co", "--deduplicate", "--exclude-standard", "-z"}, false},
 		{[]string{"ls-files", "-oi", "--exclude-standard", "--directory", "-z"}, true},
 	}
 	var es []Entry

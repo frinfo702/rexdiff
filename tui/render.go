@@ -124,7 +124,8 @@ func (m *model) renderChanges() {
 			delete(m.folds, f.Path)
 		}
 		o := m.diffOptions(p.xoff)
-		o.Expanded = func(fd diff.Fold) bool { return m.expanded(f.Path, fd) }
+		comments := m.comments.All()
+		o.Expanded = func(fd diff.Fold) bool { return m.expanded(f.Path, comments, fd) }
 		p.setDiff(diff.Render(f.Path, f.Old, f.New, o))
 	}
 }
