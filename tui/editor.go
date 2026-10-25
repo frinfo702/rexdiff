@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -34,13 +35,15 @@ type dialect struct {
 }
 
 // dialects has the editors that rexdiff knows, by program name. The table
-// is the one of herdr-reviewr, with fresh added.
-var dialects = map[string]dialect{}
+// is the same as in herdr-reviewr. The table also lists fresh, open, and
+// xdg-open.
+var dialects = makeDialects()
 
-func init() {
-	add := func(d dialect, names ...string) {
+func makeDialects() map[string]dialect {
+	d := map[string]dialect{}
+	add := func(dl dialect, names ...string) {
 		for _, n := range names {
-			dialects[n] = d
+			d[n] = dl
 		}
 	}
 	add(dialect{argPlus, false}, "vi", "vim", "nvim", "lvim", "vis", "joe", "nano", "micro", "kak")
@@ -54,69 +57,82 @@ func init() {
 	add(dialect{argSuffix, true}, "subl", "sublime_text", "zed", "zeditor", "zedit")
 	add(dialect{argFlag, true}, "mate", "kate", "idea", "pycharm", "webstorm", "goland",
 		"clion", "phpstorm", "rubymine", "rider", "datagrip", "rustrover", "dataspell", "fleet")
+	add(dialect{argNone, true}, "open", "xdg-open")
 	if runtime.GOOS == "darwin" {
 		add(dialect{argFlag, true}, "xed") // the opener of Xcode
 	}
+	return d
+}
+
+// dialectOf returns the dialect of the program of command. An editor that
+// rexdiff does not know takes +line and draws in the terminal. Most
+// terminal editors take +line. A window editor also works in a pane. A
+// wait flag tells that the editor has a window.
+func dialectOf(command string) dialect {
+	d := dialect{line: argPlus}
+	if known, ok := dialects[filepath.Base(program(command))]; ok {
+		d = known
+	}
+	words := strings.Fields(command)
+	if slices.Contains(words, "--wait") || slices.Contains(words, "--block") {
+		d.window = true
+	}
+	return d
+}
+
+// program returns the first word of command. A word in quotes can have
+// spaces, for example "/Applications/Visual Studio Code.app/.../code".
+func program(command string) string {
+	command = strings.TrimSpace(command)
+	for _, q := range []string{`"`, "'"} {
+		if rest, ok := strings.CutPrefix(command, q); ok {
+			word, _, _ := strings.Cut(rest, q)
+			return word
+		}
+	}
+	word, _, _ := strings.Cut(command, " ")
+	return word
 }
 
 // editorCommand is a command that opens a file at a line.
 type editorCommand struct {
-	script   string // the command, for sh -c
-	terminal bool   // the editor draws in the terminal
+	script string // the command, for sh -c
+	window bool   // the editor opens a window, not in the terminal
 }
 
-// resolveEditor returns the command that opens the file abs at line. It
-// uses template, the editor of the settings, else value, the editor of
-// the environment or of git. A template gets abs in place of {file} and
-// line in place of {line}. For value, rexdiff adds abs and line as the
-// editor expects them.
-func resolveEditor(template, value, abs string, line int) editorCommand {
-	if template != "" {
-		r := strings.NewReplacer("{file}", shellQuote(abs), "{line}", strconv.Itoa(line))
-		script := r.Replace(template)
-		if !strings.Contains(template, "{file}") {
-			script += " " + shellQuote(abs)
-		}
-		return editorCommand{script, wantsTerminal(template)}
+// templateCommand returns the command that opens the file abs at line with
+// template, the editor of the settings. The template gets abs in place of
+// {file}, and line in place of {line}. Without {file}, abs goes at the end.
+func templateCommand(template, abs string, line int) editorCommand {
+	r := strings.NewReplacer("{file}", shellQuote(abs), "{line}", strconv.Itoa(line))
+	script := r.Replace(template)
+	if !strings.Contains(template, "{file}") {
+		script += " " + shellQuote(abs)
 	}
+	return editorCommand{script, dialectOf(template).window}
+}
+
+// envCommand returns the command that opens the file abs at line with
+// editor, the editor of the environment or of git. rexdiff adds abs and
+// line in the form that the editor expects.
+func envCommand(editor, abs string, line int) editorCommand {
+	d := dialectOf(editor)
 	n, file := strconv.Itoa(line), shellQuote(abs)
+	at := shellQuote(abs + ":" + n)
 	var args string
-	switch dialects[program(value)].line {
+	switch d.line {
 	case argNone:
 		args = file
 	case argPlus:
 		args = "+" + n + " " + file
 	case argSuffix:
-		args = shellQuote(abs + ":" + n)
+		args = at
 	case argGoto:
-		args = "-g " + shellQuote(abs+":"+n)
+		args = "-g " + at
 	case argFlag:
 		args = "--line " + n + " " + file
 	}
-	return editorCommand{value + " " + args, wantsTerminal(value)}
-}
-
-// program returns the name of the program of the command, without its
-// directory.
-func program(command string) string {
-	words := strings.Fields(command)
-	if len(words) == 0 {
-		return ""
-	}
-	return filepath.Base(words[0])
-}
-
-// wantsTerminal reports whether the command draws in the terminal. A wait
-// flag tells that the editor has a window. An editor that rexdiff does not
-// know draws in the terminal, because in a pane a window editor also works.
-func wantsTerminal(command string) bool {
-	for _, w := range strings.Fields(command) {
-		if w == "--wait" || w == "--block" {
-			return false
-		}
-	}
-	d, ok := dialects[program(command)]
-	return !ok || !d.window
+	return editorCommand{editor + " " + args, d.window}
 }
 
 // openEditor opens the file at path, at line. It uses the editor of the
@@ -125,18 +141,20 @@ func wantsTerminal(command string) bool {
 // screen until it stops. A window editor starts in the background.
 func (m *model) openEditor(path string, line int) tea.Cmd {
 	abs := filepath.Join(m.repo.Root(), path)
-	value := ""
-	if m.cfg.Editor == "" {
-		value = cmp.Or(
+	var ed editorCommand
+	if m.cfg.Editor != "" {
+		ed = templateCommand(m.cfg.Editor, abs, line)
+	} else {
+		editor := cmp.Or(
 			strings.TrimSpace(os.Getenv("VISUAL")),
 			strings.TrimSpace(os.Getenv("EDITOR")),
-			strings.TrimSpace(m.repo.Editor(m.ctx)),
+			m.repo.Editor(m.ctx),
 			"vi",
 		)
+		ed = envCommand(editor, abs, line)
 	}
-	ed := resolveEditor(m.cfg.Editor, value, abs, line)
-	m.log.Debug("editor", "command", ed.script, "terminal", ed.terminal)
-	if !ed.terminal {
+	m.log.Debug("editor", "command", ed.script, "window", ed.window)
+	if ed.window {
 		return runWindowEditor(ed.script)
 	}
 	if m.rex != nil {
@@ -151,8 +169,9 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 }
 
 // runWindowEditor starts a window editor. The editor gets its own session
-// and no terminal, so that it cannot read the keys of rexdiff. The command
-// reports an error if the editor fails, with the last line of its stderr.
+// and no terminal, so that it cannot read the keys of rexdiff. If the
+// editor fails, the returned command gives the error and the last line of
+// the stderr of the editor.
 func runWindowEditor(script string) tea.Cmd {
 	cmd := exec.Command("sh", "-c", script)
 	var stderr bytes.Buffer

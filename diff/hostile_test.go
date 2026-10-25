@@ -10,9 +10,8 @@ import (
 	"github.com/rednafi/rexdiff/diff"
 )
 
-// TestHostileContent renders each hostile file in all layouts. No control
-// character from the file can reach the terminal, and the rows must point
-// at real lines.
+// TestHostileContent checks the lines and the rows of each hostile file, in
+// all layouts.
 func TestHostileContent(t *testing.T) {
 	opts := []diff.Options{
 		{},
@@ -93,6 +92,8 @@ func TestTabToSpacesIsAChange(t *testing.T) {
 	}
 }
 
+// TestRenderFileLineCount checks the number of rows for each kind of line
+// ending.
 func TestRenderFileLineCount(t *testing.T) {
 	tests := []struct {
 		src  string
@@ -115,6 +116,7 @@ func TestRenderFileLineCount(t *testing.T) {
 	}
 }
 
+// TestRenderFileNarrow checks that wide text fits a width of 1 to 7 cells.
 func TestRenderFileNarrow(t *testing.T) {
 	for w := 1; w < 8; w++ {
 		o := diff.Options{Width: w, Wrap: true}
@@ -122,6 +124,7 @@ func TestRenderFileNarrow(t *testing.T) {
 	}
 }
 
+// TestQuote checks that Quote quotes only the paths that are not safe.
 func TestQuote(t *testing.T) {
 	tests := []struct{ in, want string }{
 		{"a.go", "a.go"},
@@ -137,6 +140,8 @@ func TestQuote(t *testing.T) {
 	}
 }
 
+// TestReviewHostileComment checks that Review quotes a hostile path and
+// removes the control characters from the code and the text.
 func TestReviewHostileComment(t *testing.T) {
 	c := comment("a\x1b]52;c;aGk=\x07.go", diff.SideNew,
 		"",
@@ -149,8 +154,8 @@ func TestReviewHostileComment(t *testing.T) {
 	}
 }
 
-// TestBlackTint renders a theme whose tint of deleted lines is black. An
-// equal line with the same text as a deleted line has no background.
+// TestBlackTint checks that an equal line with the text of a deleted line has
+// no background when the tint of deleted lines is black.
 func TestBlackTint(t *testing.T) {
 	black := color.RGBA{A: 255}
 	th := diff.Theme{Background: black, Foreground: color.White, Red: black}

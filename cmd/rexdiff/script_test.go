@@ -48,11 +48,10 @@ var userEnv = []string{
 	"REXDIFF_RESUME",
 }
 
-// TestScripts runs the scripts in testdata/script. Each script runs in a
-// new directory, $WORK. $WORK is also $HOME, so rexdiff does not see the
-// files of the user. If the real rex tool is installed, $REALREX is its
-// path, and the condition [realrex] is true.
+// TestScripts runs the scripts in testdata/script.
 func TestScripts(t *testing.T) {
+	// If the real rex tool is installed, $REALREX is its path, and the
+	// condition [realrex] is true.
 	realRex := filepath.Join(os.Getenv("REX_BIN_DIR"), "rex")
 	_, err := os.Stat(realRex)
 	hasRex := os.Getenv("REX_BIN_DIR") != "" && err == nil
@@ -60,6 +59,8 @@ func TestScripts(t *testing.T) {
 		Dir:                 "testdata/script",
 		RequireExplicitExec: true,
 		Setup: func(env *testscript.Env) error {
+			// Each script runs in a new directory, $WORK. $WORK is also
+			// $HOME, so rexdiff does not see the files of the user.
 			env.Setenv("HOME", env.WorkDir)
 			env.Setenv("XDG_CONFIG_HOME", "")
 			env.Setenv("REALREX", realRex)

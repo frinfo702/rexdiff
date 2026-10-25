@@ -216,19 +216,18 @@ func TestFromEnv(t *testing.T) {
 }
 
 // TestReloadConfigOutsideRex checks that ReloadConfig runs the rex of the
-// Rex server app outside a Rex terminal. There, for example under brew,
-// REX_BIN_DIR is not set and rex is not in PATH.
+// Rex server app outside a Rex terminal.
 func TestReloadConfigOutsideRex(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("the Rex server app is on macOS")
 	}
+	// Outside a Rex terminal, for example under brew, REX_BIN_DIR is not set
+	// and rex is not in PATH.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("REX_BIN_DIR", "")
 	t.Setenv("PATH", t.TempDir())
-	dir := filepath.Join(home, "Library", "Application Support",
-		"com.superlogical.rex", "RexServer", "Versions", "Current",
-		"Rex Server.app", "Contents", "MacOS")
+	dir := filepath.Join(home, "Library", "Application Support", "com.superlogical.rex", "RexServer", "Versions", "Current", "Rex Server.app", "Contents", "MacOS")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

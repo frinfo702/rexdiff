@@ -19,7 +19,7 @@ import (
 type Kind int
 
 const (
-	KindHunk   Kind = iota // a hunk header. It shows no source line.
+	KindHunk   Kind = iota // a hunk header, with no source line
 	KindEqual              // a line that is the same on the two sides
 	KindInsert             // a line that only the new side has
 	KindDelete             // a line that only the old side has
@@ -49,8 +49,8 @@ type Row struct {
 }
 
 // Fold is a run of equal lines that hides. Old and New are the line
-// numbers of its first line. Lines is the number of lines, 0 if no line
-// hides.
+// numbers of its first line. Lines is the number of lines. It is 0 if no
+// line hides.
 type Fold struct {
 	Old, New, Lines int
 }
@@ -75,9 +75,9 @@ type Options struct {
 	// Wrap continues a line that is wider than Width on the next lines,
 	// instead of cutting it. Then Offset does not apply.
 	Wrap bool
-	// Show tells if the lines of a fold show. If Show is nil, no fold
-	// shows. RenderFile does not use it.
-	Show func(Fold) bool
+	// Expanded tells if the lines of a fold show. If Expanded is nil, no
+	// fold shows. RenderFile does not use it.
+	Expanded func(Fold) bool
 	// Signs marks a changed line with + or -. Without Signs, a bar in the
 	// colour of the line marks it.
 	Signs bool
@@ -110,8 +110,8 @@ func Render(path, old, new string, o Options) *Diff {
 		Width(o.Width).
 		TabWidth(tabWidth).
 		XOffset(o.Offset)
-	if o.Show != nil {
-		dv = dv.Show(func(f diffview.Fold) bool { return o.Show(Fold{f.Before, f.After, f.Lines}) })
+	if o.Expanded != nil {
+		dv = dv.Expand(func(f diffview.Fold) bool { return o.Expanded(foldOf(f)) })
 	}
 	if o.Split {
 		dv = dv.Split()
@@ -132,7 +132,7 @@ func Render(path, old, new string, o Options) *Diff {
 			Old:       r.Before,
 			New:       r.After,
 			Continued: r.Continued,
-			Fold:      Fold{r.Fold.Before, r.Fold.After, r.Fold.Lines},
+			Fold:      foldOf(r.Fold),
 		})
 	}
 	if len(d.Rows) > 0 {
@@ -140,6 +140,10 @@ func Render(path, old, new string, o Options) *Diff {
 	}
 	d.oldNum, d.newNum, d.newNumAt = g.BeforeNum, g.AfterNum, g.AfterNumStart
 	return d
+}
+
+func foldOf(f diffview.Fold) Fold {
+	return Fold{Old: f.Before, New: f.After, Lines: f.Lines}
 }
 
 func kindOf(k diffview.RowKind) Kind {

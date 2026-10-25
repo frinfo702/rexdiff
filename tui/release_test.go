@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,8 +21,8 @@ import (
 type fakeUpdater struct {
 	latest     update.Release
 	newer      bool
-	err        error // of Latest
-	installErr error
+	err        error    // the error of Latest
+	installErr error    // the error of Install
 	installed  []string // the tags that Install got
 }
 
@@ -97,7 +98,7 @@ func TestUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(m.restartState); !os.IsNotExist(err) {
+	if _, err := os.Stat(m.restartState); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("loadState did not remove the file")
 	}
 	m2 := newModel(t.Context(), Options{Repo: m.repo}, defaultConfig())
@@ -179,9 +180,8 @@ func TestNoUpdate(t *testing.T) {
 	}
 }
 
-// TestCommentsJSON checks that comments keep their code and their rows
-// in JSON, so that they follow their lines and give the same review after
-// a restart.
+// TestCommentsJSON checks that the comments give the same review after
+// JSON encoding and decoding.
 func TestCommentsJSON(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "j", "j", "j", "j", "c", "x", "enter")
@@ -255,10 +255,10 @@ func TestUpdateClickRule(t *testing.T) {
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
 	rule := bodyY + m.bodyHeight()
-	if next, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: rule}); next.(*model).phase == phaseInstalling {
+	if got := step(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: rule}); got.phase == phaseInstalling {
 		t.Error("a click on the rule started the install")
 	}
-	if next, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: rule + 1}); next.(*model).phase != phaseInstalling {
+	if got := step(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: rule + 1}); got.phase != phaseInstalling {
 		t.Error("a click on the footer did not start the install")
 	}
 }
@@ -292,14 +292,15 @@ func TestRestartOnTick(t *testing.T) {
 	m := updaterModel(t, u)
 	m.phase = phaseInstalled
 	next, cmd := m.Update(tickMsg{})
-	if next.(*model).restartState == "" || cmd == nil {
+	m = *next.(*model)
+	if m.restartState == "" || cmd == nil {
 		t.Fatal("no restart on a tick")
 	}
-	os.Remove(next.(*model).restartState)
+	os.Remove(m.restartState)
 }
 
-// TestSavePendingPRPlace checks that a restart before the PR loads keeps
-// the PR place of the restart before it.
+// TestSavePendingPRPlace checks that a restart before the PR loads saves
+// the PR place of the previous restart.
 func TestSavePendingPRPlace(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.prPlace = &savedPane{Cur: 7, Top: 3}

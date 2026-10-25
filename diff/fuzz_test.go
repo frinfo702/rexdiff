@@ -105,6 +105,8 @@ func checkRows(t *testing.T, rows []diff.Row, old, new string) {
 	}
 }
 
+// FuzzRender checks the invariants of Render, and that Count agrees with the
+// snippet.
 func FuzzRender(f *testing.F) {
 	for i, s := range hostile {
 		f.Add(uint8(i), "a\nb\n", s, uint8(i), uint8(i*7), uint8(i%3), i%2 == 0)
@@ -154,6 +156,8 @@ func FuzzRender(f *testing.F) {
 	})
 }
 
+// FuzzSnippetSameInLayouts checks that the split and the unified layouts give
+// the same snippet.
 func FuzzSnippetSameInLayouts(f *testing.F) {
 	f.Add(oldSrc, newSrc)
 	f.Add("a\nb\nc\nd\n", "x\nb\ny\nz\nd\n")
@@ -169,6 +173,7 @@ func FuzzSnippetSameInLayouts(f *testing.F) {
 	})
 }
 
+// FuzzRenderFile checks that RenderFile gives one row for each source line.
 func FuzzRenderFile(f *testing.F) {
 	for i, s := range hostile {
 		f.Add(uint8(i), s, uint8(i), uint8(i*7), uint8(i%3), i%2 == 0)
@@ -198,6 +203,7 @@ func FuzzRenderFile(f *testing.F) {
 	})
 }
 
+// FuzzPlain checks that Plain and Quote remove all unsafe control characters.
 func FuzzPlain(f *testing.F) {
 	for _, s := range hostile {
 		f.Add(s)
@@ -217,6 +223,8 @@ func FuzzPlain(f *testing.F) {
 	})
 }
 
+// FuzzCount checks that the counts of Count are in the range of the line
+// counts.
 func FuzzCount(f *testing.F) {
 	for _, s := range hostile {
 		f.Add(s, "a\n")
@@ -239,6 +247,8 @@ func FuzzCount(f *testing.F) {
 	})
 }
 
+// FuzzComments checks that Relocate keeps a valid range, and that the review
+// text has no control characters.
 func FuzzComments(f *testing.F) {
 	for i, s := range hostile {
 		f.Add("a\nb\nc\n", s, "a.go", s, uint8(i), uint8(i%3))

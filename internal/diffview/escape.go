@@ -10,7 +10,7 @@ import (
 // The Unicode Control Pictures that Escape shows in place of a control
 // character.
 const (
-	controlPictures = '\u2400' // the picture of U+0000; U+0001 to U+001F follow
+	controlPictures = '\u2400' // the picture of U+0000, then the pictures of U+0001 to U+001F
 	delPicture      = '\u2421'
 )
 

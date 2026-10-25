@@ -31,10 +31,10 @@
     `Height`, `YOffset`, `InfiniteYScroll` (and the height cut and the scroll
     code); `MatchLexer`, `LineStyle` and the `Style`
     fields are unexported; `RowFile` removed
-  - a coloured bar `▌` marks a changed line, in place of crush's `+` and `-`; `Signs` gives
-    the signs back
+  - a coloured bar `▌` marks a changed line, in place of crush's `+` and `-`; `Signs` shows
+    `+` and `-` in place of the bar
   - `fold.go` (added): the diff has the whole file in one hunk, and `foldHunk` folds the
-    long runs of equal lines, as in herdr-reviewr; `Show` shows a fold, and `Row.Fold` tells
+    long runs of equal lines, as in herdr-reviewr; `Expand` shows a fold, and `Row.Fold` tells
     which lines a hunk header hides
   - the syntax cache key tells "no background" from black, so a black tint does not
     leak onto equal lines

@@ -27,7 +27,7 @@ func (m *model) listWidth() int {
 	return min(m.listW, max(m.w/3, minListWidth))
 }
 
-// mainWidth is the width of the main pane, with its gutter.
+// mainWidth returns the width of the main pane, with its gutter.
 func (m *model) mainWidth() int {
 	w := m.w
 	if lw := m.listWidth(); lw > 0 {
@@ -36,7 +36,7 @@ func (m *model) mainWidth() int {
 	return max(w, 24)
 }
 
-// codeWidth is the width of the main pane, without its gutter.
+// codeWidth returns the width of the main pane, without its gutter.
 func (m *model) codeWidth() int { return m.mainWidth() - gutter }
 
 // rerender renders the current pane again, for example after a change of
@@ -120,8 +120,12 @@ func (m *model) renderChanges() {
 	case m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted:
 		m.setMarkdown(p, f.New)
 	default:
+		if o := m.folds[f.Path]; o != nil && o.Old != hash(f.Old) {
+			delete(m.folds, f.Path)
+		}
 		o := m.diffOptions(p.xoff)
-		o.Show = func(fd diff.Fold) bool { return m.showFold(f.Path, fd) }
+		comments := m.comments.All()
+		o.Expanded = func(fd diff.Fold) bool { return m.expanded(f.Path, comments, fd) }
 		p.setDiff(diff.Render(f.Path, f.Old, f.New, o))
 	}
 }
@@ -186,7 +190,8 @@ func (m *model) markdown(wrap int) *glamour.TermRenderer {
 	return r
 }
 
-// renderMarkdown renders src with r. If r is nil or fails, it returns src.
+// renderMarkdown returns the lines of src, rendered with r. If r is nil or
+// fails, it returns the lines of src as they are.
 func renderMarkdown(r *glamour.TermRenderer, src string) []string {
 	if r != nil {
 		if out, err := r.Render(src); err == nil {

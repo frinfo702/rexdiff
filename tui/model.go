@@ -51,8 +51,8 @@ const (
 type pane struct {
 	lines  []string
 	rows   []diff.Row // rows[i] is the source line that lines[i] shows
-	diff   *diff.Diff // the render, for mouse hits; nil for markdown and the PR
-	path   string     // the file of the rows; "" if the pane takes no comments
+	diff   *diff.Diff // the render, for mouse hits, or nil for markdown and the PR
+	path   string     // the file of the rows, or "" if the pane takes no comments
 	cur    int        // the row of the cursor
 	top    int        // the first row on the screen
 	anchor int        // the start of the visual selection, or -1
@@ -164,7 +164,7 @@ type prState struct {
 // agentState is what the program knows about the agent in a block.
 type agentState struct {
 	state  rex.State // "" after the block closed
-	cwd    string    // the working directory; "" if unknown
+	cwd    string    // the working directory, or "" if unknown
 	hasCwd bool      // the program asked Rex for cwd
 }
 
@@ -196,9 +196,7 @@ type model struct {
 
 	tab   tab
 	scope Scope
-	// folds has the folds that the user expanded in the Changes tab, by
-	// path and by the new line number of their first line.
-	folds map[string]map[int]bool
+	folds map[string]*openFolds // the folds that the user expanded in the Changes tab, by path
 	base  string
 	from  string // the commits scope: the oldest commit that the user picked
 	to    string // the commits scope: the newest commit that the user picked
@@ -367,8 +365,7 @@ func (m *model) trees() (from, to, note string, err error) {
 		return from, to, "", err
 	case ScopeLastTurn:
 		if m.turn == nil {
-			note := "no agent turn seen yet: the next turn's changes will show here"
-			return "", "", note, nil
+			return "", "", "no agent turn seen yet: the next turn's changes will show here", nil
 		}
 		from = m.turn.tree
 	case ScopeBranch:
@@ -461,7 +458,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	// A tick only starts the next tick, so it is no work.
 	pending := cmd
-	if _, tick := msg.(tickMsg); tick {
+	if _, ok := msg.(tickMsg); ok {
 		pending = nil
 	}
 	if m.restartIfReady(pending) {

@@ -38,6 +38,8 @@ func kinds(rows []diff.Row) string {
 	return b.String()
 }
 
+// TestRenderRowsFollowLines checks the row of each line, in each layout and
+// theme.
 func TestRenderRowsFollowLines(t *testing.T) {
 	const width = 80
 	themes := []diff.Theme{
@@ -99,6 +101,7 @@ func TestRenderRowsFollowLines(t *testing.T) {
 	}
 }
 
+// TestRenderSameContentIsEmpty checks that two equal versions give no lines.
 func TestRenderSameContentIsEmpty(t *testing.T) {
 	d := diff.Render("x.go", oldSrc, oldSrc, diff.Options{Width: 80})
 	if len(d.Lines) != 0 || len(d.Rows) != 0 {
@@ -106,6 +109,8 @@ func TestRenderSameContentIsEmpty(t *testing.T) {
 	}
 }
 
+// TestRenderTabsAndOffset checks that a tab becomes spaces and that Offset
+// scrolls the code.
 func TestRenderTabsAndOffset(t *testing.T) {
 	d := diff.Render("x.go", "", "\tx := 1\n", diff.Options{Width: 80})
 	if got := ansi.Strip(d.Lines[1]); !strings.Contains(got, "▌     x := 1") {
@@ -118,12 +123,13 @@ func TestRenderTabsAndOffset(t *testing.T) {
 	}
 }
 
-// TestMarks checks the mark before the code of each line, in the two
-// layouts. By default a bar marks a changed line, as in herdr-reviewr.
-// [diff.Options.Signs] gives + and -. The mark takes two cells in both
-// cases, so the columns do not move.
+// TestMarks checks the mark at the start of the code of each line, in the two
+// layouts.
 func TestMarks(t *testing.T) {
 	const old, new = "a\nb\nc\n", "a\nB\nc\n"
+	// By default a bar marks a changed line, as in herdr-reviewr. Signs gives
+	// + and -. The mark takes two cells in both cases, so the columns do not
+	// move.
 	theme := diff.Theme{
 		Background: color.Black,
 		Green:      color.RGBA{0, 0xff, 0, 0xff},
@@ -163,22 +169,13 @@ func TestMarks(t *testing.T) {
 				t.Errorf("%s: line %d = %q, want %q", tt.name, i+1, got, want)
 			}
 		}
-		// The mark has the colour of the line: ANSI red for a delete, and
-		// ANSI green for an insert.
-		for _, c := range []struct {
-			line int
-			fg   string
-		}{{2, "31"}, {3, "32"}} {
-			if tt.o.Split && c.line == 3 {
-				continue // the split layout has the insert on the same row
-			}
-			if got := markColour(d.Lines[c.line]); got != c.fg {
-				t.Errorf("%s: the mark of line %d has colour %q, want %q", tt.name, c.line, got, c.fg)
-			}
+		// The marks have the colour of their lines: ANSI red for the
+		// delete, then ANSI green for the insert.
+		if got := markColours(d.Lines[1:]); !slices.Equal(got, []string{"31", "32"}) {
+			t.Errorf("%s: the marks have colours %q, want 31 and 32", tt.name, got)
 		}
 	}
-	// With a scroll to the right, the bar keeps its colour and shows an
-	// ellipsis after it.
+	// With a scroll to the right, an ellipsis shows after the bar.
 	d := diff.Render("x.txt", "", "abcdefgh\n", diff.Options{Width: 40, Offset: 2})
 	if got := ansi.Strip(d.Lines[1]); !strings.Contains(got, "▌…cdefgh") {
 		t.Errorf("offset: line = %q, want ▌…cdefgh", got)
@@ -193,18 +190,28 @@ func TestMarks(t *testing.T) {
 	}
 }
 
-// markColour returns the foreground of the SGR sequence just before the
-// first bar, + or - in line, for example "31".
-func markColour(line string) string {
-	i := strings.IndexAny(line, "▌+-")
-	if i < 0 {
-		return ""
+// markColours returns the foreground of each bar, + or - in lines, in
+// order, for example "31". The foreground is in the SGR sequence in front
+// of the mark.
+func markColours(lines []string) []string {
+	var out []string
+	for _, l := range lines {
+		for {
+			i := strings.IndexAny(l, "▌+-")
+			if i < 0 {
+				break
+			}
+			sgr := l[strings.LastIndex(l[:i], "\x1b[")+2 : i]
+			fg, _, _ := strings.Cut(strings.TrimSuffix(sgr, "m"), ";")
+			out = append(out, fg)
+			l = l[i+1:]
+		}
 	}
-	sgr := line[strings.LastIndex(line[:i], "\x1b[")+2 : i]
-	fg, _, _ := strings.Cut(strings.TrimSuffix(sgr, "m"), ";")
-	return fg
+	return out
 }
 
+// TestSideAt checks the side of each column, and if the column is on a line
+// number.
 func TestSideAt(t *testing.T) {
 	// The unified layout has " 1 " old numbers, " 1 " new numbers, and the
 	// code.
@@ -240,6 +247,7 @@ func TestSideAt(t *testing.T) {
 	}
 }
 
+// TestCount checks the numbers of added and deleted lines.
 func TestCount(t *testing.T) {
 	tests := []struct {
 		old, new       string
@@ -259,6 +267,7 @@ func TestCount(t *testing.T) {
 	}
 }
 
+// TestRenderFile checks the line numbers and the rows of a file.
 func TestRenderFile(t *testing.T) {
 	src := "package x\n\nfunc f() {\n\treturn\n}\n"
 	d := diff.RenderFile("x.go", src, diff.Options{Width: 14})
@@ -281,9 +290,8 @@ func TestRenderFile(t *testing.T) {
 	}
 }
 
-// TestWrap wraps a long line. All of its text shows, and each screen line
-// fits the width. The continued rows point at the same source lines, and
-// the snippet of a comment does not change.
+// TestWrap checks that a wrapped long line shows all of its text and fits the
+// width.
 func TestWrap(t *testing.T) {
 	long := "x := []string{" + strings.Repeat(`"word", `, 12) + "}"
 	old, new := "a\nb\n", "a\n"+long+"\nb\n"
@@ -320,6 +328,7 @@ func TestWrap(t *testing.T) {
 			if r.New == 2 {
 				text.WriteString(ansi.Strip(l))
 			}
+			// A continued row points at the same source lines as the row above.
 			prev := d.Rows[max(i-1, 0)]
 			sameLines := prev.Old == r.Old && prev.New == r.New
 			if r.Continued && !sameLines {
@@ -332,6 +341,7 @@ func TestWrap(t *testing.T) {
 			t.Errorf("%s: the wrapped lines do not show all of the line:\n%s",
 				name, text.String())
 		}
+		// Wrap does not change the snippet of a comment.
 		got, want := snippet(d.Rows, old, new), snippet(cut.Rows, old, new)
 		if !slices.Equal(got, want) {
 			t.Errorf("%s: snippet with wrap %q, without %q", name, got, want)

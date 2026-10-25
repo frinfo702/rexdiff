@@ -23,9 +23,8 @@ const (
 	ellipsis           = "…" // shows where a line is cut
 )
 
-// The symbols before the code of a line. By default, a bar in the colour
-// of the line marks an inserted or a deleted line. [View.Signs] changes the
-// bar to a sign.
+// The symbols at the start of the code of a line. A bar in the colour of the line
+// marks each changed line. [View.Signs] shows + and - in place of the bar.
 const (
 	symNone   = "  " // an equal line, a missing line, or a continued line
 	symBar    = "▌ "
@@ -61,7 +60,7 @@ type View struct {
 	err        error
 	unified    udiff.UnifiedDiff
 	folds      []Fold          // folds[i] hides above unified.Hunks[i]
-	show       func(Fold) bool // the folds that show, see [View.Show]
+	expanded   func(Fold) bool // the folds that show, see [View.Expand]
 
 	splitHunks []splitHunk
 
@@ -195,8 +194,8 @@ func (v *View) replaceTabs() {
 	}
 }
 
-// computeDiff computes the diff of the two versions once. Then it returns
-// the error of the first call.
+// computeDiff computes the diff of the two versions once. A later call
+// returns the error of the first call.
 func (v *View) computeDiff() error {
 	if v.isComputed {
 		return v.err
@@ -213,8 +212,12 @@ func (v *View) computeDiff() error {
 		edits,
 		context,
 	)
-	if v.err == nil && len(v.unified.Hunks) == 1 {
-		v.unified.Hunks, v.folds = foldHunk(v.unified.Hunks[0], v.show)
+	hunks := v.unified.Hunks
+	v.unified.Hunks, v.folds = nil, nil
+	for _, h := range hunks {
+		hs, fs := foldHunk(h, v.expanded)
+		v.unified.Hunks = append(v.unified.Hunks, hs...)
+		v.folds = append(v.folds, fs...)
 	}
 	return v.err
 }
@@ -278,7 +281,7 @@ func codeWidthOf(l *udiff.Line) int {
 func (v *View) detectUnifiedCodeWidth() {
 	v.codeWidth = 0
 	for i, h := range v.unified.Hunks {
-		v.codeWidth = max(v.codeWidth, ansi.StringWidth(v.header(i)))
+		v.codeWidth = max(v.codeWidth, ansi.StringWidth(v.headerText(i)))
 		for _, l := range h.Lines {
 			v.codeWidth = max(v.codeWidth, codeWidthOf(&l))
 		}
@@ -290,7 +293,7 @@ func (v *View) detectUnifiedCodeWidth() {
 func (v *View) detectSplitCodeWidth() {
 	v.codeWidth = 0
 	for i, h := range v.splitHunks {
-		v.codeWidth = max(v.codeWidth, ansi.StringWidth(v.header(i)))
+		v.codeWidth = max(v.codeWidth, ansi.StringWidth(v.headerText(i)))
 		for _, l := range h.lines {
 			if l.before != nil {
 				v.codeWidth = max(v.codeWidth, codeWidthOf(l.before))
@@ -355,7 +358,7 @@ func (v *View) renderUnified() string {
 // unifiedHeader renders the divider line of hunk i in the unified layout.
 func (v *View) unifiedHeader(i int) string {
 	div := v.style.dividerLine
-	header := ansi.Truncate(v.header(i), v.fullCodeWidth, ellipsis)
+	header := ansi.Truncate(v.headerText(i), v.fullCodeWidth, ellipsis)
 	return div.lineNumber.Render(pad(ellipsis, v.beforeNumDigits)) +
 		div.lineNumber.Render(pad(ellipsis, v.afterNumDigits)) +
 		div.code.Width(v.fullCodeWidth).Render(header)
@@ -394,9 +397,10 @@ func (v *View) renderSplit() string {
 // header starts on the left side and can go on across the right side.
 func (v *View) splitHeader(i int) string {
 	div := v.style.dividerLine
+	// The header covers the two code columns and the new line numbers.
 	width := 2*v.fullCodeWidth + btoi(v.extraColOnAfter) + v.afterNumDigits + lineNumPadding*2
 	return div.lineNumber.Render(pad(ellipsis, v.beforeNumDigits)) +
-		div.code.Width(width).Render(ansi.Truncate(v.header(i), width, ellipsis))
+		div.code.Width(width).Render(ansi.Truncate(v.headerText(i), width, ellipsis))
 }
 
 // splitSide renders line l on one side of the split layout, one string for
@@ -433,17 +437,19 @@ func fillTo(lines []string, n int, fill func() string) []string {
 func (v *View) kindStyle(k udiff.OpKind) (lineStyle, string) {
 	switch k {
 	case udiff.Insert:
-		if v.signs {
-			return v.style.insertLine, symInsert
-		}
-		return v.style.insertLine, symBar
+		return v.style.insertLine, v.mark(symInsert)
 	case udiff.Delete:
-		if v.signs {
-			return v.style.deleteLine, symDelete
-		}
-		return v.style.deleteLine, symBar
+		return v.style.deleteLine, v.mark(symDelete)
 	}
 	return v.style.equalLine, symNone
+}
+
+// mark returns sign if the View shows signs, else the bar.
+func (v *View) mark(sign string) string {
+	if v.signs {
+		return sign
+	}
+	return symBar
 }
 
 // writeRow writes the screen lines of one row to b, and keeps their number
@@ -482,8 +488,7 @@ func (v *View) codeLines(
 		code = ansi.GraphemeWidth.Cut(code, v.xOffset, len(code))
 		parts[0] = ansi.Truncate(code, width, ellipsis)
 		if v.xOffset > 0 && strings.TrimSpace(parts[0]) != "" {
-			sym, _ = strings.CutSuffix(sym, " ")
-			sym += ellipsis
+			sym = strings.TrimSuffix(sym, " ") + ellipsis
 		}
 	}
 	full := lipgloss.NewStyle().MaxWidth(width + leadingSymbolsSize)

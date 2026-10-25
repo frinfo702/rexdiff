@@ -55,8 +55,8 @@ var (
 )
 
 // config holds the settings of rexdiff. The settings are at the top of
-// rexdiff.lua, beside the init.lua of Rex. The toggle action gives them to
-// rexdiff as JSON in --config.
+// rexdiff.lua, beside the configuration file (init.lua) of Rex. The toggle
+// action gives them to rexdiff as JSON in --config.
 type config struct {
 	Layout       Layout `json:"layout"`
 	DefaultScope Scope  `json:"default_scope"`
@@ -166,8 +166,8 @@ func parseConfig(text string) (config, error) {
 	if text == "" {
 		return c, nil
 	}
-	// set tells which keys the text has. A blank text that the user sets
-	// is an error. A text that the user does not set is not an error.
+	// set tells which keys the text has. A blank text is an error only if
+	// the user sets it.
 	var set map[string]jsontext.Value
 	if err := json.Unmarshal([]byte(text), &set); err != nil {
 		return config{}, configError(err)
@@ -318,6 +318,8 @@ func (c config) checkKeybindings() error {
 	return nil
 }
 
+// invalid returns the error for a value of the setting key that rexdiff
+// does not accept. want tells the values that rexdiff accepts.
 func invalid(key, want, value string) error {
 	return fmt.Errorf("invalid value for %s: expected %s, not %q", key, want, value)
 }

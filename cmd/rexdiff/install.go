@@ -103,8 +103,8 @@ end
 -- open_rexdiff opens rexdiff at placement, beside the agent in ctx, with
 -- the settings in config. rexdiff starts in the current directory of the
 -- agent. The rex package of rexdiff finds the directory the same way.
--- rexdiff starts through the shell of the user, so that it gets the
--- environment of the user, for example EDITOR and PATH.
+-- rexdiff starts through the login shell of the user, so that it gets the
+-- login environment of the user, for example EDITOR and PATH.
 local function open_rexdiff(ctx, placement, config)
   local p = call("process", ctx.block_id)
   local cwd = (p.foreground or {}).cwd or (p.child or {}).cwd
@@ -208,9 +208,8 @@ func splitLua(path, content string) (settings, code string, err error) {
 		}
 		i += len(line)
 	}
-	return "", "", fmt.Errorf("%s has no line %q, so rexdiff cannot tell your "+
-		"settings from its code. Put that line back under your settings, or move "+
-		"the file away and run \"rexdiff install\" again", path, codeMark)
+	return "", "", fmt.Errorf("%s has no line %q, so rexdiff cannot tell your settings from its code. Put that line back under your settings, or move the file away and run \"rexdiff install\" again",
+		path, codeMark)
 }
 
 // newLua returns the content of rexdiff.lua with the code for bin. It
@@ -246,20 +245,14 @@ func executable() (string, error) {
 	}
 	// go run deletes its binary at exit, so the action cannot run it.
 	if strings.Contains(bin, string(filepath.Separator)+"go-build") {
-		return "", errors.New("install the binary first, for example with go install, " +
-			"then run rexdiff install")
+		return "", errors.New("install the binary first, for example with go install, then run rexdiff install")
 	}
 	return bin, nil
 }
 
 // install writes rexdiff.lua with the action that runs bin, the path of
 // rexdiff. It adds the require line to init.lua.
-func install(
-	ctx context.Context,
-	bin string,
-	args []string,
-	stdout, stderr io.Writer,
-) error {
+func install(ctx context.Context, bin string, args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("rexdiff install", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	if err := fs.Parse(args); err != nil {
@@ -269,8 +262,8 @@ func install(
 		return err
 	}
 	if fs.NArg() > 0 {
-		return fmt.Errorf("unknown argument %s (set the key and the placement "+
-			"in the settings in %s)", fs.Arg(0), luaPath())
+		return fmt.Errorf("unknown argument %s (set the key and the placement in the settings in %s)",
+			fs.Arg(0), luaPath())
 	}
 
 	// Make the new content first. Then a bad rexdiff.lua stops the install
@@ -297,8 +290,7 @@ func install(
 	fmt.Fprintf(stdout, "wrote %s; the settings are at its top\n", lua)
 	fmt.Fprintf(stdout, "added %s to %s\n", requireLine, initPath)
 	fmt.Fprint(stdout, reload(ctx, stdout))
-	fmt.Fprintln(stdout, "press the key of the settings (shift+cmd+r by default), "+
-		"or run \"Toggle rexdiff\" from the command palette, beside an agent")
+	fmt.Fprintln(stdout, "press the key of the settings (shift+cmd+r by default), or run \"Toggle rexdiff\" from the command palette, beside an agent")
 	return nil
 }
 
@@ -380,7 +372,7 @@ func removeRequire(path string) error {
 }
 
 // reload tells Rex to read its configuration file again, and returns the
-// report of Rex. If Rex fails, reload tells the user to reload by hand and
+// report of Rex. If Rex fails, reload tells the user how to reload, and
 // returns "".
 func reload(ctx context.Context, stdout io.Writer) string {
 	out, err := rex.ReloadConfig(ctx)

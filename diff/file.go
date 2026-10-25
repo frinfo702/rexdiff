@@ -2,6 +2,7 @@ package diff
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -27,7 +28,7 @@ func RenderFile(path, src string, o Options) *Diff {
 	).Replace(src)
 	hl := strings.Split(highlight(path, src), "\n")
 	hl = hl[:min(len(hl), len(Lines(src)))] // chroma can add a line break at the end
-	digits := len(fmt.Sprint(len(hl)))
+	digits := len(strconv.Itoa(len(hl)))
 	numWidth := digits + 2 // a space on each side of the number
 	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(lineNumberColor))
 	d := &Diff{newNum: numWidth}
@@ -57,8 +58,8 @@ func RenderFile(path, src string, o Options) *Diff {
 
 // fileLineParts returns the screen lines of the highlighted line l. If o has
 // a width, each part fits in code cells. With [Options.Wrap], a long line
-// gives more than one part. Else the line skips [Options.Offset] cells and
-// is cut.
+// gives more than one part. Without Wrap, the line skips [Options.Offset]
+// cells and is cut.
 func fileLineParts(l string, code int, o Options) []string {
 	switch {
 	case o.Width > 0 && code <= 0:

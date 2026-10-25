@@ -285,7 +285,7 @@ func (r *Repo) Diff(ctx context.Context, from, to string) ([]File, error) {
 	// then its path. A rename has its old and new paths.
 	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
 	var files []File
-	var ids []string // old and new object of each file, or "" for none
+	var ids []string // the old and the new object of each file, or "" for none
 	var blobs []blob // the content of each ID
 	for len(fields) >= 2 {
 		meta := strings.Fields(strings.TrimPrefix(fields[0], ":"))
@@ -434,7 +434,7 @@ func checkBlob(s string) (string, error) {
 
 // isBinary reports whether s has a NUL byte near its start, as git does.
 func isBinary(s string) bool {
-	return strings.IndexByte(s[:min(len(s), binaryCheckLen)], 0) >= 0
+	return strings.Contains(s[:min(len(s), binaryCheckLen)], "\x00")
 }
 
 // ReadFile reads the file at path in the working tree. The path is relative

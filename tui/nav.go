@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"hash/fnv"
 	"slices"
 	"strconv"
 	"strings"
@@ -145,7 +146,7 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.PrevFile):
 		m.pickFile(m.listSel() - 1)
 	case key.Matches(msg, k.Right) && m.onFold():
-		m.expandFold(p.cur)
+		m.expandFold(p.rows[p.cur].Fold)
 	case key.Matches(msg, k.Right) && !m.wrap:
 		p.xoff += scrollStep
 		m.rerender()
@@ -294,13 +295,36 @@ func (m *model) onFold() bool {
 	return m.tab == tabChanges && p.cur < len(p.rows) && p.rows[p.cur].Fold.Lines > 0
 }
 
-// showFold tells if the lines of fold f of the file at path show: the user
-// expanded the fold, or a comment is on one of its lines.
-func (m *model) showFold(path string, f diff.Fold) bool {
-	if m.folds[path][f.New] {
-		return true
+// openFolds has the folds that the user expanded in one file, as ranges of
+// old line numbers. The old side does not change while the agent edits the
+// file, so an edit keeps the lines of a range open. The ranges are for the
+// old content with the hash Old. A different old content, for example
+// after a commit, closes them.
+type openFolds struct {
+	Old    uint64   `json:"old"`
+	Ranges [][2]int `json:"ranges"` // the first and the last line of each range
+}
+
+// hash returns the FNV-1a hash of s.
+func hash(s string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(s)) // a hash.Hash does not fail
+	return h.Sum64()
+}
+
+// expanded tells if the lines of fold f of the file at path show: the
+// user expanded the fold, or one of comments is on one of its lines.
+func (m *model) expanded(path string, comments []*diff.Comment, f diff.Fold) bool {
+	// A fold that overlaps a range shows. An undo of a change next to a
+	// range makes a larger fold, which shows as a whole.
+	if o := m.folds[path]; o != nil {
+		for _, r := range o.Ranges {
+			if f.Old <= r[1] && f.Old+f.Lines-1 >= r[0] {
+				return true
+			}
+		}
 	}
-	for _, c := range m.comments.All() {
+	for _, c := range comments {
 		lo := f.New
 		if c.Side == diff.SideOld {
 			lo = f.Old
@@ -312,18 +336,31 @@ func (m *model) showFold(path string, f diff.Fold) bool {
 	return false
 }
 
-// expandFold shows the lines of the fold at row i of the Changes tab. A
-// cursor on the fold moves to the first of them.
-func (m *model) expandFold(i int) {
+// expandFold shows the lines of fold f in the Changes tab, and moves the
+// cursor to the first of them. The selection and the hits of a find stay
+// on their lines.
+func (m *model) expandFold(f diff.Fold) {
 	p := &m.changes
+	file := m.changedFile()
+	if file == nil {
+		return
+	}
 	if m.folds == nil {
-		m.folds = map[string]map[int]bool{}
+		m.folds = map[string]*openFolds{}
 	}
-	if m.folds[p.path] == nil {
-		m.folds[p.path] = map[int]bool{}
+	o := m.folds[file.Path]
+	if o == nil {
+		o = &openFolds{Old: hash(file.Old)}
+		m.folds[file.Path] = o
 	}
-	m.folds[p.path][p.rows[i].Fold.New] = true
-	m.renderChanges()
+	o.Ranges = append(o.Ranges, [2]int{f.Old, f.Old + f.Lines - 1})
+	m.rerender()
+	p.cur = max(p.rowOf(diff.SideNew, f.New), 0)
+	if m.find.active() {
+		cur := p.cur
+		m.runFind(m.find.query)
+		p.cur = cur
+	}
 }
 
 // listSel returns the index of the selected file in the file list.
@@ -472,15 +509,12 @@ func (m *model) runFind(q string) {
 	}
 	lq := strings.ToLower(q)
 	for i, l := range p.lines {
-		if !strings.Contains(strings.ToLower(ansi.Strip(l)), lq) {
-			continue
-		}
-		// The rows of a wrapped line make one hit.
-		hits := m.find.hits
-		if h := p.head(i); len(hits) == 0 || hits[len(hits)-1] != h {
-			m.find.hits = append(hits, h)
+		if strings.Contains(strings.ToLower(ansi.Strip(l)), lq) {
+			m.find.hits = append(m.find.hits, p.head(i))
 		}
 	}
+	// The rows of a wrapped line make one hit.
+	m.find.hits = slices.Compact(m.find.hits)
 	if !m.find.active() {
 		m.flash("no match for " + q)
 		return
@@ -507,11 +541,13 @@ func (m *model) gotoLine(s string) {
 		m.flash("not a line number: " + s)
 		return
 	}
-	// A line in a fold shows after the fold expands.
-	for i, r := range p.rows {
-		if f := r.Fold; p == &m.changes && n >= f.New && n < f.New+f.Lines {
-			m.expandFold(i)
-			break
+	if m.tab == tabChanges {
+		// Show the fold that has line n.
+		for _, r := range p.rows {
+			if f := r.Fold; n >= f.New && n < f.New+f.Lines {
+				m.expandFold(f)
+				break
+			}
 		}
 	}
 	for i, r := range p.rows {

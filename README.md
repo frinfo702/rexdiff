@@ -96,6 +96,11 @@ See [herdr-reviewr] for the values and the action names.
 `e` opens the file at the cursor line in `editor`, else in `$VISUAL`, `$EDITOR`, or git's
 `core.editor`. A terminal editor, such as `nvim`, `micro`, or `fresh`, opens in a new pane
 beside rexdiff. A window editor, such as `code`, opens in its window.
+rexdiff opens an editor that it does not know in a pane. To open such an editor in a window,
+start it with `open`, for example `editor = "open -a Zed {file}"`.
+
+rexdiff gets `$VISUAL` and `$EDITOR` from your login shell. With zsh, set them in
+`~/.zprofile` or `~/.zshenv`, not in `~/.zshrc`.
 
 After a change:
 
@@ -105,7 +110,7 @@ After a change:
 ## Requirements
 
 - Rex
-- git
+- git 2.31 or later
 - `gh`, `glab`, or `az` for the pull request tab. You must be logged in.
 
 <!-- references -->
