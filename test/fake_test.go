@@ -1,6 +1,8 @@
 package test
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -124,7 +126,7 @@ func (r *fakeRex) write(t *testing.T, name, content string) {
 func (r *fakeRex) calls(t *testing.T) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(r.dir, "calls"))
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal(err)
 	}
 	return string(b)

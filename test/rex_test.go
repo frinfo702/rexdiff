@@ -1,12 +1,14 @@
 package test
 
 import (
-	"encoding/json"
+	"context"
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // realRex runs rex in the session of a test with a real Rex.
@@ -88,7 +90,10 @@ func TestRealRex(t *testing.T) {
 	r := &realRex{t: t, bin: bin, session: "rexdiff-test-" + strconv.Itoa(os.Getpid())}
 	r.run("new", r.session, "--cwd", repo, "--", "sh")
 	t.Cleanup(func() {
-		kill := exec.Command(bin, "--autostart=false", "kill", r.session) //nolint:noctx // t.Context is done
+		// t.Context is done in a cleanup.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		kill := exec.CommandContext(ctx, bin, "--autostart=false", "kill", r.session)
 		kill.Env = append(os.Environ(), "HOME="+home)
 		_ = kill.Run()
 	})

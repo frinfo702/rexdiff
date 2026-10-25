@@ -41,22 +41,19 @@ func TestMain(m *testing.M) {
 	testgit.Main(m)
 }
 
-var (
-	buildOnce sync.Once
-	binPath   string
-	buildErr  error
-)
+// buildDev builds rexdiff once.
+var buildDev = sync.OnceValues(func() (string, error) {
+	return build(filepath.Join(buildDir, "dev"), "")
+})
 
 // binary returns the path of a rexdiff that the package builds once.
 func binary(t *testing.T) string {
 	t.Helper()
-	buildOnce.Do(func() {
-		binPath, buildErr = build(filepath.Join(buildDir, "dev"), "")
-	})
-	if buildErr != nil {
-		t.Fatal(buildErr)
+	bin, err := buildDev()
+	if err != nil {
+		t.Fatal(err)
 	}
-	return binPath
+	return bin
 }
 
 // build builds rexdiff with the version into dir, and returns its path.
@@ -96,8 +93,8 @@ type term struct {
 	t    *testing.T
 	pty  *os.File
 	emu  *vt.Emulator
-	mu   sync.Mutex // guards emu
-	cmd  *exec.Cmd
+	mu   sync.Mutex    // guards emu
+	wait func() error  // waits for rexdiff once, and keeps its error
 	done chan struct{} // closed when the screen gets no more output
 }
 
@@ -119,10 +116,10 @@ func startBin(t *testing.T, bin, repo string, o opts) *term {
 	cmd.WaitDelay = 2 * time.Second
 	path := "/usr/bin:/bin:/usr/sbin:/sbin"
 	if git, err := exec.LookPath("git"); err == nil {
-		path = filepath.Dir(git) + ":" + path
+		path = filepath.Dir(git) + string(os.PathListSeparator) + path
 	}
 	if o.path != "" {
-		path = o.path + ":" + path
+		path = o.path + string(os.PathListSeparator) + path
 	}
 	cmd.Env = append(os.Environ(), "PATH="+path, "TERM=xterm-256color")
 	for _, k := range userEnv {
@@ -137,7 +134,7 @@ func startBin(t *testing.T, bin, repo string, o opts) *term {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tm := &term{t: t, pty: f, emu: vt.NewEmulator(int(w), int(h)), cmd: cmd, done: make(chan struct{})}
+	tm := &term{t: t, pty: f, emu: vt.NewEmulator(int(w), int(h)), wait: sync.OnceValue(cmd.Wait), done: make(chan struct{})}
 	go func() {
 		defer close(tm.done)
 		buf := make([]byte, 32<<10)
@@ -158,7 +155,7 @@ func startBin(t *testing.T, bin, repo string, o opts) *term {
 	// the emulator races with its Read.
 	go func() { _, _ = io.Copy(f, tm.emu) }()
 	t.Cleanup(func() {
-		_ = cmd.Wait() // t.Context is done, so Cancel stops rexdiff
+		_ = tm.wait() // t.Context is done, so Cancel stops rexdiff
 		_ = f.Close()
 		<-tm.done
 	})
@@ -337,7 +334,7 @@ func waitFile(t *testing.T, path string, content func(string) bool) string {
 func (tm *term) exited() error {
 	tm.t.Helper()
 	errc := make(chan error, 1)
-	go func() { errc <- tm.cmd.Wait() }()
+	go func() { errc <- tm.wait() }()
 	select {
 	case err := <-errc:
 		return err

@@ -323,11 +323,11 @@ func TestDownload(t *testing.T) {
 			if b, _ := os.ReadFile(target); string(b) != want {
 				t.Errorf("target file = %q, want %q", b, want)
 			}
-			if info, _ := os.Lstat(link); info.Mode()&os.ModeSymlink == 0 {
+			if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
 				t.Errorf("after Install: %s is not a symlink, want a symlink", link)
 			}
-			if info, _ := os.Stat(target); info.Mode().Perm() != 0o755 {
-				t.Errorf("mode = %v, want 0755", info.Mode().Perm())
+			if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o755 {
+				t.Errorf("Stat = %v, %v; want mode 0755", info, err)
 			}
 			if entries, _ := os.ReadDir(filepath.Dir(target)); len(entries) != 1 {
 				t.Errorf("the directory has %d files, want only rexdiff", len(entries))

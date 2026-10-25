@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,8 +56,11 @@ func TestScripts(t *testing.T) {
 			}
 			return nil
 		},
-		Condition: func(string) (bool, error) {
-			return hasRex, nil // [realrex] is the only condition
+		Condition: func(cond string) (bool, error) {
+			if cond != "realrex" {
+				return false, fmt.Errorf("unknown condition %q", cond)
+			}
+			return hasRex, nil
 		},
 	})
 }
