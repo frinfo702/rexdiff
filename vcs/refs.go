@@ -268,8 +268,9 @@ const (
 	turnRef = "refs/worktree/rexdiff/turn-base"
 )
 
-// SavedBase returns the base that [Repo.SaveBase] keeps for this worktree,
-// or "" if there is none.
+// SavedBase returns the base that [Repo.SaveBase] keeps for this worktree.
+// It returns "" if no base is saved, or if the saved value is not a ref
+// name.
 func (r *Repo) SavedBase(ctx context.Context) string {
 	out, err := r.run(ctx, nil, "cat-file", "blob", baseRef)
 	name := strings.TrimSpace(out)
@@ -304,8 +305,8 @@ func (r *Repo) SaveBase(ctx context.Context, name string) error {
 	return err
 }
 
-// SavedTurn returns the tree that [Repo.SaveTurn] keeps for this worktree,
-// or "" if there is none.
+// SavedTurn returns the tree that [Repo.SaveTurn] keeps for this worktree.
+// It returns "" if no tree is saved, or if git cannot resolve the ref.
 func (r *Repo) SavedTurn(ctx context.Context) string {
 	tree, err := r.Resolve(ctx, turnRef)
 	if err != nil {

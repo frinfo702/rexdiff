@@ -132,8 +132,8 @@ type Status struct {
 // sends no status.
 type State string
 
-// The states of the OSC 7501 protocol that rexdiff uses. A State can have
-// other values, for example "error".
+// The known states of the OSC 7501 protocol. A State can have other
+// values, for example "error".
 const (
 	StateIdle    State = "idle"    // waits for the next instruction of the user
 	StateWorking State = "working" // does a task

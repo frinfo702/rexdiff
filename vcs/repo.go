@@ -209,10 +209,10 @@ func (r *Repo) MergeBaseCommit(ctx context.Context, base string) (string, error)
 }
 
 // Snapshot writes the working tree as a tree object and returns its ID.
-// The tree has the tracked and the untracked files. It does not have
-// ignored files, or files that git cannot add, for example a git repository
-// with no commit. Snapshot uses a temporary index, so the real
-// index does not change.
+// The tree has the tracked and the untracked files. It does not have the
+// ignored files. It also does not have the files that git cannot add, for
+// example a nested repository with no commit. Snapshot uses a temporary
+// index, so the real index does not change.
 func (r *Repo) Snapshot(ctx context.Context) (string, error) {
 	// git does not read an empty index file, but it reads a missing one
 	// as empty. A new repository has no index.
@@ -473,8 +473,9 @@ func tooBig(versions ...string) bool {
 
 // ReadFile reads the file at path in the working tree. The path is relative
 // to the root. ReadFile reads only a regular file in the root, also through
-// a symbolic link. If the file is binary or too big, ReadFile returns
-// ErrBinary or ErrTooBig.
+// a symbolic link. For another file, for example a directory or a named
+// pipe, it returns an error. If the file is binary or too big, ReadFile
+// returns ErrBinary or ErrTooBig.
 func (r *Repo) ReadFile(path string) (string, error) {
 	root, err := os.OpenRoot(r.root)
 	if err != nil {
@@ -508,6 +509,7 @@ func (r *Repo) ReadFile(path string) (string, error) {
 
 // Contains reports whether dir is the root or a directory below it. It
 // follows symbolic links, so /tmp and /private/tmp on macOS are the same.
+// Contains does not run git, thus it does not see a nested repository.
 func (r *Repo) Contains(dir string) bool {
 	root := evalSymlinks(r.root)
 	dir = evalSymlinks(dir)
@@ -515,9 +517,9 @@ func (r *Repo) Contains(dir string) bool {
 }
 
 // Owns reports whether dir is in the working tree of r, and not in another
-// repository or worktree below the root. As in herdr-reviewr, only an
-// absolute dir can be in it. Owns runs git only for a dir below the root.
-// An error tells that git cannot run, so the answer is not known.
+// repository or worktree below the root. As in herdr-reviewr, a relative
+// dir is not in it. Owns runs git only if [Repo.Contains] reports true.
+// An error means that git cannot run, and the answer is not known.
 func (r *Repo) Owns(ctx context.Context, dir string) (bool, error) {
 	if !filepath.IsAbs(dir) || !r.Contains(dir) {
 		return false, nil

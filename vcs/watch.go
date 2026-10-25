@@ -15,10 +15,10 @@ import (
 // use less than 1/21 of a core. herdr-reviewr uses the same factor.
 const budgetFactor = 20
 
-// Watcher tells, without a git process, if the working tree or the refs
-// can have changed. It compares the file status of the files that git
-// lists, of their directories, and of the git files. It runs git only
-// after a directory or a git file changes.
+// Watcher tells if the working tree or the refs can have changed. It
+// compares the file status of the files that git lists, of their
+// directories, and of the git files. While nothing changes, it runs no
+// git process. After a change, it runs git to list the files again.
 //
 // A Watcher does not see a change of the global core.excludesFile, or a
 // copy that keeps the size and the modification time of a file.

@@ -8,10 +8,12 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-// The search shows at most these numbers of results. A "… more" row
-// tells that there are others.
+// The limits of the results. A "… more" row tells that there are others.
 const (
+	// FileLimit is the largest number of files that the search shows.
 	FileLimit = 50
+	// CodeLimit is the largest number of matching lines that the search
+	// shows.
 	CodeLimit = 200
 )
 

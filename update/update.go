@@ -162,8 +162,9 @@ func (u *Updater) Latest(ctx context.Context) (Release, bool, error) {
 
 // Install installs the release r. Then it checks that the binary of rexdiff
 // has the version of r. Install does not stop the running rexdiff. Install
-// ignores a cancel of ctx, because a brew that stops early can leave a broken
-// cask. Install stops after five minutes.
+// uses the values of ctx, but ignores its cancel. An install that stops
+// early can leave a broken cask or binary. Install stops after five
+// minutes.
 func (u *Updater) Install(ctx context.Context, r Release) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), installTimeout)
 	defer cancel()

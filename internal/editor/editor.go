@@ -31,9 +31,9 @@ func Template(template, file string, line int) Command {
 	return Command{script, program(template), dialectOf(template).window}
 }
 
-// Program returns the command that opens file at line with command, the
-// command of an editor program such as the value of $EDITOR. Program adds
-// file and line in the form that the editor expects.
+// Program returns the command that opens file at line in an editor.
+// command starts the editor, for example the value of $EDITOR. Program
+// adds file and line in the form that the editor expects.
 func Program(command, file string, line int) Command {
 	d := dialectOf(command)
 	n, f := strconv.Itoa(line), ShellQuote(file)
