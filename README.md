@@ -201,6 +201,24 @@ After a change:
 - git 2.31 or later
 - `gh`, `glab`, or `az` for the pull request tab. You must be logged in.
 
+## Develop
+
+Before a commit, run the checks that CI runs. CI uses golangci-lint v2.15.0.
+
+```sh
+go test -race ./...           # test
+golangci-lint run             # lint, and check the format
+golangci-lint fmt             # format
+go fix -diff ./...            # check for code that go fix changes
+go mod tidy -diff             # check go.mod and go.sum
+```
+
+Some tests run the real rex if `REX_BIN_DIR` is the directory of rex.
+
+`./dev.sh` builds rexdiff and opens it in the Rex session `rexreview-test`,
+beside a pane with the label "agent". It needs a running Rex, fish, and python3.
+If rex is not on your `PATH`, set `REX_BIN_DIR` to its directory.
+
 <!-- references -->
 
 [Rex]: https://www.superlogical.com/rex
