@@ -109,7 +109,7 @@ func command(
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir, cmd.Stdin = dir, stdin
 	if env != nil {
-		cmd.Env = append(os.Environ(), env...)
+		cmd.Env = append(cmd.Environ(), env...) // Environ sets PWD to cmd.Dir
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -393,6 +393,8 @@ func (r *Repo) readBlobs(ctx context.Context, ids []string, blobs []blob) error 
 	cmd := exec.CommandContext(ctx, "git", "cat-file", "--batch")
 	cmd.Dir = r.root
 	cmd.Stdin = strings.NewReader(in.String())
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -404,8 +406,9 @@ func (r *Repo) readBlobs(ctx context.Context, ids []string, blobs []blob) error 
 	if err != nil {
 		_ = cmd.Process.Kill()
 	}
-	if werr := cmd.Wait(); err == nil {
-		err = werr
+	if werr := cmd.Wait(); err == nil && werr != nil {
+		msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
+		err = &runError{cmp.Or(msg, werr.Error()), werr}
 	}
 	if err != nil {
 		return fmt.Errorf("git cat-file: %w", err)
@@ -413,12 +416,14 @@ func (r *Repo) readBlobs(ctx context.Context, ids []string, blobs []blob) error 
 	return nil
 }
 
+// errShort is the error of output that ends too soon.
+var errShort = errors.New("short output")
+
 // readBatch reads the output of "git cat-file --batch" into blobs[i] for
 // each i in batch. For each object, the output has
 // "<oid> <type> <size>\n<content>\n", or one line that ends with "missing"
 // or "ambiguous".
 func readBatch(r *bufio.Reader, batch []int, blobs []blob) error {
-	errShort := errors.New("short output")
 	for _, i := range batch {
 		hdr, err := r.ReadString('\n')
 		if err != nil {

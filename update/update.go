@@ -247,14 +247,14 @@ func tool(name string, dirs ...string) string {
 // runCommand is the run of an Updater outside tests.
 func runCommand(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(cmd.Environ(), env...)
 	return cmd.CombinedOutput()
 }
 
 // lastLine returns the last line of out that is not blank.
 func lastLine(out []byte) string {
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	return strings.TrimSpace(lines[len(lines)-1])
+	s := strings.TrimSpace(string(out))
+	return strings.TrimSpace(s[strings.LastIndexByte(s, '\n')+1:])
 }
 
 // download downloads the archive of r for this system, checks it with the
@@ -295,10 +295,8 @@ func (u *Updater) download(ctx context.Context, r Release) error {
 
 // assetURL returns the address of the asset of r with the name, or "".
 func assetURL(r Release, name string) string {
-	for _, a := range r.assets {
-		if a.Name == name {
-			return a.URL
-		}
+	if i := slices.IndexFunc(r.assets, func(a asset) bool { return a.Name == name }); i >= 0 {
+		return r.assets[i].URL
 	}
 	return ""
 }
@@ -348,14 +346,14 @@ func replaceFile(path string, content []byte, check func(tmp string) error) erro
 		return err
 	}
 	defer func() { _ = os.Remove(tmp.Name()) }() // fails after the rename
-	if _, err := tmp.Write(content); err != nil {
-		_ = tmp.Close()
-		return err
+	_, err = tmp.Write(content)
+	if err == nil {
+		err = tmp.Chmod(0o755)
 	}
-	if err := tmp.Close(); err != nil {
-		return err
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
 	}
-	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
+	if err != nil {
 		return err
 	}
 	if err := check(tmp.Name()); err != nil {

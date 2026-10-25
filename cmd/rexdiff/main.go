@@ -123,7 +123,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	// Run keeps the alternate screen for the restart. Leave that screen and
 	// show the cursor.
-	fmt.Print("\x1b[?1049l\x1b[?25h")
+	fmt.Fprint(stdout, "\x1b[?1049l\x1b[?25h")
 	return fmt.Errorf("start the new rexdiff: %w; your comments are saved in %s", err, resume)
 }
 
