@@ -285,12 +285,15 @@ func install(ctx context.Context, bin string, args []string, stdout, stderr io.W
 		return err
 	}
 	initPath := rex.ConfigPath()
-	if err := addRequire(initPath); err != nil {
+	added, err := addRequire(initPath)
+	if err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "wrote %s; the settings are at its top\n", lua)
-	fmt.Fprintf(stdout, "added %s to %s\n", requireLine, initPath)
-	fmt.Fprint(stdout, reload(ctx, stdout))
+	if added {
+		fmt.Fprintf(stdout, "added %s to %s\n", requireLine, initPath)
+	}
+	reload(ctx, stdout)
 	fmt.Fprintln(stdout, "press the key of the settings (shift+cmd+r by default), or run \"Toggle rexdiff\" from the command palette, beside an agent")
 	return nil
 }
@@ -315,7 +318,7 @@ func upgrade(ctx context.Context, bin string) string {
 	if err := os.WriteFile(lua, []byte(code), 0o644); err != nil {
 		return "cannot upgrade rexdiff.lua: " + err.Error()
 	}
-	if _, err := rex.ReloadConfig(ctx); err != nil {
+	if err := rex.ReloadConfig(ctx); err != nil {
 		return "upgraded rexdiff.lua; reload Rex's config yourself: rex config reload"
 	}
 	return ""
@@ -323,19 +326,19 @@ func upgrade(ctx context.Context, bin string) string {
 
 // addRequire adds the require line to the end of the init.lua at path. It
 // creates the file if it is not there. If the file has the line, addRequire
-// does not change it.
-func addRequire(path string) error {
+// does not change it. It reports whether it adds the line.
+func addRequire(path string) (bool, error) {
 	s, err := readFile(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if slices.ContainsFunc(slices.Collect(strings.Lines(s)), isRequire) {
-		return nil
+		return false, nil
 	}
 	if s != "" && !strings.HasSuffix(s, "\n") {
 		s += "\n"
 	}
-	return os.WriteFile(path, []byte(s+requireLine+"\n"), 0o644)
+	return true, os.WriteFile(path, []byte(s+requireLine+"\n"), 0o644)
 }
 
 // isRequire reports whether line is the require line of rexdiff, maybe
@@ -372,14 +375,12 @@ func removeRequire(path string) error {
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
 
-// reload tells Rex to read its configuration file again, and returns the
-// report of Rex. If Rex fails, reload tells the user how to reload, and
-// returns "".
-func reload(ctx context.Context, stdout io.Writer) string {
-	out, err := rex.ReloadConfig(ctx)
-	if err != nil {
+// reload tells Rex to read its configuration file again. If Rex fails,
+// reload tells the user how to reload.
+func reload(ctx context.Context, stdout io.Writer) {
+	if err := rex.ReloadConfig(ctx); err != nil {
 		fmt.Fprintf(stdout, "reload Rex's config yourself: rex config reload (%v)\n", err)
-		return ""
+		return
 	}
-	return out
+	fmt.Fprintln(stdout, "reloaded Rex's config")
 }

@@ -9,6 +9,11 @@ stdout 'press the key of the settings'
 cmp .config/rex/init.lua installed.lua
 grep 'config reload' rex.log
 
+# A second install keeps the one line of init.lua, and does not say it adds it.
+exec rexdiff install
+! stdout 'added'
+cmp .config/rex/init.lua installed.lua
+
 # Rex accepts the action and its keys.
 [realrex] exec $REALREX config check .config/rex/init.lua
 [realrex] stdout 'bindings: 2'

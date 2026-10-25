@@ -369,12 +369,12 @@ func ConfigPath() string {
 	return filepath.Join(dir, "rex", "init.lua")
 }
 
-// ReloadConfig tells Rex to read its configuration file again. It returns
-// the report of Rex. It also works outside a Rex session.
-func ReloadConfig(ctx context.Context) (string, error) {
+// ReloadConfig tells Rex to read its configuration file again. It also
+// works outside a Rex session.
+func ReloadConfig(ctx context.Context) error {
 	c := &Client{bin: binFromEnv()}
-	out, err := c.runRex(ctx, "config", "reload")
-	return string(out), err
+	_, err := c.runRex(ctx, "config", "reload")
+	return err
 }
 
 // Event is a change to a block in the session, or a reconnect.

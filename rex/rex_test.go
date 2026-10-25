@@ -234,10 +234,13 @@ func TestReloadConfigOutsideRex(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	testgit.Script(t, dir, "rex", "echo \"reloaded: $*\"\n")
-	out, err := rex.ReloadConfig(t.Context())
-	if err != nil || out != "reloaded: config reload\n" {
-		t.Errorf("ReloadConfig = %q, %v, want the report of the app rex", out, err)
+	log := filepath.Join(home, "log")
+	testgit.Script(t, dir, "rex", "echo \"$*\" > '"+log+"'\n")
+	if err := rex.ReloadConfig(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(log); string(b) != "config reload\n" {
+		t.Errorf("the app rex ran with %q, want config reload", b)
 	}
 }
 
