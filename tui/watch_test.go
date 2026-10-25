@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // watched returns a test model with a watcher, after its first tick. The
@@ -46,7 +47,7 @@ func TestTickRunsNoGitWhenIdle(t *testing.T) {
 // TestTickSeesEdit checks that a tick shows an edit.
 func TestTickSeesEdit(t *testing.T) {
 	m, dir, pause := watched(t)
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
 	time.Sleep(pause)
 	if m = step(t, m, tickMsg{}); !shows(m, "return 42") {
 		t.Errorf("view got:\n%s\nwant the edit", view(m))
@@ -57,7 +58,7 @@ func TestTickSeesEdit(t *testing.T) {
 func TestRefreshForces(t *testing.T) {
 	m, dir, _ := watched(t)
 	m.reloadAt = time.Now().Add(time.Hour)
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
 	if m = press(t, m, "r"); !shows(m, "return 42") {
 		t.Errorf("view got:\n%s\nwant the edit", view(m))
 	}
@@ -144,7 +145,7 @@ func TestFilesTabWaitsForWatcher(t *testing.T) {
 	}
 	// An edit that keeps the size and the time is not a change for the
 	// watcher.
-	write(t, dir, path, "package a\n\nvar x = 2\n")
+	testgit.WriteFile(t, dir, path, "package a\n\nvar x = 2\n")
 	if err := os.Chtimes(filepath.Join(dir, path), fi.ModTime(), fi.ModTime()); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestFilesTabWaitsForWatcher(t *testing.T) {
 	if m = step(t, m, tickMsg{}); shows(m, "var x = 2") {
 		t.Errorf("no change for the watcher, view got:\n%s\nwant no read", view(m))
 	}
-	write(t, dir, path, "package a\n\nvar x = 42\n")
+	testgit.WriteFile(t, dir, path, "package a\n\nvar x = 42\n")
 	time.Sleep(pause)
 	if m = step(t, m, tickMsg{}); !shows(m, "var x = 42") {
 		t.Errorf("view got:\n%s\nwant the edit", view(m))
@@ -168,7 +169,7 @@ func TestTickSeesIgnoredEdit(t *testing.T) {
 	m = openFile(t, m, "out/x.txt")
 	time.Sleep(pause)
 	m = step(t, m, tickMsg{}) // the watcher gets the open file
-	write(t, dir, "out/x.txt", "an edit\n")
+	testgit.WriteFile(t, dir, "out/x.txt", "an edit\n")
 	time.Sleep(pause)
 	if m = step(t, m, tickMsg{}); !shows(m, "an edit") {
 		t.Errorf("view got:\n%s\nwant the edit", view(m))

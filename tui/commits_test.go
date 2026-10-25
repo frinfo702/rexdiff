@@ -2,6 +2,8 @@ package tui
 
 import (
 	"testing"
+
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // TestCommitPicker checks the commit picker of herdr-reviewr: no filter,
@@ -9,7 +11,7 @@ import (
 func TestCommitPicker(t *testing.T) {
 	m, dir := newTestModel(t)
 	for _, s := range []string{"c1", "c2", "c3"} {
-		git(t, dir, "commit", "-q", "--allow-empty", "-m", s)
+		testgit.Git(t, dir, "commit", "-q", "--allow-empty", "-m", s)
 	}
 	m = press(t, m, "G")
 	if m.overlay == nil || m.overlay.kind != overlayCommits {
@@ -52,8 +54,8 @@ func TestCommitPicker(t *testing.T) {
 // the base branch.
 func TestCommitPickerOnBase(t *testing.T) {
 	m, dir := newTestModel(t)
-	git(t, dir, "stash", "-q")
-	git(t, dir, "checkout", "-q", "main")
+	testgit.Git(t, dir, "stash", "-q")
+	testgit.Git(t, dir, "checkout", "-q", "main")
 	if m = press(t, m, "G"); !shows(m, "commits · last 50") || len(m.overlay.shown) != 1 {
 		t.Errorf("G on main: view:\n%s\nwant the last 50 commits", view(m))
 	}

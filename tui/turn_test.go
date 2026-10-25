@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/rex"
 )
 
@@ -78,7 +79,7 @@ func TestTurnWithoutChange(t *testing.T) {
 func TestTurnKeepsOldBaseline(t *testing.T) {
 	m, dir := turnModel(t)
 	m = step(t, m, status("p", "pi", rex.StateWorking))
-	write(t, dir, "c.go", "package a\n")
+	testgit.WriteFile(t, dir, "c.go", "package a\n")
 	m = step(t, m, status("p", "pi", rex.StateIdle))
 	if m.turn == nil {
 		t.Fatal("no turn after a change")
@@ -103,7 +104,7 @@ func TestTurnPromotesOnChange(t *testing.T) {
 	if m.turn != nil {
 		t.Fatal("a tick with no change promotes the turn")
 	}
-	write(t, dir, "c.go", "package a\n")
+	testgit.WriteFile(t, dir, "c.go", "package a\n")
 	m.polled = time.Time{} // without a watcher, the poll sees the change
 	m = step(t, m, tickMsg{})
 	if m.turn == nil || !m.turn.running || m.pending != nil {
@@ -130,7 +131,7 @@ func TestTurnTwoAgents(t *testing.T) {
 	}})
 	m = step(t, m, status("p", "pi", rex.StateWorking))
 	m = step(t, m, status("q", "cc", rex.StateWorking))
-	write(t, dir, "c.go", "package a\n")
+	testgit.WriteFile(t, dir, "c.go", "package a\n")
 	m = step(t, m, status("p", "pi", rex.StateIdle))
 	if m.pending == nil || m.turn != nil {
 		t.Fatalf("turn %+v, pending %+v, want the turn still pending", m.turn, m.pending)
@@ -155,7 +156,7 @@ func TestTurnOutsideAgent(t *testing.T) {
 		t.Errorf("note %q, want \"no agent works here\"", m.changes.note)
 	}
 	m = step(t, m, status("p", "pi", rex.StateWorking))
-	write(t, dir, "c.go", "package a\n")
+	testgit.WriteFile(t, dir, "c.go", "package a\n")
 	m = step(t, m, status("p", "pi", rex.StateIdle))
 	if m.turn != nil || m.pending != nil {
 		t.Errorf("turn %+v, pending %+v, want none", m.turn, m.pending)
@@ -172,7 +173,7 @@ func TestTurnOutsideAgent(t *testing.T) {
 func TestTurnUnknownCwdHolds(t *testing.T) {
 	m, dir := turnModel(t)
 	m = step(t, m, status("p", "pi", rex.StateWorking))
-	write(t, dir, "c.go", "package a\n")
+	testgit.WriteFile(t, dir, "c.go", "package a\n")
 	// Outside Rex, the program cannot ask for the directory of block q.
 	m = step(t, m, status("q", "cc", rex.StateIdle))
 	m = step(t, m, status("p", "pi", rex.StateIdle))

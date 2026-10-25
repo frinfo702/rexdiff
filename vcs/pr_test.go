@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -19,14 +20,12 @@ import (
 func fakeTool(t *testing.T, dir, name string, calls map[string]string) {
 	t.Helper()
 	var script strings.Builder
-	script.WriteString("#!/bin/sh\ncase \"$*\" in\n")
+	script.WriteString("case \"$*\" in\n")
 	for args, out := range calls {
 		script.WriteString("'" + args + "') cat <<'EOF'\n" + out + "\nEOF\n;;\n")
 	}
 	script.WriteString("*) echo unexpected call: \"$*\" >&2; exit 1 ;;\nesac\n")
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(script.String()), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testgit.Script(t, dir, name, script.String())
 }
 
 // repoAt returns the test repository, on the branch feat, with origin at
@@ -34,7 +33,7 @@ func fakeTool(t *testing.T, dir, name string, calls map[string]string) {
 func repoAt(t *testing.T, remote string) (*vcs.Repo, string) {
 	t.Helper()
 	r, dir := newRepo(t)
-	git(t, dir, "remote", "add", "origin", remote)
+	testgit.Git(t, dir, "remote", "add", "origin", remote)
 	return r, dir
 }
 
@@ -197,10 +196,10 @@ func TestPullRequestErrors(t *testing.T) {
 	for _, tt := range tests {
 		r, dir := newRepo(t)
 		if tt.remote != "" {
-			git(t, dir, "remote", "add", "origin", tt.remote)
+			testgit.Git(t, dir, "remote", "add", "origin", tt.remote)
 		}
 		if tt.branch != "feat" {
-			git(t, dir, "checkout", "-qb", tt.branch)
+			testgit.Git(t, dir, "checkout", "-qb", tt.branch)
 		}
 		_, err := r.PullRequest(t.Context(), tt.hosts)
 		switch {

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -22,23 +23,20 @@ import (
 func newRepo(t *testing.T) (*vcs.Repo, string) {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "a repo ") // git keeps the space
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	run := func(args ...string) { git(t, dir, args...) }
-	run("init", "-q", "-b", "main")
-	write(t, dir, "a.txt", "one\n")
+	testgit.NewRepo(t, dir)
+	run := func(args ...string) { testgit.Git(t, dir, args...) }
+	testgit.WriteFile(t, dir, "a.txt", "one\n")
 	run("add", ".")
 	run("commit", "-qm", "init")
 	run("checkout", "-qb", "feat")
-	write(t, dir, "b.txt", "bee\n")
+	testgit.WriteFile(t, dir, "b.txt", "bee\n")
 	run("add", ".")
 	run("commit", "-qm", "b")
-	write(t, dir, "a.txt", "one\ntwo\n")
-	write(t, dir, "new.txt", "untracked\n")
-	write(t, dir, ".gitignore", "ignored.txt\nbuild/\n")
-	write(t, dir, "ignored.txt", "x\n")
-	write(t, dir, "build/out", "x\n")
+	testgit.WriteFile(t, dir, "a.txt", "one\ntwo\n")
+	testgit.WriteFile(t, dir, "new.txt", "untracked\n")
+	testgit.WriteFile(t, dir, ".gitignore", "ignored.txt\nbuild/\n")
+	testgit.WriteFile(t, dir, "ignored.txt", "x\n")
+	testgit.WriteFile(t, dir, "build/out", "x\n")
 
 	// Open from a subdirectory. Open must find the root.
 	r, err := vcs.Open(t.Context(), filepath.Join(dir, "build"))
@@ -46,34 +44,6 @@ func newRepo(t *testing.T) (*vcs.Repo, string) {
 		t.Fatal(err)
 	}
 	return r, dir
-}
-
-// git runs git in dir and fails the test if git fails.
-func git(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "git", args...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=t",
-		"GIT_AUTHOR_EMAIL=t@t",
-		"GIT_COMMITTER_NAME=t",
-		"GIT_COMMITTER_EMAIL=t@t",
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %v: %s", args, out)
-	}
-}
-
-// write writes s to the file name in dir, and makes its parent directories.
-func write(t *testing.T, dir, name, s string) {
-	t.Helper()
-	p := filepath.Join(dir, name)
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // snapshot returns the tree of the working tree.
@@ -154,15 +124,15 @@ func TestScopes(t *testing.T) {
 	}
 
 	// In a turn, rexdiff takes a snapshot and then the agent edits a file.
-	write(t, dir, "new.txt", "untracked\nmore\n")
+	testgit.WriteFile(t, dir, "new.txt", "untracked\nmore\n")
 	tf := changes(t, r, now, snapshot(t, r))
 	if got := names(tf); got != "Mnew.txt" || tf[0].New != "untracked\nmore\n" {
 		t.Errorf("turn: %s, want Mnew.txt with the new line", got)
 	}
 
 	// Snapshot must not change the real index.
-	st, _ := exec.CommandContext(t.Context(), "git", "-C", dir, "status", "--porcelain").Output()
-	if !strings.Contains(string(st), "?? new.txt") {
+	st := testgit.Git(t, dir, "status", "--porcelain")
+	if !strings.Contains(st, "?? new.txt") {
 		t.Errorf("git status after Snapshot = %q, want ?? new.txt", st)
 	}
 
@@ -223,20 +193,20 @@ func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 	lines := strings.Repeat("x\n", 30_000)        // two make 60,000 lines
 	// Two versions with 25,000 lines each are not too big.
 	limit := strings.Repeat("y\n", 25_000)
-	write(t, dir, "bytes", half)
-	write(t, dir, "lines", lines)
-	write(t, dir, "limit", limit)
-	git(t, dir, "add", ".")
-	git(t, dir, "commit", "-qm", "base")
-	write(t, dir, "bytes", "y"+half)
-	write(t, dir, "lines", "y"+lines)
-	write(t, dir, "limit", "z"+limit)
-	write(t, dir, "bin", "a\x00b")
-	write(t, dir, "late", strings.Repeat("x", 9000)+"\x00") // NUL at byte 9000
-	write(t, dir, "big", strings.Repeat("x\n", 50_001))
-	write(t, dir, "huge", strings.Repeat("x", 2_000_001))
+	testgit.WriteFile(t, dir, "bytes", half)
+	testgit.WriteFile(t, dir, "lines", lines)
+	testgit.WriteFile(t, dir, "limit", limit)
+	testgit.Git(t, dir, "add", ".")
+	testgit.Git(t, dir, "commit", "-qm", "base")
+	testgit.WriteFile(t, dir, "bytes", "y"+half)
+	testgit.WriteFile(t, dir, "lines", "y"+lines)
+	testgit.WriteFile(t, dir, "limit", "z"+limit)
+	testgit.WriteFile(t, dir, "bin", "a\x00b")
+	testgit.WriteFile(t, dir, "late", strings.Repeat("x", 9000)+"\x00") // NUL at byte 9000
+	testgit.WriteFile(t, dir, "big", strings.Repeat("x\n", 50_001))
+	testgit.WriteFile(t, dir, "huge", strings.Repeat("x", 2_000_001))
 	// Diff reads this file after the skipped content.
-	write(t, dir, "small", "after\n")
+	testgit.WriteFile(t, dir, "small", "after\n")
 	got := map[string]vcs.File{}
 	for _, f := range changes(t, r, head(t, r), snapshot(t, r)) {
 		got[f.Path] = f
@@ -276,16 +246,16 @@ func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 // once.
 func TestFilesInConflict(t *testing.T) {
 	dir := t.TempDir()
-	run := func(args ...string) { git(t, dir, args...) }
-	run("init", "-q", "-b", "main")
-	write(t, dir, "f.txt", "base\n")
+	testgit.NewRepo(t, dir)
+	run := func(args ...string) { testgit.Git(t, dir, args...) }
+	testgit.WriteFile(t, dir, "f.txt", "base\n")
 	run("add", ".")
 	run("commit", "-qm", "base")
 	run("checkout", "-qb", "other")
-	write(t, dir, "f.txt", "other\n")
+	testgit.WriteFile(t, dir, "f.txt", "other\n")
 	run("commit", "-qam", "other")
 	run("checkout", "-q", "main")
-	write(t, dir, "f.txt", "main\n")
+	testgit.WriteFile(t, dir, "f.txt", "main\n")
 	run("commit", "-qam", "main")
 	cmd := exec.CommandContext(t.Context(), "git", "merge", "other")
 	cmd.Dir = dir
@@ -332,7 +302,7 @@ func TestWorktree(t *testing.T) {
 		t.Errorf("Files = %s, want %s", got, want)
 	}
 
-	write(t, dir, "build/sub/x", "x\n")
+	testgit.WriteFile(t, dir, "build/sub/x", "x\n")
 	var ignored []string
 	for _, e := range r.IgnoredDir("build") {
 		ignored = append(ignored, e.Path)
@@ -349,7 +319,7 @@ func TestWorktree(t *testing.T) {
 	if err != nil || len(ms) != 1 || ms[0] != match {
 		t.Errorf("Grep(TWO) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
-	write(t, dir, "a:é\n.txt", "x: two\n") // git quotes this name unless -z
+	testgit.WriteFile(t, dir, "a:é\n.txt", "x: two\n") // git quotes this name unless -z
 	ms, _, err = r.Grep(ctx, "x: two", 10)
 	match = vcs.Match{Path: "a:é\n.txt", Line: 1, Text: "x: two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
@@ -384,10 +354,7 @@ func TestWorktree(t *testing.T) {
 func TestOwns(t *testing.T) {
 	r, dir := newRepo(t)
 	nested := filepath.Join(dir, "build", "nested")
-	if err := os.MkdirAll(nested, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	git(t, nested, "init", "-q")
+	testgit.NewRepo(t, nested)
 	tests := []struct {
 		dir  string
 		want bool
@@ -427,8 +394,8 @@ func TestRefs(t *testing.T) {
 	}
 	// The HEAD of each remote is not a branch.
 	for _, remote := range []string{"origin", "up"} {
-		git(t, dir, "update-ref", "refs/remotes/"+remote+"/main", "main")
-		git(t, dir, "symbolic-ref", "refs/remotes/"+remote+"/HEAD",
+		testgit.Git(t, dir, "update-ref", "refs/remotes/"+remote+"/main", "main")
+		testgit.Git(t, dir, "symbolic-ref", "refs/remotes/"+remote+"/HEAD",
 			"refs/remotes/"+remote+"/main")
 	}
 	want := "feat main origin/main up/main"
@@ -442,13 +409,11 @@ func TestRefs(t *testing.T) {
 
 // TestEditor checks that Editor returns core.editor, or "" if it is not set.
 func TestEditor(t *testing.T) {
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	r, dir := newRepo(t)
 	if got := r.Editor(t.Context()); got != "" {
 		t.Errorf("Editor with no core.editor = %q, want \"\"", got)
 	}
-	git(t, dir, "config", "core.editor", "vim -f")
+	testgit.Git(t, dir, "config", "core.editor", "vim -f")
 	if got := r.Editor(t.Context()); got != "vim -f" {
 		t.Errorf("Editor = %q, want \"vim -f\"", got)
 	}
@@ -458,18 +423,18 @@ func TestEditor(t *testing.T) {
 // content that Diff gives for a submodule.
 func TestDiffRenameAndSubmodule(t *testing.T) {
 	dir := t.TempDir()
-	git(t, dir, "init", "-q")
-	write(t, dir, "old.txt", "one\ntwo\nthree\n")
+	testgit.Git(t, dir, "init", "-q")
+	testgit.WriteFile(t, dir, "old.txt", "one\ntwo\nthree\n")
 	const (
 		a = "1111111111111111111111111111111111111111"
 		b = "2222222222222222222222222222222222222222"
 	)
-	git(t, dir, "add", ".")
-	git(t, dir, "update-index", "--add", "--cacheinfo", "160000,"+a+",sub")
-	git(t, dir, "commit", "-qm", "one")
-	git(t, dir, "mv", "old.txt", "new.txt")
-	git(t, dir, "update-index", "--cacheinfo", "160000,"+b+",sub")
-	git(t, dir, "commit", "-qm", "two")
+	testgit.Git(t, dir, "add", ".")
+	testgit.Git(t, dir, "update-index", "--add", "--cacheinfo", "160000,"+a+",sub")
+	testgit.Git(t, dir, "commit", "-qm", "one")
+	testgit.Git(t, dir, "mv", "old.txt", "new.txt")
+	testgit.Git(t, dir, "update-index", "--cacheinfo", "160000,"+b+",sub")
+	testgit.Git(t, dir, "commit", "-qm", "two")
 
 	ctx := t.Context()
 	r, err := vcs.Open(ctx, dir)
@@ -512,8 +477,8 @@ func TestOpenOutsideARepo(t *testing.T) {
 // no index.
 func TestNewRepo(t *testing.T) {
 	dir := t.TempDir()
-	git(t, dir, "init", "-q")
-	write(t, dir, "a.txt", "one\n")
+	testgit.Git(t, dir, "init", "-q")
+	testgit.WriteFile(t, dir, "a.txt", "one\n")
 	r, err := vcs.Open(t.Context(), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -546,9 +511,9 @@ func TestSnapshotRacyEdit(t *testing.T) {
 	// the modification time of the index. The copy of the index must keep
 	// that time.
 	r, dir := newRepo(t)
-	git(t, dir, "config", "core.trustctime", "false")
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-qm", "all")
+	testgit.Git(t, dir, "config", "core.trustctime", "false")
+	testgit.Git(t, dir, "add", "-A")
+	testgit.Git(t, dir, "commit", "-qm", "all")
 	then := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	touch := func(name string) {
 		t.Helper()
@@ -556,12 +521,12 @@ func TestSnapshotRacyEdit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(t, dir, "b.txt", "bee\n")
+	testgit.WriteFile(t, dir, "b.txt", "bee\n")
 	touch("b.txt")
 	// The index entry gets the time of b.txt.
-	git(t, dir, "update-index", "--really-refresh")
+	testgit.Git(t, dir, "update-index", "--really-refresh")
 	touch(".git/index")
-	write(t, dir, "b.txt", "BEE\n") // the same size and time
+	testgit.WriteFile(t, dir, "b.txt", "BEE\n") // the same size and time
 	touch("b.txt")
 
 	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Mb.txt" {
@@ -574,7 +539,7 @@ func TestSnapshotRacyEdit(t *testing.T) {
 func TestCommitsLikeHerdr(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
-	run := func(args ...string) { git(t, dir, args...) }
+	run := func(args ...string) { testgit.Git(t, dir, args...) }
 	run("checkout", "-qb", "side", "main")
 	run("commit", "-q", "--allow-empty", "-m", "side")
 	run("checkout", "-q", "feat")
@@ -609,7 +574,7 @@ func TestCommitsLikeHerdr(t *testing.T) {
 	}
 
 	empty := t.TempDir()
-	git(t, empty, "init", "-q")
+	testgit.Git(t, empty, "init", "-q")
 	er, err := vcs.Open(ctx, empty)
 	if err != nil {
 		t.Fatal(err)
@@ -624,7 +589,7 @@ func TestCommitsLikeHerdr(t *testing.T) {
 func TestGrepLimit(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
-	write(t, dir, "many.txt", strings.Repeat("hit\n", 5000))
+	testgit.WriteFile(t, dir, "many.txt", strings.Repeat("hit\n", 5000))
 	tests := []struct {
 		limit    int
 		wantN    int

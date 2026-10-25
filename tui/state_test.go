@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // TestGrepKeepsFileCursor checks that the end of a code search does not
@@ -54,7 +55,7 @@ func TestFocusShowsList(t *testing.T) {
 func TestOverlayClickAboveRows(t *testing.T) {
 	m, dir := newTestModel(t)
 	for i := range 12 {
-		git(t, dir, "branch", fmt.Sprintf("b%02d", i))
+		testgit.Git(t, dir, "branch", fmt.Sprintf("b%02d", i))
 	}
 	m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 16})
 	m = press(t, m, "B")

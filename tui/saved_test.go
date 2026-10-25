@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/rex"
 )
 
@@ -65,7 +66,7 @@ func TestSavedTurn(t *testing.T) {
 	if m.repo.SavedTurn(t.Context()) != "" {
 		t.Error("a turn with no change saves its tree")
 	}
-	write(t, dir, "c.go", "package a\n")
+	testgit.WriteFile(t, dir, "c.go", "package a\n")
 	m = step(t, m, status("block:agent", "pi", rex.StateIdle))
 	if m.turn == nil {
 		t.Fatal("no turn after the agent changes a file")

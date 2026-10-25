@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // TestCommentKeepsLine checks that a comment stays on its line numbers
@@ -15,7 +16,7 @@ func TestCommentKeepsLine(t *testing.T) {
 	m := commented(t)
 	c := m.comments.All()[0]
 	start, end := c.Start, c.End
-	write(t, m.repo.Root(), "a.go",
+	testgit.WriteFile(t, m.repo.Root(), "a.go",
 		"// one\n// two\npackage a\n\nfunc A() int {\n\tx := 2\n\treturn x\n}\n")
 	m.reload()
 	if c.Start != start || c.End != end {
@@ -33,7 +34,7 @@ func TestCommentKeepsLine(t *testing.T) {
 // shows "(stale)" in the comment list only.
 func TestStaleInList(t *testing.T) {
 	m := commented(t)
-	git(t, m.repo.Root(), "checkout", "--", "a.go")
+	testgit.Git(t, m.repo.Root(), "checkout", "--", "a.go")
 	m.reload()
 	if shows(m, "(stale)") {
 		t.Errorf("the diff shows (stale):\n%s", view(m))

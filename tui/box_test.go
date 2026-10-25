@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // boxShows reports whether the comment box of m shows in the main pane.
@@ -73,7 +74,7 @@ func TestTypingShowsBox(t *testing.T) {
 func TestListEditNeedsLine(t *testing.T) {
 	m, dir := newTestModel(t)
 	m = press(t, m, "]", "c", "h", "i", "enter")
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
 	m.reload()
 	m.status = ""
 	if m = press(t, m, "l", "e"); m.mode == modeComment || m.status == "" {

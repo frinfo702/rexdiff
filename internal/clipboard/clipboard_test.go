@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/rednafi/rexdiff/internal/clipboard"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // fakeTool writes an executable script name in a new directory, and sets
@@ -14,10 +15,7 @@ import (
 func fakeTool(t *testing.T, name, script string) string {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testgit.Script(t, dir, name, script)
 	t.Setenv("PATH", dir)
 	return dir
 }

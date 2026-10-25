@@ -1,0 +1,9 @@
+package tui
+
+import (
+	"testing"
+
+	"github.com/rednafi/rexdiff/internal/testgit"
+)
+
+func TestMain(m *testing.M) { testgit.Main(m) }

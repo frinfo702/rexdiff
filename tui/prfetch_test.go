@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -80,7 +81,7 @@ func TestPRBranchSwitch(t *testing.T) {
 	m = press(t, m, "3")
 	m = step(t, m, prMsg{gen: m.prf.gen, pr: &vcs.PullRequest{Title: "T"}})
 
-	git(t, dir, "commit", "-qam", "more")
+	testgit.Git(t, dir, "commit", "-qam", "more")
 	time.Sleep(pause)
 	m = step(t, m, tickMsg{})
 	if m.pr.pr == nil || !m.prf.inFlight {
@@ -89,7 +90,7 @@ func TestPRBranchSwitch(t *testing.T) {
 	}
 	m = step(t, m, prMsg{gen: m.prf.gen, pr: &vcs.PullRequest{Title: "T"}})
 
-	git(t, dir, "checkout", "-q", "main")
+	testgit.Git(t, dir, "checkout", "-q", "main")
 	gen := m.prf.gen
 	time.Sleep(pause)
 	m = step(t, m, tickMsg{})

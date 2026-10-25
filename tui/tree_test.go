@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -10,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -19,25 +18,19 @@ import (
 func newTreeModel(t *testing.T) (model, string) {
 	t.Helper()
 	dir := t.TempDir()
-	run := func(args ...string) { git(t, dir, args...) }
-	run("init", "-q", "-b", "main")
-	if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, "out", "sub"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	run := func(args ...string) { testgit.Git(t, dir, args...) }
+	testgit.NewRepo(t, dir)
 	for _, p := range []string{"src/a.go", "src/b.go", "top.go"} {
-		write(t, dir, p, "package a\n")
+		testgit.WriteFile(t, dir, p, "package a\n")
 	}
-	write(t, dir, ".gitignore", "out/\n")
+	testgit.WriteFile(t, dir, ".gitignore", "out/\n")
 	run("add", ".")
 	run("commit", "-qm", "init")
 	for _, p := range []string{"src/a.go", "src/b.go", "top.go"} {
-		write(t, dir, p, "package a\n\nvar x = 1\n")
+		testgit.WriteFile(t, dir, p, "package a\n\nvar x = 1\n")
 	}
-	write(t, dir, "out/x.txt", "x\n")
-	write(t, dir, "out/sub/y.txt", "y\n")
+	testgit.WriteFile(t, dir, "out/x.txt", "x\n")
+	testgit.WriteFile(t, dir, "out/sub/y.txt", "y\n")
 
 	repo, err := vcs.Open(t.Context(), dir)
 	if err != nil {

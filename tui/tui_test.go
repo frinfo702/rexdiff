@@ -5,7 +5,6 @@ import (
 	"errors"
 	"image/color"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/rex"
 	"github.com/rednafi/rexdiff/vcs"
 )
@@ -26,16 +26,16 @@ import (
 func newTestModel(tb testing.TB) (model, string) {
 	tb.Helper()
 	dir := tb.TempDir()
-	run := func(args ...string) { git(tb, dir, args...) }
-	run("init", "-q", "-b", "main")
-	write(tb, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
+	run := func(args ...string) { testgit.Git(tb, dir, args...) }
+	testgit.NewRepo(tb, dir)
+	testgit.WriteFile(tb, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
 	run("add", ".")
 	run("commit", "-qm", "init")
 	run("checkout", "-qb", "feat")
-	write(tb, dir, "b.go", "package a\n")
+	testgit.WriteFile(tb, dir, "b.go", "package a\n")
 	run("add", ".")
 	run("commit", "-qm", "add b")
-	write(tb, dir, "a.go", "package a\n\nfunc A() int {\n\tx := 2\n\treturn x\n}\n")
+	testgit.WriteFile(tb, dir, "a.go", "package a\n\nfunc A() int {\n\tx := 2\n\treturn x\n}\n")
 
 	repo, err := vcs.Open(tb.Context(), dir)
 	if err != nil {
@@ -46,31 +46,6 @@ func newTestModel(tb testing.TB) (model, string) {
 	m.reload()
 	m = step(tb, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	return m, dir
-}
-
-// git runs git in dir and fails the test if git fails.
-func git(tb testing.TB, dir string, args ...string) {
-	tb.Helper()
-	cmd := exec.CommandContext(tb.Context(), "git", args...)
-	cmd.Dir = dir
-	cmd.Env = append(
-		os.Environ(),
-		"GIT_AUTHOR_NAME=t",
-		"GIT_AUTHOR_EMAIL=t@t",
-		"GIT_COMMITTER_NAME=t",
-		"GIT_COMMITTER_EMAIL=t@t",
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		tb.Fatalf("git %v: %s", args, out)
-	}
-}
-
-// write writes a file in dir and fails the test if it cannot.
-func write(tb testing.TB, dir, name, content string) {
-	tb.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-		tb.Fatal(err)
-	}
 }
 
 // step gives msg to m and returns the new model.
@@ -183,7 +158,7 @@ func TestScopes(t *testing.T) {
 	}
 	m = step(t, m, sample("block:agent", "pi", dir))
 	m = step(t, m, status("block:agent", "pi", rex.StateWorking))
-	write(t, dir, "c.go", "package a\n")
+	testgit.WriteFile(t, dir, "c.go", "package a\n")
 	m = step(t, m, status("block:agent", "pi", rex.StateIdle))
 	if got := paths(m); !slices.Equal(got, []string{"c.go"}) || m.turn.running {
 		t.Errorf("turn scope shows %v (running %v), want [c.go]", got, m.turn.running)
@@ -394,11 +369,7 @@ func TestSendError(t *testing.T) {
 // that show stay, and the error is a flash.
 func TestMissingHead(t *testing.T) {
 	m, dir := newTestModel(t)
-	sha, err := exec.CommandContext(t.Context(), "git", "-C", dir, "rev-parse", "HEAD").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	hex := strings.TrimSpace(string(sha))
+	hex := strings.TrimSpace(testgit.Git(t, dir, "rev-parse", "HEAD"))
 	obj := filepath.Join(dir, ".git", "objects", hex[:2], hex[2:])
 	if err := os.Remove(obj); err != nil {
 		t.Fatal(err)
@@ -648,7 +619,7 @@ func wrapModel(t *testing.T) (m model, dir, long string) {
 	t.Helper()
 	m, dir = newTestModel(t)
 	long = "\treturn " + strings.Repeat("x + ", 40) + "1"
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n"+long+"\n}\n")
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n"+long+"\n}\n")
 	m.reload()
 	m = step(t, m, tea.WindowSizeMsg{Width: 80, Height: 40})
 	return m, dir, long
@@ -659,9 +630,9 @@ func wrapModel(t *testing.T) (m model, dir, long string) {
 func twoHunks(t *testing.T, m model, dir, long string) model {
 	t.Helper()
 	same := strings.Repeat("\tx++\n", 20)
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n"+same+"}\n")
-	git(t, dir, "commit", "-qam", "same")
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n"+long+"\n"+same+"\treturn 9\n}\n")
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n"+same+"}\n")
+	testgit.Git(t, dir, "commit", "-qam", "same")
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n"+long+"\n"+same+"\treturn 9\n}\n")
 	m.reload()
 	return m
 }
@@ -817,7 +788,7 @@ func TestHostileText(t *testing.T) {
 		}
 	}
 	m, dir := newTestModel(t)
-	write(t, dir, "e"+osc+"\n.go", "x"+osc+"\n")
+	testgit.WriteFile(t, dir, "e"+osc+"\n.go", "x"+osc+"\n")
 	m.reload()
 	raw("file list", m)
 	m = press(t, m, "f", "]", "c")
@@ -834,7 +805,7 @@ func TestHostileText(t *testing.T) {
 	raw("the status after an error", m)
 	m = step(t, m, sample("b", "pi"+osc, dir))
 	m = step(t, m, status("b", "pi"+osc, rex.StateWorking))
-	write(t, dir, "turn.go", "x\n")
+	testgit.WriteFile(t, dir, "turn.go", "x\n")
 	m = step(t, m, status("b", "pi"+osc, rex.StateIdle))
 	m = press(t, m, "t")
 	if m.turn == nil {
@@ -872,7 +843,7 @@ func TestMouseOffScreen(t *testing.T) {
 // commits and no files, with key bindings that conflict.
 func TestEmptyRepo(t *testing.T) {
 	dir := t.TempDir()
-	git(t, dir, "init", "-q", "-b", "main")
+	testgit.NewRepo(t, dir)
 	repo, err := vcs.Open(t.Context(), dir)
 	if err != nil {
 		t.Fatal(err)

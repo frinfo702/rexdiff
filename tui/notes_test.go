@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -23,7 +24,7 @@ func TestSkippedFileNotes(t *testing.T) {
 		t.Run(tt.want, func(t *testing.T) {
 			m, dir := newTestModel(t)
 			// The name sorts first, so that both tabs select the file.
-			write(t, dir, "0.txt", tt.content)
+			testgit.WriteFile(t, dir, "0.txt", tt.content)
 			m.reload()
 			m.pickFile(0)
 			if !shows(m, tt.want) {
@@ -40,12 +41,12 @@ func TestSkippedFileNotes(t *testing.T) {
 // files, of an empty file, and of a file that rexdiff cannot read.
 func TestEmptyNotes(t *testing.T) {
 	m, dir := newTestModel(t)
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
 	if m.reload(); !shows(m, "no changes") {
 		t.Errorf("an empty scope got:\n%s\nwant \"no changes\"", view(m))
 	}
 
-	write(t, dir, "0.txt", "")
+	testgit.WriteFile(t, dir, "0.txt", "")
 	if m = press(t, m, "2"); !shows(m, "empty file") {
 		t.Errorf("an empty file got:\n%s\nwant \"empty file\"", view(m))
 	}
@@ -109,7 +110,7 @@ func TestRenderedKey(t *testing.T) {
 	if m = press(t, m, "m"); m.rendered {
 		t.Error("m on a.go turns on rendered markdown, want no change")
 	}
-	write(t, dir, "0.md", "\n\n")
+	testgit.WriteFile(t, dir, "0.md", "\n\n")
 	m.reload()
 	m.pickFile(0)
 	m = press(t, m, "m")
@@ -117,7 +118,7 @@ func TestRenderedKey(t *testing.T) {
 		t.Errorf("m on a blank 0.md: rendered %v, status %q; want false, \"nothing here renders\"",
 			m.rendered, m.status)
 	}
-	write(t, dir, "0.md", "# Title\n")
+	testgit.WriteFile(t, dir, "0.md", "# Title\n")
 	m.reload()
 	if m = press(t, m, "m"); !m.rendered {
 		t.Error("m on 0.md does not turn on rendered markdown")

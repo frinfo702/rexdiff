@@ -1,11 +1,11 @@
 package vcs_test
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -36,7 +36,7 @@ func TestSavedBase(t *testing.T) {
 		}
 	}
 	blob := hashObject(t, dir, "--upload-pack=x")
-	git(t, dir, "update-ref", "refs/worktree/rexdiff/base-pick", blob)
+	testgit.Git(t, dir, "update-ref", "refs/worktree/rexdiff/base-pick", blob)
 	if got := r.SavedBase(ctx); got != "" {
 		t.Errorf("SavedBase of an option = %q, want \"\"", got)
 	}
@@ -45,13 +45,10 @@ func TestSavedBase(t *testing.T) {
 // hashObject writes s as a blob in the repository dir and returns its ID.
 func hashObject(t *testing.T, dir, s string) string {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "git", "hash-object", "-w", "--stdin")
-	cmd.Dir, cmd.Stdin = dir, strings.NewReader(s)
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return strings.TrimSpace(string(out))
+	tmp := t.TempDir()
+	testgit.WriteFile(t, tmp, "blob", s)
+	out := testgit.Git(t, dir, "hash-object", "-w", filepath.Join(tmp, "blob"))
+	return strings.TrimSpace(out)
 }
 
 // TestSavedTurn checks that SaveTurn keeps a tree, also after git gc, and
@@ -63,7 +60,7 @@ func TestSavedTurn(t *testing.T) {
 	if err := r.SaveTurn(ctx, tree); err != nil {
 		t.Fatal(err)
 	}
-	git(t, dir, "gc", "-q", "--prune=now")
+	testgit.Git(t, dir, "gc", "-q", "--prune=now")
 	if got := r.SavedTurn(ctx); got != tree {
 		t.Errorf("SavedTurn = %q, want %q", got, tree)
 	}
@@ -86,7 +83,7 @@ func TestSavedPerWorktree(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	other := filepath.Join(t.TempDir(), "wt")
-	git(t, dir, "worktree", "add", "-q", other, "main")
+	testgit.Git(t, dir, "worktree", "add", "-q", other, "main")
 	r2, err := vcs.Open(ctx, other)
 	if err != nil {
 		t.Fatal(err)

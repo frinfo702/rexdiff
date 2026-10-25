@@ -10,26 +10,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/rex"
 )
-
-// writeScript writes an executable sh script with body to dir/name, and
-// returns its path.
-func writeScript(t *testing.T, dir, name, body string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
 
 // fakeRex makes m use a rex in a new directory that runs body. It returns
 // the directory.
 func fakeRex(t *testing.T, m *model, body string) string {
 	t.Helper()
 	dir := t.TempDir()
-	writeScript(t, dir, "rex", body)
+	testgit.Script(t, dir, "rex", body)
 	t.Setenv("REX_SESSION", "S")
 	t.Setenv("REX_BLOCK", "B")
 	t.Setenv("REX_BIN_DIR", dir)
@@ -58,7 +48,7 @@ func pressE(t *testing.T, m model) (model, tea.Cmd) {
 // in a new Rex block, and that e returns no command.
 func TestTerminalEditorInRex(t *testing.T) {
 	bin := t.TempDir()
-	nvim := writeScript(t, bin, "nvim", "")
+	nvim := testgit.Script(t, bin, "nvim", "")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	tests := []struct {
 		name, editor, env, want string
@@ -100,7 +90,7 @@ func TestWindowEditor(t *testing.T) {
 	m, _ := newTestModel(t)
 	bin := t.TempDir()
 	out := filepath.Join(bin, "out")
-	code := writeScript(t, bin, "code", `{ echo "$*"; if (exec 3</dev/tty) 2>/dev/null; then echo tty; else echo no tty; fi; } > '`+out+"'\n")
+	code := testgit.Script(t, bin, "code", `{ echo "$*"; if (exec 3</dev/tty) 2>/dev/null; then echo tty; else echo no tty; fi; } > '`+out+"'\n")
 	m.cfg.Editor = code + " -g {file}:{line}"
 	log := logRex(t, &m)
 	m, cmd := pressE(t, m)
@@ -126,7 +116,7 @@ func TestWindowEditor(t *testing.T) {
 
 // TestEditorError checks that the footer tells why an editor fails.
 func TestEditorError(t *testing.T) {
-	code := writeScript(t, t.TempDir(), "code", "echo 'code: no such file' >&2\nexit 3\n")
+	code := testgit.Script(t, t.TempDir(), "code", "echo 'code: no such file' >&2\nexit 3\n")
 	tests := []struct {
 		name, editor, path, want string
 	}{
@@ -169,8 +159,6 @@ func TestEditorNotOpened(t *testing.T) {
 			m.cfg.Editor = tt.editor
 			t.Setenv("VISUAL", "")
 			t.Setenv("EDITOR", tt.env)
-			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 			log := logRex(t, &m)
 			if tt.remove {
 				if err := os.Remove(filepath.Join(m.repo.Root(), "a.go")); err != nil {

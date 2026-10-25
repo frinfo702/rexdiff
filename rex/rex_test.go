@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/rex"
 )
 
@@ -20,8 +21,7 @@ import (
 func fakeRex(t *testing.T) (*rex.Client, string) {
 	t.Helper()
 	dir := t.TempDir()
-	script := `#!/bin/sh
-printf "%s\n" "$*" >> "` + dir + `/calls"
+	script := `printf "%s\n" "$*" >> "` + dir + `/calls"
 case "$*" in
 "api call -s S session.list_blocks {}")
   echo '{"blocks":[
@@ -59,10 +59,7 @@ more detail' >&2; exit 1 ;;
 *) ;;
 esac
 `
-	bin := filepath.Join(dir, "rex")
-	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testgit.Script(t, dir, "rex", script)
 	// The client comes from the environment that Rex gives a block.
 	t.Setenv("REX_SESSION", "S")
 	t.Setenv("REX_BLOCK", "block:self")
@@ -258,10 +255,7 @@ func TestReloadConfigOutsideRex(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	script := "#!/bin/sh\necho \"reloaded: $*\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "rex"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testgit.Script(t, dir, "rex", "echo \"reloaded: $*\"\n")
 	out, err := rex.ReloadConfig(t.Context())
 	if err != nil || out != "reloaded: config reload\n" {
 		t.Errorf("ReloadConfig = %q, %v, want the report of the app rex", out, err)
@@ -272,10 +266,7 @@ func TestReloadConfigOutsideRex(t *testing.T) {
 // of rex. The error also wraps the exit error of the process.
 func TestErrorKeepsCause(t *testing.T) {
 	dir := t.TempDir()
-	script := "#!/bin/sh\necho 'Error: no Rex server' >&2\nexit 3\n"
-	if err := os.WriteFile(filepath.Join(dir, "rex"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testgit.Script(t, dir, "rex", "echo 'Error: no Rex server' >&2\nexit 3\n")
 	t.Setenv("REX_BIN_DIR", dir)
 	_, err := rex.ReloadConfig(t.Context())
 	ee, ok := errors.AsType[*exec.ExitError](err)

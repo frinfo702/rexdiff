@@ -12,14 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
 // commitAll commits all the changes in the working tree of dir.
 func commitAll(t *testing.T, dir string) {
 	t.Helper()
-	git(t, dir, "add", "-A")
-	git(t, dir, "commit", "-qm", "all")
+	testgit.Git(t, dir, "add", "-A")
+	testgit.Git(t, dir, "commit", "-qm", "all")
 }
 
 // TestRevIsNotAnOption checks that git does not read a rev that starts
@@ -28,7 +29,7 @@ func TestRevIsNotAnOption(t *testing.T) {
 	r, _ := newRepo(t)
 	ctx := t.Context()
 	out := filepath.Join(t.TempDir(), "out")
-	write(t, filepath.Dir(out), "out", "keep\n")
+	testgit.WriteFile(t, filepath.Dir(out), "out", "keep\n")
 	for _, rev := range []string{"--output=" + out, "--independent", "--all", "-h"} {
 		if id, err := r.Resolve(ctx, rev); err == nil {
 			t.Errorf("Resolve(%q) = %s, want an error", rev, id)
@@ -109,10 +110,10 @@ func TestHostilePaths(t *testing.T) {
 // directories, line ends, and empty files.
 func TestDiffFileKinds(t *testing.T) {
 	r, dir := newRepo(t)
-	git(t, dir, "config", "core.autocrlf", "false")
-	write(t, dir, "mode.sh", "echo\n")
-	write(t, dir, "dir", "a file\n")
-	write(t, dir, "type", "a file\n")
+	testgit.Git(t, dir, "config", "core.autocrlf", "false")
+	testgit.WriteFile(t, dir, "mode.sh", "echo\n")
+	testgit.WriteFile(t, dir, "dir", "a file\n")
+	testgit.WriteFile(t, dir, "type", "a file\n")
 	commitAll(t, dir)
 
 	outside := t.TempDir()
@@ -130,14 +131,14 @@ func TestDiffFileKinds(t *testing.T) {
 	if err := os.Remove(filepath.Join(dir, "dir")); err != nil {
 		t.Fatal(err)
 	}
-	write(t, dir, "dir/in", "in\n")
+	testgit.WriteFile(t, dir, "dir/in", "in\n")
 	if err := os.Remove(filepath.Join(dir, "type")); err != nil {
 		t.Fatal(err)
 	}
 	link("a.txt", "type")
-	write(t, dir, "crlf", "a\r\nb\r\n")
-	write(t, dir, "empty", "")
-	write(t, dir, "no-newline", "end")
+	testgit.WriteFile(t, dir, "crlf", "a\r\nb\r\n")
+	testgit.WriteFile(t, dir, "empty", "")
+	testgit.WriteFile(t, dir, "no-newline", "end")
 
 	want := []vcs.File{
 		{Path: "crlf", Status: vcs.StatusAdded, New: "a\r\nb\r\n"},
@@ -161,12 +162,12 @@ func TestDiffFileKinds(t *testing.T) {
 func TestSnapshotNestedRepo(t *testing.T) {
 	r, dir := newRepo(t)
 	commitAll(t, dir)
-	git(t, dir, "init", "-q", "empty")
-	write(t, dir, "empty/x", "x\n")
-	write(t, dir, "full/y", "y\n")
-	git(t, filepath.Join(dir, "full"), "init", "-q")
+	testgit.Git(t, dir, "init", "-q", "empty")
+	testgit.WriteFile(t, dir, "empty/x", "x\n")
+	testgit.WriteFile(t, dir, "full/y", "y\n")
+	testgit.Git(t, filepath.Join(dir, "full"), "init", "-q")
 	commitAll(t, filepath.Join(dir, "full"))
-	write(t, dir, "z.txt", "z\n")
+	testgit.WriteFile(t, dir, "z.txt", "z\n")
 
 	got := changes(t, r, head(t, r), snapshot(t, r))
 	isSubmodule := strings.HasPrefix(got[0].New, "Subproject commit ")
@@ -182,7 +183,7 @@ func TestReadFileStaysInRoot(t *testing.T) {
 	// end, for example /dev/zero.
 	r, dir := newRepo(t)
 	secret := filepath.Join(filepath.Dir(dir), "secret")
-	write(t, filepath.Dir(dir), "secret", "secret\n")
+	testgit.WriteFile(t, filepath.Dir(dir), "secret", "secret\n")
 	links := map[string]string{
 		"to-secret": secret,
 		"to-zero":   "/dev/zero",
@@ -214,8 +215,8 @@ func TestReadFileStaysInRoot(t *testing.T) {
 // newline.
 func TestOpenRootWithNewline(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "a\nb")
-	git(t, filepath.Dir(dir), "init", "-q", dir)
-	write(t, dir, "a.txt", "one\n")
+	testgit.Git(t, filepath.Dir(dir), "init", "-q", dir)
+	testgit.WriteFile(t, dir, "a.txt", "one\n")
 	r, err := vcs.Open(t.Context(), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -235,10 +236,10 @@ func TestGitWorktree(t *testing.T) {
 	_, dir := newRepo(t)
 	ctx := t.Context()
 	wt := filepath.Join(t.TempDir(), "wt")
-	git(t, dir, "worktree", "add", "-q", "-b", "other", wt, "main")
-	write(t, wt, "a.txt", "changed\n")
-	write(t, wt, "staged.txt", "s\n")
-	git(t, wt, "add", "staged.txt")
+	testgit.Git(t, dir, "worktree", "add", "-q", "-b", "other", wt, "main")
+	testgit.WriteFile(t, wt, "a.txt", "changed\n")
+	testgit.WriteFile(t, wt, "staged.txt", "s\n")
+	testgit.Git(t, wt, "add", "staged.txt")
 
 	r, err := vcs.Open(ctx, wt)
 	if err != nil {
@@ -248,8 +249,8 @@ func TestGitWorktree(t *testing.T) {
 	if got != "Ma.txt Astaged.txt" {
 		t.Errorf("Diff(Head, Snapshot) = %s, want Ma.txt Astaged.txt", got)
 	}
-	st, _ := exec.CommandContext(t.Context(), "git", "-C", wt, "status", "--porcelain").Output()
-	if string(st) != " M a.txt\nA  staged.txt\n" {
+	st := testgit.Git(t, wt, "status", "--porcelain")
+	if st != " M a.txt\nA  staged.txt\n" {
 		t.Errorf("git status in the worktree got:\n%s\nwant:\n%s",
 			st, " M a.txt\nA  staged.txt\n")
 	}
@@ -259,7 +260,7 @@ func TestGitWorktree(t *testing.T) {
 func TestDetachedHead(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
-	git(t, dir, "checkout", "-q", "--detach", "main")
+	testgit.Git(t, dir, "checkout", "-q", "--detach", "main")
 	got := names(changes(t, r, head(t, r), snapshot(t, r)))
 	if got != "A.gitignore Ma.txt Anew.txt" {
 		t.Errorf("Diff(Head, Snapshot) = %s, want A.gitignore Ma.txt Anew.txt",
@@ -275,8 +276,8 @@ func TestDetachedHead(t *testing.T) {
 func TestGrepIsLiteral(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
-	write(t, dir, "g.txt", "abc\na.c\n-v\n--help\n[x\n(y\n\\d\n*\n^a\nx$\n")
-	git(t, dir, "config", "grep.column", "true") // adds a field to the output
+	testgit.WriteFile(t, dir, "g.txt", "abc\na.c\n-v\n--help\n[x\n(y\n\\d\n*\n^a\nx$\n")
+	testgit.Git(t, dir, "config", "grep.column", "true") // adds a field to the output
 	tests := []struct {
 		q    string
 		want []string
@@ -314,7 +315,7 @@ func TestCommitsHostileSubject(t *testing.T) {
 	r, dir := newRepo(t)
 	subjects := []string{"a\x1fb", "\x1b[31mred\x1b[0m", "tab\there"}
 	for _, s := range subjects {
-		git(t, dir, "commit", "-q", "--allow-empty", "-m", s)
+		testgit.Git(t, dir, "commit", "-q", "--allow-empty", "-m", s)
 	}
 	cs, err := r.Commits(t.Context(), "")
 	if err != nil {
@@ -377,10 +378,7 @@ func TestGrepDeadline(t *testing.T) {
 	r, _ := newRepo(t)
 	bin := t.TempDir()
 	// The fake git prints one match, then hangs.
-	script := "#!/bin/sh\nprintf 'a.go\\0001\\000hit\\n'\nexec /bin/sleep 10\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testgit.Script(t, bin, "git", "printf 'a.go\\0001\\000hit\\n'\nexec /bin/sleep 10\n")
 	t.Setenv("PATH", bin)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)

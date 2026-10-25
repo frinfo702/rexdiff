@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -26,7 +27,7 @@ func BenchmarkReview(b *testing.B) {
 	}
 	content := "package a\nfunc f() {\n" + src.String() + "}\n"
 	for i := range 20 {
-		write(b, dir, "big"+string(rune('a'+i))+".go", content)
+		testgit.WriteFile(b, dir, "big"+string(rune('a'+i))+".go", content)
 	}
 	// Select a large file. The reload keeps the selected file.
 	m.reload()
@@ -88,10 +89,10 @@ func bigChange(b *testing.B) model {
 		}
 		cur.WriteString(l)
 	}
-	write(b, dir, "big.go", "package a\nfunc f() {\n"+old.String()+"}\n")
-	git(b, dir, "add", ".")
-	git(b, dir, "commit", "-qm", "big")
-	write(b, dir, "big.go", "package a\nfunc f() {\n"+cur.String()+"}\n")
+	testgit.WriteFile(b, dir, "big.go", "package a\nfunc f() {\n"+old.String()+"}\n")
+	testgit.Git(b, dir, "add", ".")
+	testgit.Git(b, dir, "commit", "-qm", "big")
+	testgit.WriteFile(b, dir, "big.go", "package a\nfunc f() {\n"+cur.String()+"}\n")
 	m.reload()
 	m.pickFile(slices.IndexFunc(m.files, func(f changed) bool { return f.Path == "big.go" }))
 	return m

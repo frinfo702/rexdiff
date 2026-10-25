@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // TestTinyStackedList checks that a body of 3 rows with the list below
@@ -54,7 +55,7 @@ func TestListDefaultWidth(t *testing.T) {
 // markdown of the Files tab again if the file does not change.
 func TestMarkdownNotRerendered(t *testing.T) {
 	m, dir := newTestModel(t)
-	write(t, dir, "notes.md", "# Title\n\nSome text.\n")
+	testgit.WriteFile(t, dir, "notes.md", "# Title\n\nSome text.\n")
 	m = press(t, m, "2")
 	m.reloadFiles()
 	m.jumpToFile("notes.md", diff.SideNew, 1)

@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // fakeClipboard puts a pbcopy first on PATH. It writes its input to the
@@ -16,13 +17,11 @@ func fakeClipboard(t *testing.T, fail bool) string {
 	t.Helper()
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out")
-	script := "#!/bin/sh\n/bin/cat > " + out + "\n"
+	script := "/bin/cat > " + out + "\n"
 	if fail {
-		script = "#!/bin/sh\nexit 1\n"
+		script = "exit 1\n"
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pbcopy"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testgit.Script(t, dir, "pbcopy", script)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return out
 }

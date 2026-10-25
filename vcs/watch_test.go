@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -47,7 +48,7 @@ func TestWatcher(t *testing.T) {
 		{"nothing", func(*testing.T, string) {}, vcs.Change{}},
 		{"same size, new time", func(t *testing.T, dir string) {
 			t.Helper()
-			write(t, dir, "a.txt", "one\nxyz\n") // the same size
+			testgit.WriteFile(t, dir, "a.txt", "one\nxyz\n") // the same size
 			p := filepath.Join(dir, "a.txt")
 			later := time.Now().Add(time.Hour)
 			if err := os.Chtimes(p, later, later); err != nil {
@@ -56,15 +57,15 @@ func TestWatcher(t *testing.T) {
 		}, files},
 		{"new file", func(t *testing.T, dir string) {
 			t.Helper()
-			write(t, dir, "c.txt", "c\n")
+			testgit.WriteFile(t, dir, "c.txt", "c\n")
 		}, files},
 		{"new directory", func(t *testing.T, dir string) {
 			t.Helper()
-			write(t, dir, "x/y/c.txt", "c\n")
+			testgit.WriteFile(t, dir, "x/y/c.txt", "c\n")
 		}, files},
 		{"ignored", func(t *testing.T, dir string) {
 			t.Helper()
-			write(t, dir, "build/more", "x\n")
+			testgit.WriteFile(t, dir, "build/more", "x\n")
 		}, vcs.Change{}},
 		{"deleted", func(t *testing.T, dir string) {
 			t.Helper()
@@ -74,11 +75,11 @@ func TestWatcher(t *testing.T) {
 		}, files},
 		{"commit", func(t *testing.T, dir string) {
 			t.Helper()
-			git(t, dir, "commit", "-qam", "c")
+			testgit.Git(t, dir, "commit", "-qam", "c")
 		}, vcs.Change{Refs: true}},
 		{"checkout", func(t *testing.T, dir string) {
 			t.Helper()
-			git(t, dir, "checkout", "-qb", "other")
+			testgit.Git(t, dir, "checkout", "-qb", "other")
 		}, vcs.Change{Refs: true}},
 	}
 	for _, tt := range tests {
@@ -103,9 +104,9 @@ func TestWatcher(t *testing.T) {
 func TestWatcherNewDirectory(t *testing.T) {
 	r, dir := newRepo(t)
 	w := newWatcher(t, r)
-	write(t, dir, "x/c.txt", "c\n")
+	testgit.WriteFile(t, dir, "x/c.txt", "c\n")
 	changed(t, w)
-	write(t, dir, "x/c.txt", "c\nd\n")
+	testgit.WriteFile(t, dir, "x/c.txt", "c\nd\n")
 	if got := changed(t, w); !got.Files {
 		t.Errorf("after an edit in x: %+v, want Files", got)
 	}
@@ -116,15 +117,15 @@ func TestWatcherNewDirectory(t *testing.T) {
 func TestWatcherUnignore(t *testing.T) {
 	r, dir := newRepo(t)
 	w := newWatcher(t, r)
-	write(t, dir, "ignored.txt", "xx\n")
+	testgit.WriteFile(t, dir, "ignored.txt", "xx\n")
 	if got := changed(t, w); got.Files {
 		t.Errorf("after an edit of an ignored file: %+v, want no Files", got)
 	}
-	write(t, dir, ".gitignore", "build/\n")
+	testgit.WriteFile(t, dir, ".gitignore", "build/\n")
 	if got := changed(t, w); !got.Files {
 		t.Errorf("after the .gitignore edit: %+v, want Files", got)
 	}
-	write(t, dir, "ignored.txt", "xxx\n")
+	testgit.WriteFile(t, dir, "ignored.txt", "xxx\n")
 	if got := changed(t, w); !got.Files {
 		t.Errorf("after an edit of the file: %+v, want Files", got)
 	}
@@ -136,7 +137,7 @@ func TestWatcherUnignore(t *testing.T) {
 func TestWatcherShown(t *testing.T) {
 	r, dir := newRepo(t)
 	w := newWatcher(t, r)
-	write(t, dir, "build/new", "x\n")
+	testgit.WriteFile(t, dir, "build/new", "x\n")
 	if got := changed(t, w); got.Files {
 		t.Errorf("a new file in a hidden build: %+v, want no Files", got)
 	}
@@ -144,7 +145,7 @@ func TestWatcherShown(t *testing.T) {
 	if got := changed(t, w); got.Files {
 		t.Errorf("after Show: %+v, want no Files", got)
 	}
-	write(t, dir, "build/more", "x\n")
+	testgit.WriteFile(t, dir, "build/more", "x\n")
 	if got := changed(t, w); !got.Files {
 		t.Errorf("a new file in a shown build: %+v, want Files", got)
 	}
@@ -155,12 +156,12 @@ func TestWatcherShown(t *testing.T) {
 		t.Errorf("a removed file in a shown build: %+v, want Files", got)
 	}
 	w.Show(nil)
-	write(t, dir, "build/more", "x\n")
+	testgit.WriteFile(t, dir, "build/more", "x\n")
 	if got := changed(t, w); got.Files {
 		t.Errorf("a new file after Show(nil): %+v, want no Files", got)
 	}
 	w.Show([]string{"ignored.txt"})
-	write(t, dir, "ignored.txt", "an edit\n")
+	testgit.WriteFile(t, dir, "ignored.txt", "an edit\n")
 	if got := changed(t, w); !got.Files {
 		t.Errorf("an edit of a shown file: %+v, want Files", got)
 	}
@@ -174,20 +175,20 @@ func TestWatcherNested(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r, dir := newRepo(t)
 			other := t.TempDir()
-			git(t, other, "init", "-q")
-			write(t, other, "f", "1\n")
-			git(t, other, "add", ".")
-			git(t, other, "commit", "-qm", "1")
+			testgit.Git(t, other, "init", "-q")
+			testgit.WriteFile(t, other, "f", "1\n")
+			testgit.Git(t, other, "add", ".")
+			testgit.Git(t, other, "commit", "-qm", "1")
 			inner := filepath.Join(dir, "inner")
 			if sub {
-				git(t, dir, "-c", "protocol.file.allow=always",
+				testgit.Git(t, dir, "-c", "protocol.file.allow=always",
 					"submodule", "add", "-q", other, "inner")
 			} else {
-				git(t, dir, "clone", "-q", other, "inner")
+				testgit.Git(t, dir, "clone", "-q", other, "inner")
 			}
 			w := newWatcher(t, r)
-			write(t, inner, "f", "2\n")
-			git(t, inner, "commit", "-qam", "2")
+			testgit.WriteFile(t, inner, "f", "2\n")
+			testgit.Git(t, inner, "commit", "-qam", "2")
 			if got := changed(t, w); !got.Files {
 				t.Errorf("after a commit in %s: %+v, want Files", name, got)
 			}
@@ -225,7 +226,7 @@ func TestWatcherBudget(t *testing.T) {
 		return now
 	})
 	changed(t, w)
-	write(t, dir, "c.txt", "c\n")
+	testgit.WriteFile(t, dir, "c.txt", "c\n")
 	if got := changed(t, w); got != (vcs.Change{}) {
 		t.Errorf("call in the pause: %+v, want none", got)
 	}
@@ -256,10 +257,10 @@ func TestWatcherUntrackedDir(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				write(t, dir, tt.setup, "x\n")
+				testgit.WriteFile(t, dir, tt.setup, "x\n")
 			}
 			w := newWatcher(t, r)
-			write(t, dir, tt.edit, "c\n")
+			testgit.WriteFile(t, dir, tt.edit, "c\n")
 			if got := changed(t, w); got.Files != tt.want {
 				t.Errorf("after a new %s: %+v, want Files %v", tt.edit, got, tt.want)
 			}

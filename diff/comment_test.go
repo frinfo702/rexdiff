@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // comment returns a comment with text on all rows of the diff of old and
@@ -203,6 +204,7 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 		filepath.Join(dir, "old"),
 		filepath.Join(dir, "new"),
 	)
+	git.Env = append(os.Environ(), testgit.Env()...) // no diff settings of the user
 	out, _ := git.Output()
 	_, body, _ := strings.Cut(string(out), "@@\n")
 	if strings.TrimSuffix(body, "\n") != want {

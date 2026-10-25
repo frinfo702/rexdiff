@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // twoFiles returns a model whose Changes tab has a.go and b.go, each with
@@ -11,7 +12,7 @@ import (
 func twoFiles(t *testing.T) model {
 	t.Helper()
 	m, dir := newTestModel(t)
-	write(t, dir, "b.go", "package b\n")
+	testgit.WriteFile(t, dir, "b.go", "package b\n")
 	m.reload()
 	if len(m.files) != 2 {
 		t.Fatalf("got %d changed files, want 2", len(m.files))

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
@@ -62,12 +63,16 @@ func TestScripts(t *testing.T) {
 		RequireExplicitExec: true,
 		Setup: func(env *testscript.Env) error {
 			// Each script runs in a new directory, $WORK. $WORK is also
-			// $HOME, so rexdiff does not see the files of the user.
+			// $HOME, so rexdiff and git do not see the files of the user.
 			env.Setenv("HOME", env.WorkDir)
 			env.Setenv("XDG_CONFIG_HOME", "")
 			env.Setenv("REALREX", realRex)
 			for _, k := range userEnv {
 				env.Setenv(k, "")
+			}
+			for _, kv := range testgit.Env() {
+				k, v, _ := strings.Cut(kv, "=")
+				env.Setenv(k, v)
 			}
 			return nil
 		},

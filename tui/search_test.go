@@ -2,8 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/rednafi/rexdiff/internal/search"
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -94,7 +93,7 @@ func TestSearchFlip(t *testing.T) {
 func TestSearchFileLimit(t *testing.T) {
 	m, dir := newTestModel(t)
 	for i := range 60 {
-		write(t, dir, fmt.Sprintf("zz%02d.txt", i), "x\n")
+		testgit.WriteFile(t, dir, fmt.Sprintf("zz%02d.txt", i), "x\n")
 	}
 	m = openQuery(t, m, "zz")
 	ls := labels(m)
@@ -140,7 +139,7 @@ func TestSearchCodeGroups(t *testing.T) {
 // git finds more matches than the search shows.
 func TestSearchCodeMore(t *testing.T) {
 	m, dir := newTestModel(t)
-	write(t, dir, "many.txt", strings.Repeat("hit\n", 300))
+	testgit.WriteFile(t, dir, "many.txt", strings.Repeat("hit\n", 300))
 	m = openQuery(t, m, "hit")
 	m = step(t, m, tabKey)
 	ls := labels(m)
@@ -213,7 +212,7 @@ func longFile(t *testing.T, dir string) {
 		}
 		fmt.Fprintf(&b, "line %d\n", i+1)
 	}
-	write(t, dir, "long.go", b.String())
+	testgit.WriteFile(t, dir, "long.go", b.String())
 }
 
 // lineOf returns the index of the first line of the view that has s, or
@@ -273,7 +272,7 @@ func TestSearchPreviewScroll(t *testing.T) {
 // and the note of a binary file and of no result.
 func TestSearchPreviewFile(t *testing.T) {
 	m, dir := newTestModel(t)
-	write(t, dir, "bin.dat", "a\x00b")
+	testgit.WriteFile(t, dir, "bin.dat", "a\x00b")
 	m = openQuery(t, m, "a.go")
 	if !shows(m, "─ preview · a.go ─", "1  package a") {
 		t.Errorf("view got:\n%s\nwant the preview of a.go from line 1", view(m))
@@ -299,10 +298,7 @@ func TestSearchBudget(t *testing.T) {
 	m = press(t, m, "/")
 	bin := t.TempDir()
 	// The fake git prints one match, then hangs.
-	script := "#!/bin/sh\nprintf 'a.go\\0001\\000hit\\n'\nexec /bin/sleep 10\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testgit.Script(t, bin, "git", "printf 'a.go\\0001\\000hit\\n'\nexec /bin/sleep 10\n")
 	t.Setenv("PATH", bin)
 	m.overlay.input.SetValue("hit")
 	cmd := m.inputChanged()

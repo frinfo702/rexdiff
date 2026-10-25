@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -15,7 +16,7 @@ import (
 func TestNoReloadInCommentBox(t *testing.T) {
 	m, dir := newTestModel(t)
 	m = press(t, m, "]", "c")
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
 	if m = step(t, m, tickMsg{}); shows(m, "return 42") || !m.reloadOwed {
 		t.Errorf("a tick with the box open: owed %v, view:\n%s\nwant no reload, a reload owed",
 			m.reloadOwed, view(m))
@@ -75,7 +76,7 @@ func TestPRErrorKeepsPR(t *testing.T) {
 func TestPollWithoutWatcher(t *testing.T) {
 	m, dir := newTestModel(t)
 	m = step(t, m, tickMsg{})
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
 	if m = step(t, m, tickMsg{}); shows(m, "return 42") {
 		t.Errorf("a tick before the poll is due, view got:\n%s\nwant no reload", view(m))
 	}
@@ -110,7 +111,7 @@ func TestWatchRestarts(t *testing.T) {
 func TestWatchErrorRestarts(t *testing.T) {
 	m, dir, pause := watched(t)
 	noGit(t)
-	write(t, dir, "new.go", "package a\n") // the watcher lists the files again
+	testgit.WriteFile(t, dir, "new.go", "package a\n") // the watcher lists the files again
 	time.Sleep(pause)
 	if m = step(t, m, tickMsg{}); m.watch != nil || m.watchAt.IsZero() {
 		t.Errorf("after an error of the watcher: watcher %v, next try %v; want none, a try",

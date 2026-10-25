@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // fakeRexDir returns a directory with a rex that writes its arguments to
@@ -13,10 +15,7 @@ import (
 func fakeRexDir(t *testing.T, log string) string {
 	t.Helper()
 	dir := t.TempDir()
-	script := "#!/bin/sh\necho \"$@\" >> " + log + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "rex"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testgit.Script(t, dir, "rex", "echo \"$@\" >> "+log+"\n")
 	return dir
 }
 

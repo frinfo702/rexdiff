@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -31,11 +32,11 @@ func newFoldModel(t *testing.T) model {
 		}
 		return b.String()
 	}
-	git(t, dir, "init", "-q", "-b", "main")
-	write(t, dir, "f.txt", lines())
-	git(t, dir, "add", ".")
-	git(t, dir, "commit", "-qm", "init")
-	write(t, dir, "f.txt", lines(10, 30))
+	testgit.NewRepo(t, dir)
+	testgit.WriteFile(t, dir, "f.txt", lines())
+	testgit.Git(t, dir, "add", ".")
+	testgit.Git(t, dir, "commit", "-qm", "init")
+	testgit.WriteFile(t, dir, "f.txt", lines(10, 30))
 	repo, err := vcs.Open(t.Context(), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +141,7 @@ func TestFoldStaysOpen(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		write(t, dir, "f.txt", f(string(b)))
+		testgit.WriteFile(t, dir, "f.txt", f(string(b)))
 		m.reload()
 	}
 	edit(func(s string) string { return "new\n" + s })
@@ -159,7 +160,7 @@ func TestFoldStaysOpen(t *testing.T) {
 	}
 	// After the commit, the file has 41 lines. Changes at lines 12 and 26
 	// make a fold of old lines 16 to 22, inside the open range.
-	git(t, dir, "commit", "-qam", "agent")
+	testgit.Git(t, dir, "commit", "-qam", "agent")
 	edit(func(s string) string {
 		lines := strings.Split(s, "\n")
 		lines[11], lines[25] = "changed", "changed"
