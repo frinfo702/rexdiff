@@ -587,6 +587,12 @@ func (m *model) heightAbove(footer string) int {
 
 // View renders the screen.
 func (m *model) View() tea.View {
+	if !m.sized {
+		// A frame of the guessed size shows wrong for a moment.
+		v := tea.NewView("")
+		v.AltScreen = true
+		return v
+	}
 	hits := m.shownHits()
 	footer := m.footer(hits)
 	h := m.heightAbove(footer)

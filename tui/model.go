@@ -187,7 +187,10 @@ type model struct {
 	phase        updatePhase
 	restartState string // the file of the state for the restart, or ""
 
+	// The size of the terminal. Until the terminal tells it, w and h are
+	// a guess, and sized is false.
 	w, h   int
+	sized  bool
 	bg, fg color.Color
 	red    color.Color // the ANSI red of the terminal, or nil
 	green  color.Color // the ANSI green of the terminal, or nil
@@ -599,7 +602,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.click = clickChain{}
-		m.w, m.h = msg.Width, msg.Height
+		m.w, m.h, m.sized = msg.Width, msg.Height, true
 		m.rerender()
 	case tea.FocusMsg:
 		m.reloadIfChanged()
