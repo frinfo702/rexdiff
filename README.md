@@ -64,8 +64,12 @@ are gone, rexdiff marks the comment as stale.
 | `m` | rendered markdown |
 | `1` `2` `3` | changes, all files, or pull request |
 | `?` | all keys |
+| `q` | quit, or ask first if comments are unsent |
 
 Side by side needs 135 columns. A narrower pane shows one column.
+
+When `q` asks first, `Q` quits, `s` sends, `y` copies, and any other key closes the
+question.
 
 A copy uses the first of `pbcopy`, `wl-copy`, `xclip`, or `xsel` on your PATH.
 

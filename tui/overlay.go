@@ -299,13 +299,7 @@ func (m *model) fillCommentList(ov *overlay) {
 func (m *model) updateOverlay(msg tea.KeyPressMsg) tea.Cmd {
 	ov, k := m.overlay, overlayKeys
 	if ov.kind == overlayQuit {
-		switch {
-		case key.Matches(msg, k.Quit):
-			return tea.Quit
-		case key.Matches(msg, k.Stay):
-			m.closeOverlay()
-		}
-		return nil
+		return m.updateQuit(msg)
 	}
 	switch {
 	case key.Matches(msg, k.Close):
@@ -347,6 +341,28 @@ func (m *model) updateOverlay(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Batch(cmd, m.inputChanged())
 	}
 	return cmd
+}
+
+// updateQuit handles a key in the prompt before a quit, as herdr-reviewr
+// does. The key of QuitDiscard quits. The key of Quit does nothing, so a
+// held q does not quit. The keys of Send and Copy close the prompt and
+// send or copy. Any other key closes the prompt.
+func (m *model) updateQuit(msg tea.KeyPressMsg) tea.Cmd {
+	k := m.keys
+	switch {
+	case key.Matches(msg, k.QuitDiscard):
+		return tea.Quit
+	case key.Matches(msg, k.Quit):
+		return nil
+	}
+	m.closeOverlay()
+	switch {
+	case key.Matches(msg, k.Send):
+		return m.startSend()
+	case key.Matches(msg, k.Copy):
+		return m.copyComments()
+	}
+	return nil
 }
 
 // updateList handles a key in an overlay that has no input. In the agent
@@ -496,7 +512,7 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 	// The title takes one line, for listY.
 	lines := []string{truncate(headerStyle.Render(ov.title), inner)}
 	if ov.kind == overlayQuit {
-		lines = append(lines, "", dimStyle.Render("q/enter quit · esc stay"))
+		lines = append(lines, "", dimStyle.Render(m.quitHint()))
 	} else {
 		if ov.hasInput() {
 			ov.input.SetWidth(inner - 2)
@@ -515,6 +531,14 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 	x = (m.w - lipgloss.Width(box)) / 2
 	y = max((m.h-lipgloss.Height(box))/3, 1)
 	return box, x, y, listY
+}
+
+// quitHint returns the keys of the prompt before a quit, as the footer
+// of herdr-reviewr shows them.
+func (m *model) quitHint() string {
+	k, n := m.keys, m.comments.Len()
+	return fmt.Sprintf("%s quit (%d pending) · esc cancel · %s send %d · %s copy",
+		k.QuitDiscard.Help().Key, n, k.Send.Help().Key, n, k.Copy.Help().Key)
 }
 
 // overlayRows renders the rows of the list of the overlay that fit the

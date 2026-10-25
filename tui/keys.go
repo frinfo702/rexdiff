@@ -16,8 +16,8 @@ import (
 // keys of the comment box and of the find.
 type keyMap struct {
 	// Move.
-	Down, Up, PageDown, PageUp, HalfDown, HalfUp, Top, Bottom  key.Binding
-	NextHunk, PrevHunk, NextFile, PrevFile, Focus, Left, Right key.Binding
+	Down, Up, PageDown, PageUp, HalfDown, HalfUp, Left, Right key.Binding
+	NextHunk, PrevHunk, NextFile, PrevFile, Focus             key.Binding
 
 	// Scopes and tabs.
 	ScopeUncommitted, ScopeBranch, ScopeTurn, ScopeCommits key.Binding
@@ -62,8 +62,6 @@ func defaultKeys() keyMap {
 		PageUp:   bind([]string{"pgup"}, "pgup", "page up"),
 		HalfDown: bind([]string{"ctrl+d"}, "ctrl+d/u", "half page"),
 		HalfUp:   bind([]string{"ctrl+u"}, "ctrl+u", "half page up"),
-		Top:      bind([]string{"home"}, "home", "top"),
-		Bottom:   bind([]string{"end"}, "end", "bottom"),
 		NextHunk: bind([]string{"]"}, "]/[", "next/prev change"),
 		PrevHunk: bind([]string{"["}, "[", "prev change"),
 		NextFile: bind([]string{"f"}, "f/F", "next/prev file"),
@@ -106,7 +104,7 @@ func defaultKeys() keyMap {
 		Refresh:     bind([]string{"r"}, "r", "refresh"),
 		Upgrade:     bind([]string{"U"}, "U", "update rexdiff"),
 		Keys:        bind([]string{"?"}, "?", "all keys"),
-		Quit:        bind([]string{"q", "ctrl+c"}, "q", "quit"),
+		Quit:        bind([]string{"q"}, "q", "quit"),
 		QuitDiscard: bind([]string{"Q"}, "Q", "quit, drop comments"),
 
 		Save: bind([]string{"enter"}, "enter", "save"),
@@ -130,9 +128,6 @@ type overlayKeyMap struct {
 
 	// Mark starts or clears a range in the commit picker.
 	Mark key.Binding
-
-	// Quit and Stay are the answers to the prompt before a quit.
-	Quit, Stay key.Binding
 }
 
 // overlayKeys has the keys of the overlays. The settings do not change
@@ -146,8 +141,6 @@ var overlayKeys = overlayKeyMap{
 	ListUp:   key.NewBinding(key.WithKeys("k")),
 	Delete:   key.NewBinding(key.WithKeys("d")),
 	Mark:     key.NewBinding(key.WithKeys("space")),
-	Quit:     key.NewBinding(key.WithKeys("q", "y", "enter", "Q")),
-	Stay:     key.NewBinding(key.WithKeys("esc", "n")),
 }
 
 // binding is an action of the keybindings setting and the key binding that

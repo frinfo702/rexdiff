@@ -102,6 +102,13 @@ func press(t *testing.T, m model, keys ...string) model {
 	return m
 }
 
+// toTop moves the cursor of the current pane to the first row.
+func toTop(m model) model {
+	m.cur().cur = 0
+	m.ensureVisible()
+	return m
+}
+
 // view returns the screen of m without escape sequences.
 func view(m model) string { return ansi.Strip(m.View().Content) }
 
@@ -190,7 +197,7 @@ func TestComment(t *testing.T) {
 	// The split layout uses two rows for the same change. It needs a wide
 	// pane.
 	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
-	m = press(t, m, "|", "home", "]", "v", "j", "c", "o", "k", "enter")
+	m = press(t, toTop(press(t, m, "|")), "]", "v", "j", "c", "o", "k", "enter")
 
 	cs := m.comments.All()
 	if len(cs) != 2 {
@@ -662,7 +669,7 @@ func TestWrap(t *testing.T) {
 	}
 
 	// A comment on wrapped lines gets the same snippet.
-	m = press(t, m, "home", "]", "v", "j", "c", "o", "k", "enter")
+	m = press(t, toTop(m), "]", "v", "j", "c", "o", "k", "enter")
 	cs := m.comments.All()
 	want := "\n-\treturn 1\n+" + long + "\nok"
 	if r := m.comments.Review(""); len(cs) != 1 || !strings.HasSuffix(r, want) {
@@ -696,7 +703,8 @@ func TestWrap(t *testing.T) {
 // on its hunk header.
 func TestWrapKeepsCursor(t *testing.T) {
 	m, dir, long := wrapModel(t)
-	m = press(t, m, "end", "w")
+	m.changes.cur = len(m.changes.rows) - 1
+	m = press(t, m, "w")
 	if got := m.target(m.changes.cur, diff.SideNew).line; got != 5 {
 		t.Errorf("after w: the cursor is on line %d, want 5", got)
 	}
@@ -728,7 +736,7 @@ func TestTallLine(t *testing.T) {
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
 
 	// The wheel scrolls past the line.
-	m = press(t, m, "home")
+	m = toTop(m)
 	wheel := []tea.MouseButton{tea.MouseWheelDown, tea.MouseWheelDown, tea.MouseWheelUp}
 	for _, b := range wheel {
 		top := m.changes.top
@@ -753,7 +761,7 @@ func TestTallLine(t *testing.T) {
 	// A cursor on the line shows its first rows. The comment box shows below
 	// the last row. A c on a line with a comment edits the comment.
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
-	m = press(t, m, "home")
+	m = toTop(m)
 	for m.changes.rows[m.changes.cur].New != 4 {
 		m = press(t, m, "j")
 	}

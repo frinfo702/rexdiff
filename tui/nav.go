@@ -134,10 +134,6 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		p.cur = min(p.cur+m.bodyHeight()/2, last)
 	case key.Matches(msg, k.HalfUp):
 		p.cur = max(p.cur-m.bodyHeight()/2, 0)
-	case key.Matches(msg, k.Top):
-		p.cur = 0
-	case key.Matches(msg, k.Bottom):
-		p.cur = last
 	case key.Matches(msg, k.NextHunk):
 		m.stepChange(1)
 	case key.Matches(msg, k.PrevHunk):
