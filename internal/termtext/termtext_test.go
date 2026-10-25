@@ -11,6 +11,7 @@ import (
 
 // TestQuote checks that Quote quotes only the paths that are not safe.
 func TestQuote(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ in, want string }{
 		{"a.go", "a.go"},
 		{"日本.go", "日本.go"},

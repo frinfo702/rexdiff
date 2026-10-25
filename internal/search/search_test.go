@@ -8,6 +8,7 @@ import (
 
 // TestFiles checks the order and the limit of the files.
 func TestFiles(t *testing.T) {
+	t.Parallel()
 	paths := []string{"a.go", "b.go", "c/d.go", "main.go"}
 	tests := []struct {
 		name, q   string
@@ -26,6 +27,7 @@ func TestFiles(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, total := Files(paths, tt.recent, tt.q, tt.limit)
 			if !slices.Equal(got, tt.want) || total != tt.wantTotal {
 				t.Errorf("Files(%q, %q) = %q, %d; want %q, %d",
@@ -38,6 +40,7 @@ func TestFiles(t *testing.T) {
 // TestFilesLimit checks that a query shows at most the limit, and counts
 // all the matches.
 func TestFilesLimit(t *testing.T) {
+	t.Parallel()
 	var paths []string
 	for i := range 60 {
 		paths = append(paths, fmt.Sprintf("f%02d.txt", i))

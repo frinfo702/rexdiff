@@ -41,6 +41,7 @@ func kinds(rows []diff.Row) string {
 // TestRenderRowsFollowLines checks the row of each line, in each layout and
 // theme.
 func TestRenderRowsFollowLines(t *testing.T) {
+	t.Parallel()
 	const width = 80
 	themes := []diff.Theme{
 		{},
@@ -105,6 +106,7 @@ func TestRenderRowsFollowLines(t *testing.T) {
 
 // TestRenderSameContentIsEmpty checks that two equal versions give no lines.
 func TestRenderSameContentIsEmpty(t *testing.T) {
+	t.Parallel()
 	d := diff.Render("x.go", oldSrc, oldSrc, diff.Options{Width: 80})
 	if len(d.Lines) != 0 || len(d.Rows) != 0 {
 		t.Fatalf("got %d lines and %d rows, want none", len(d.Lines), len(d.Rows))
@@ -114,6 +116,7 @@ func TestRenderSameContentIsEmpty(t *testing.T) {
 // TestRenderTabsAndOffset checks that a tab becomes spaces and that Offset
 // scrolls the code.
 func TestRenderTabsAndOffset(t *testing.T) {
+	t.Parallel()
 	d := diff.Render("x.go", "", "\tx := 1\n", diff.Options{Width: 80})
 	if got := ansi.Strip(d.Lines[1]); !strings.Contains(got, "▌     x := 1") {
 		t.Errorf("tab: line = %q, want %q in it", got, "▌     x := 1")
@@ -128,6 +131,7 @@ func TestRenderTabsAndOffset(t *testing.T) {
 // TestMarks checks the mark at the start of the code of each line, in the two
 // layouts.
 func TestMarks(t *testing.T) {
+	t.Parallel()
 	const before, after = "a\nb\nc\n", "a\nB\nc\n"
 	// By default a bar marks a changed line, as in herdr-reviewr. Signs gives
 	// + and -. The mark takes two cells in both cases, so the columns do not
@@ -215,6 +219,7 @@ func markColours(lines []string) []string {
 // TestSideAt checks the side of each column, and if the column is on a line
 // number.
 func TestSideAt(t *testing.T) {
+	t.Parallel()
 	// The unified layout has " 1 " old numbers, " 1 " new numbers, and the
 	// code.
 	u := diff.Render("x.go", oldSrc, newSrc, diff.Options{Width: 80})
@@ -251,6 +256,7 @@ func TestSideAt(t *testing.T) {
 
 // TestCount checks the numbers of added and deleted lines.
 func TestCount(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		old, new       string
 		added, deleted int
@@ -271,6 +277,7 @@ func TestCount(t *testing.T) {
 
 // TestRenderFile checks the line numbers and the rows of a file.
 func TestRenderFile(t *testing.T) {
+	t.Parallel()
 	src := "package x\n\nfunc f() {\n\treturn\n}\n"
 	d := diff.RenderFile("x.go", src, diff.Options{Width: 14})
 	if len(d.Lines) != 5 || len(d.Rows) != 5 {
@@ -296,6 +303,7 @@ func TestRenderFile(t *testing.T) {
 // TestWrap checks that a wrapped long line shows all of its text and fits the
 // width.
 func TestWrap(t *testing.T) {
+	t.Parallel()
 	long := "x := []string{" + strings.Repeat(`"word", `, 12) + "}"
 	old, new := "a\nb\n", "a\n"+long+"\nb\n"
 	const width = 40
@@ -356,6 +364,7 @@ func TestWrap(t *testing.T) {
 // TestCache checks that a shared [diff.Cache] gives the same lines as no
 // cache. It tries other offsets, other languages, and new content.
 func TestCache(t *testing.T) {
+	t.Parallel()
 	const src = "def f(): # a comment\n\treturn 1\n"
 	renders := []struct {
 		path, old, new string

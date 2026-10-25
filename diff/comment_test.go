@@ -39,6 +39,7 @@ func review(c diff.Comment) string {
 // TestReviewMatchesHerdr checks that Review writes the text format of
 // herdr-reviewr.
 func TestReviewMatchesHerdr(t *testing.T) {
+	t.Parallel()
 	var cs diff.Comments
 	cs.Add(comment("c.go", diff.SideNew,
 		"ctx\n\told\x1b[31m\n",
@@ -68,6 +69,7 @@ func TestReviewMatchesHerdr(t *testing.T) {
 
 // TestReviewContinuedRows checks a comment on only continued rows.
 func TestReviewContinuedRows(t *testing.T) {
+	t.Parallel()
 	old, new := "", strings.Repeat("word ", 20)+"\n"
 	d := diff.Render("a.go", old, new, diff.Options{Width: 30, Wrap: true})
 	var cont []diff.Row
@@ -88,6 +90,7 @@ func TestReviewContinuedRows(t *testing.T) {
 
 // TestComments checks Add, Find, At, EndingAt, Count, and Remove.
 func TestComments(t *testing.T) {
+	t.Parallel()
 	var cs diff.Comments
 	d := diff.Anchor{InDiff: true}
 	a := cs.Add(diff.Comment{Path: "a.go", Side: diff.SideNew, Start: 2, End: 4, Anchor: d})
@@ -136,6 +139,7 @@ func TestComments(t *testing.T) {
 // TestNewComment checks comments from the rows of a change, in the two
 // layouts, on each side.
 func TestNewComment(t *testing.T) {
+	t.Parallel()
 	old := "a\nb\nc\nd\n"
 	new := "a\nB\nC\nd\n"
 	for _, split := range []bool{false, true} {
@@ -181,6 +185,7 @@ func TestNewComment(t *testing.T) {
 // TestSnippetIsTheRealDiff checks that the snippet matches git diff, with raw
 // text and tabs, in both layouts.
 func TestSnippetIsTheRealDiff(t *testing.T) {
+	t.Parallel()
 	old := "func a() {\n\treturn 1\n}\n"
 	new := "func a() {\n\t// two\n\treturn 2\n}\n"
 	want := " func a() {\n-\treturn 1\n+\t// two\n+\treturn 2\n }"
@@ -216,6 +221,7 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 // also checks a file of an older rexdiff, which has a stale field and no
 // anchor.
 func TestCommentsJSON(t *testing.T) {
+	t.Parallel()
 	var cs diff.Comments
 	anchors := []diff.Anchor{{}, {InDiff: true}, {InDiff: true, Rev: "a..b"}}
 	for _, a := range anchors {
@@ -261,6 +267,7 @@ func TestCommentsJSON(t *testing.T) {
 // for example a Latin-1 file, survives a JSON round trip. The bytes that
 // are not UTF-8 become U+FFFD.
 func TestCommentsJSONLatin1(t *testing.T) {
+	t.Parallel()
 	const path = "caf\xe9.txt"
 	var cs diff.Comments
 	c := commentOn(path, diff.SideNew, "caf\xe9 cr\xe8me\n", 1, 1)

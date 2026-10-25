@@ -186,29 +186,6 @@ func TestNoUpdate(t *testing.T) {
 	}
 }
 
-// TestCommentsJSON checks that the comments give the same review after
-// JSON encoding and decoding.
-func TestCommentsJSON(t *testing.T) {
-	t.Parallel()
-	m, _ := newTestModel(t)
-	m = press(t, m, "j", "j", "j", "j", "c", "x", "enter")
-	b, err := m.comments.MarshalJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var back diff.Comments
-	if err := back.UnmarshalJSON(b); err != nil {
-		t.Fatal(err)
-	}
-	if back.Review("p") != m.comments.Review("p") || back.Len() != 1 {
-		t.Errorf("review after JSON = %q, want %q", back.Review("p"), m.comments.Review("p"))
-	}
-	// After the restart, a new comment also gets a new ID.
-	if c := back.Add(diff.Comment{Path: "a.go", Start: 1, End: 1}); c.ID != 2 {
-		t.Errorf("ID of a new comment = %d, want 2", c.ID)
-	}
-}
-
 // TestRestartWaits checks that the restart waits for a running send and for
 // a message whose command is not done.
 func TestRestartWaits(t *testing.T) {

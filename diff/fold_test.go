@@ -56,6 +56,7 @@ func headers(d *diff.Diff) string {
 // TestFolds checks that a long run of equal lines folds into the hunk
 // header below it.
 func TestFolds(t *testing.T) {
+	t.Parallel()
 	old, new := numbered(40), numbered(40, 10, 30)
 	header := func(o, n, lines int) []string { return []string{foldText(diff.Fold{Old: o, New: n, Lines: lines})} }
 	lines := func(lo, hi int) []string {
@@ -128,6 +129,7 @@ func TestFolds(t *testing.T) {
 
 // TestFoldEdges checks the folds that show no line.
 func TestFoldEdges(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		old, new string

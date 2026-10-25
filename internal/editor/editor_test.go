@@ -8,6 +8,7 @@ import (
 
 // TestCommands checks the command and the kind of each editor.
 func TestCommands(t *testing.T) {
+	t.Parallel()
 	const abs = "/r/a b.go"
 	tests := []struct {
 		template, editor string
@@ -50,6 +51,7 @@ func TestCommands(t *testing.T) {
 // TestCommandProgram checks the program of a command. An empty word in
 // quotes names no program.
 func TestCommandProgram(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ command, want string }{
 		{"nvim", "nvim"},
 		{"  /usr/bin/vim -u NONE", "/usr/bin/vim"},
@@ -75,6 +77,7 @@ func TestCommandProgram(t *testing.T) {
 // TestResolveOrder checks that the settings come first, then $VISUAL,
 // $EDITOR, and core.editor. A blank value does not count.
 func TestResolveOrder(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		template, visual, env, git string
 		want                       string

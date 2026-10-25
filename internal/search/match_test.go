@@ -4,6 +4,7 @@ import "testing"
 
 // TestMatch checks the smart case of herdr-reviewr.
 func TestMatch(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		text, query string
 		want        bool

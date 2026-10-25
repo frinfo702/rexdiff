@@ -40,6 +40,7 @@ func set(paths ...string) map[string]bool {
 }
 
 func TestBuildShape(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		entries  []Entry
@@ -86,6 +87,7 @@ func TestBuildShape(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := shape(Build(tt.entries, tt.toggled, tt.expanded))
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("Build = %q, want %q", got, tt.want)
@@ -95,6 +97,7 @@ func TestBuildShape(t *testing.T) {
 }
 
 func TestBuildFileIndex(t *testing.T) {
+	t.Parallel()
 	rows := Build(changed("z.rs", "a.rs"), nil, true)
 	// The rows are in alphabetical order, so a.rs is first.
 	if rows[0].File != 1 || rows[1].File != 0 {
@@ -106,6 +109,7 @@ func TestBuildFileIndex(t *testing.T) {
 }
 
 func TestBuildChangeMark(t *testing.T) {
+	t.Parallel()
 	es := append(changed("src/ui.rs"),
 		Entry{Path: "src/app.rs"}, Entry{Path: "docs/a.md"}, Entry{Path: "docs/b.md"})
 	rows := Build(es, nil, false)
@@ -146,6 +150,7 @@ func TestBuildChangeMark(t *testing.T) {
 }
 
 func TestBuildIgnored(t *testing.T) {
+	t.Parallel()
 	rows := Build([]Entry{{Path: "target", Ignored: true, Dir: true}}, nil, false)
 	if len(rows) != 1 {
 		t.Fatalf("Build = %q, want one row", shape(rows))

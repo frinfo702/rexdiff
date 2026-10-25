@@ -21,6 +21,7 @@ import (
 
 // TestNewer checks which tags are newer than the running version.
 func TestNewer(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		tag, have string
 		want      bool
@@ -62,6 +63,7 @@ func file(t *testing.T, path, content string) string {
 // TestDetect checks that detect finds a Homebrew cask by the Caskroom of
 // its link, and go install by its flag.
 func TestDetect(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cask := file(t, filepath.Join(dir, "Caskroom", "rexdiff", "0.1.0", "rexdiff"), "")
 	link := filepath.Join(dir, "bin", "rexdiff")
@@ -100,6 +102,7 @@ func TestDetect(t *testing.T) {
 
 // TestLatest checks Latest against a fake GitHub API.
 func TestLatest(t *testing.T) {
+	t.Parallel()
 	answer := func(code int, body string) *Updater {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(code)
@@ -144,6 +147,7 @@ func (f *fakeRun) run(_ context.Context, env []string, name string, args ...stri
 // TestInstallCommands checks the commands of Homebrew and go install, and
 // the check of the new version.
 func TestInstallCommands(t *testing.T) {
+	t.Parallel()
 	r := Release{Tag: "v0.2.0"}
 	brew := &fakeRun{version: "v0.2.0"}
 	u := &Updater{bin: "/opt/homebrew/bin/rexdiff", version: "v0.1.0", method: methodBrew, run: brew.run}
@@ -219,6 +223,7 @@ func archive(t *testing.T, content string) []byte {
 // TestDownload checks the download of a release: the checksum, the binary
 // in the archive, and the replacement of the target file of a link.
 func TestDownload(t *testing.T) {
+	t.Parallel()
 	name := fmt.Sprintf("rexdiff-v0.2.0-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	good := archive(t, "new binary")
 	sum := sha256.Sum256(good)
@@ -308,6 +313,7 @@ func TestDownload(t *testing.T) {
 // program does not stop a brew that runs. A stopped brew can leave a broken
 // cask.
 func TestInstallOutlivesCancel(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	var sawCancel bool
 	run := func(ctx context.Context, _ []string, name string, _ ...string) ([]byte, error) {
@@ -328,6 +334,7 @@ func TestInstallOutlivesCancel(t *testing.T) {
 // TestBinaryTooLarge checks that a binary larger than the limit is an
 // error, not a binary that is cut short.
 func TestBinaryTooLarge(t *testing.T) {
+	t.Parallel()
 	big := strings.Repeat("x", maxBinary+1)
 	if _, err := binaryOf(archive(t, big)); err == nil || !strings.Contains(err.Error(), "larger than") {
 		t.Errorf("binaryOf of a binary over the limit: %v, want an error",
@@ -385,6 +392,7 @@ func TestDetectBrew(t *testing.T) {
 // TestErrorWithoutOutput checks that a command that fails with no output
 // has no empty part at the end of its error.
 func TestErrorWithoutOutput(t *testing.T) {
+	t.Parallel()
 	u := &Updater{run: func(context.Context, []string, string, ...string) ([]byte, error) {
 		return nil, errors.New(`exec: "brew": executable file not found in $PATH`)
 	}}

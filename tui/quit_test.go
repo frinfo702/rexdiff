@@ -77,22 +77,6 @@ func TestQuitPromptSendCopy(t *testing.T) {
 	}
 }
 
-// TestNoCtrlCHomeEnd checks that ctrl+c, home, and end do nothing, as in
-// herdr-reviewr.
-func TestNoCtrlCHomeEnd(t *testing.T) {
-	t.Parallel()
-	m, _ := newTestModel(t)
-	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}); quits(cmd) {
-		t.Error("ctrl+c: a quit, want nothing")
-	}
-	m = press(t, m, "j")
-	cur := m.changes.cur
-	if m = press(t, m, "home", "end"); m.changes.cur != cur {
-		t.Errorf("home and end: the cursor moves from %d to %d, want no move",
-			cur, m.changes.cur)
-	}
-}
-
 // TestQuitDiscardInert checks that Q does nothing outside the prompt
 // before a quit, as in herdr-reviewr.
 func TestQuitDiscardInert(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 // TestCacheShared checks that a View uses the lines that another View puts
 // in the same Cache.
 func TestCacheShared(t *testing.T) {
+	t.Parallel()
 	render := func(c *Cache) string {
 		out, _, _ := New().Cache(c).Before("a.go", "x := 1\n").After("a.go", "x := 2\n").Render()
 		return out
@@ -33,6 +34,7 @@ func TestCacheShared(t *testing.T) {
 // TestCacheLimit checks that a full Cache empties, so that its memory stays
 // small.
 func TestCacheLimit(t *testing.T) {
+	t.Parallel()
 	var c Cache
 	line := strings.Repeat("x", 1<<20)
 	for i := range maxCacheSize >> 20 {
@@ -49,6 +51,7 @@ func TestCacheLimit(t *testing.T) {
 
 // TestCacheNil checks that a View with a nil Cache renders.
 func TestCacheNil(t *testing.T) {
+	t.Parallel()
 	if out, _, _ := New().Cache(nil).Before("a.go", "x\n").After("a.go", "y\n").Render(); out == "" {
 		t.Error(`Render with a nil Cache = "", want lines`)
 	}
@@ -57,6 +60,7 @@ func TestCacheNil(t *testing.T) {
 // TestCacheLexer checks that a View uses the last lexer of the Cache for
 // the same file. It selects a new lexer for a changed file.
 func TestCacheLexer(t *testing.T) {
+	t.Parallel()
 	c := &Cache{}
 	lexer := func(content string) string {
 		v := New().Cache(c).Before("a.zzq", content)

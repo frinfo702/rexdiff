@@ -10,6 +10,7 @@ import (
 
 // TestFold checks how the states of the agents fold into one state.
 func TestFold(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		states []rex.State
@@ -51,6 +52,7 @@ func run(t *testing.T, steps ...step) {
 }
 
 func TestEmptyRepoStartsOnFirstWorker(t *testing.T) {
+	t.Parallel()
 	var tr Tracker
 	tr.Observe()
 	if started, _ := tr.Observe(rex.StateWorking); !started {
@@ -59,11 +61,13 @@ func TestEmptyRepoStartsOnFirstWorker(t *testing.T) {
 }
 
 func TestStartAfterRest(t *testing.T) {
+	t.Parallel()
 	// The first state never starts a turn.
 	run(t, step{resting, false, false}, step{working, true, false})
 }
 
 func TestHeldBackToWorkContinues(t *testing.T) {
+	t.Parallel()
 	// A prompt in the middle of a turn does not start another turn.
 	run(t,
 		step{resting, false, false},
@@ -74,6 +78,7 @@ func TestHeldBackToWorkContinues(t *testing.T) {
 }
 
 func TestEndOnlyAfterWork(t *testing.T) {
+	t.Parallel()
 	run(t,
 		step{resting, false, false}, // no work before, so no end
 		step{working, true, false},  // a start is never an end
@@ -84,6 +89,7 @@ func TestEndOnlyAfterWork(t *testing.T) {
 }
 
 func TestEndThroughHeld(t *testing.T) {
+	t.Parallel()
 	// The prompt keeps the turn open. A rest after it ends the turn once.
 	run(t,
 		step{resting, false, false},
@@ -95,11 +101,13 @@ func TestEndThroughHeld(t *testing.T) {
 }
 
 func TestLoneFirstWorkingStartsNothing(t *testing.T) {
+	t.Parallel()
 	// The start of this turn is not seen.
 	run(t, step{working, false, false})
 }
 
 func TestGap(t *testing.T) {
+	t.Parallel()
 	var tr Tracker
 	tr.Observe(rex.StateIdle)
 	tr.Gap()

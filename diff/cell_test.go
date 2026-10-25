@@ -40,6 +40,7 @@ func column(t *testing.T, d *diff.Diff, i int, needle string, last bool) int {
 // TestCell checks the source character of a cell, with tabs, an offset,
 // the split layout, and a file.
 func TestCell(t *testing.T) {
+	t.Parallel()
 	const old, new = "a\n\told_name := 1\n", "a\n\tnew_name := 1\n"
 	u := diff.Render("x.go", old, new, diff.Options{Width: 80})
 	off := diff.Render("x.go", old, new, diff.Options{Width: 80, Offset: 6})
@@ -95,6 +96,7 @@ func TestCell(t *testing.T) {
 // TestCellMatchesScreen checks that each code cell shows the character
 // that Cell gives, in each layout, with wrap, and with an offset.
 func TestCellMatchesScreen(t *testing.T) {
+	t.Parallel()
 	var words []string
 	for i := range 30 {
 		words = append(words, "w"+string(rune('a'+i%26))+strings.Repeat("x", i%4))
@@ -156,6 +158,7 @@ func TestCellMatchesScreen(t *testing.T) {
 // TestCellGraphemes checks Cell after grapheme clusters of more than one
 // code point, in a cut line and in a wrapped line.
 func TestCellGraphemes(t *testing.T) {
+	t.Parallel()
 	for _, g := range []string{"❤️", "👨‍👩‍👧", "🇺🇸"} {
 		line := strings.Repeat(g+"x ", 20)
 		src := []rune(line)
@@ -188,6 +191,7 @@ func TestCellGraphemes(t *testing.T) {
 // character. The content moves by the offset, so Cell agrees with the
 // screen.
 func TestCellOffsetInWideChar(t *testing.T) {
+	t.Parallel()
 	const line = "日本x"
 	for _, off := range []int{1, 3} {
 		o := diff.Options{Width: 40, Offset: off}

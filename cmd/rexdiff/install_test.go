@@ -110,6 +110,7 @@ func TestUpgrade(t *testing.T) {
 // TestLuaQuote checks that a path that Go escapes stays the same in Lua 5.1.
 // Lua 5.1 knows only a few escapes.
 func TestLuaQuote(t *testing.T) {
+	t.Parallel()
 	got := luaQuote("/a\u200bb/\"x\"\\y\nz")
 	want := "\"/a\u200bb/\\\"x\\\"\\\\y\\nz\""
 	if got != want {
