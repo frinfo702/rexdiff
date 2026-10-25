@@ -186,13 +186,12 @@ type model struct {
 	phase        updatePhase
 	restartState string // the file of the state for the restart, or ""
 
-	w, h    int
-	bg, fg  color.Color
-	red     color.Color // the ANSI red of the terminal, or nil
-	green   color.Color // the ANSI green of the terminal, or nil
-	dark    bool
-	focused bool
-	ticks   int
+	w, h   int
+	bg, fg color.Color
+	red    color.Color // the ANSI red of the terminal, or nil
+	green  color.Color // the ANSI green of the terminal, or nil
+	dark   bool
+	ticks  int
 
 	// watch tells when the files or the refs change, or is nil. If it is
 	// nil, a tick reloads the current tab every pollEvery, after polled.
@@ -315,7 +314,6 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 		updater:    o.Updater,
 		w:          120,
 		h:          40,
-		focused:    true,
 		base:       o.Base,
 		baseFlag:   o.Base != "",
 		wrap:       o.Wrap,
@@ -605,10 +603,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		m.w, m.h = msg.Width, msg.Height
 		m.rerender()
 	case tea.FocusMsg:
-		m.focused = true
 		m.reloadIfChanged()
-	case tea.BlurMsg:
-		m.focused = false
 	case tickMsg:
 		cmd = m.onTick()
 	case tea.BackgroundColorMsg:
