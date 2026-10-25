@@ -97,6 +97,13 @@ func isMarkdown(path string) bool {
 	return strings.HasSuffix(p, ".md") || strings.HasSuffix(p, ".markdown")
 }
 
+// The notes in place of a file that rexdiff does not show. They are the
+// same as in herdr-reviewr.
+const (
+	noteBinary = "binary file · no line comments"
+	noteTooBig = "file too large to show"
+)
+
 // renderChanges shows the selected file in the Changes tab.
 func (m *model) renderChanges() {
 	p := &m.changes
@@ -109,9 +116,9 @@ func (m *model) renderChanges() {
 	p.path = f.Path
 	switch {
 	case f.Binary:
-		p.setNote("binary file, not diffed")
+		p.setNote(noteBinary)
 	case f.TooBig:
-		p.setNote("file over 2 MB or 50,000 lines, not diffed")
+		p.setNote(noteTooBig)
 	case f.Old == f.New:
 		// The change is a rename with no edit, or a change of the file mode.
 		note := "no change to the content"
@@ -164,10 +171,10 @@ func (m *model) refreshViewer() {
 	switch {
 	case errors.Is(err, vcs.ErrBinary):
 		p.path = ""
-		p.set([]string{dimStyle.Render("  binary file")}, nil)
+		p.set([]string{dimStyle.Render("  " + noteBinary)}, nil)
 	case errors.Is(err, vcs.ErrTooBig):
 		p.path = ""
-		p.set([]string{dimStyle.Render("  file over 2 MB, not shown")}, nil)
+		p.set([]string{dimStyle.Render("  " + noteTooBig)}, nil)
 	case m.rendered && isMarkdown(path):
 		m.setMarkdown(p, content)
 	default:
