@@ -74,9 +74,9 @@ func fileLineParts(l string, code int, o Options) []string {
 		wrapped := ansi.Hardwrap(lipgloss.Wrap(l, code, ""), code, true)
 		return strings.Split(wrapped, "\n")
 	case o.Width > 0:
-		return []string{ansi.Truncate(ansi.TruncateLeft(l, o.Offset, ""), code, "…")}
+		return []string{ansi.Truncate(diffview.CutLeft(l, o.Offset), code, "…")}
 	}
-	return []string{ansi.TruncateLeft(l, o.Offset, "")}
+	return []string{diffview.CutLeft(l, o.Offset)}
 }
 
 // fileColours returns highlight(path, src), and keeps it for the next

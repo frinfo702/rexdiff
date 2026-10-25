@@ -24,3 +24,16 @@ func btoi(b bool) int {
 	}
 	return 0
 }
+
+// CutLeft removes the first n cells of s, which can have ANSI codes. If
+// the cut is inside a wide character, a space takes the place of the rest
+// of that character. Thus the text after the cut moves by n cells.
+func CutLeft(s string, n int) string {
+	want := max(ansi.StringWidth(s)-n, 0)
+	cut := ansi.TruncateLeft(s, n, "")
+	for ansi.StringWidth(cut) > want {
+		n++
+		cut = ansi.TruncateLeft(s, n, "")
+	}
+	return strings.Repeat(" ", want-ansi.StringWidth(cut)) + cut
+}

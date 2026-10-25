@@ -521,7 +521,7 @@ func (v *View) codeLines(
 			parts[i] = ansi.Truncate(p, w, "")
 		}
 	} else {
-		code = ansi.GraphemeWidth.Cut(code, v.xOffset, len(code))
+		code = CutLeft(code, v.xOffset)
 		parts[0] = ansi.Truncate(code, width, ellipsis)
 		if v.xOffset > 0 && strings.TrimSpace(parts[0]) != "" {
 			sym = strings.TrimSuffix(sym, " ") + ellipsis

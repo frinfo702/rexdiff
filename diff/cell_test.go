@@ -183,3 +183,29 @@ func TestCellGraphemes(t *testing.T) {
 		}
 	}
 }
+
+// TestCellOffsetInWideChar checks Cell when the offset cuts a wide
+// character. The content moves by the offset, so Cell agrees with the
+// screen.
+func TestCellOffsetInWideChar(t *testing.T) {
+	const line = "日本x"
+	for _, off := range []int{1, 3} {
+		o := diff.Options{Width: 40, Offset: off}
+		for name, d := range map[string]*diff.Diff{
+			"diff": diff.Render("x.txt", "", line+"\n", o),
+			"file": diff.RenderFile("x.txt", line+"\n", o),
+		} {
+			row := len(d.Rows) - 1
+			for char, needle := range []rune(line) {
+				if !strings.ContainsRune(ansi.Strip(d.Lines[row]), needle) {
+					continue
+				}
+				x := column(t, d, row, string(needle), false)
+				if _, _, got, ok := d.Cell(row, x); !ok || got != char {
+					t.Errorf("%s offset %d: Cell on %q = %d, %v; want %d, true",
+						name, off, needle, got, ok, char)
+				}
+			}
+		}
+	}
+}
