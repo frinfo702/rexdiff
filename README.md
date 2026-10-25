@@ -110,7 +110,7 @@ After a change:
 ## Requirements
 
 - Rex
-- git
+- git 2.31 or later
 - `gh`, `glab`, or `az` for the pull request tab. You must be logged in.
 
 <!-- references -->
