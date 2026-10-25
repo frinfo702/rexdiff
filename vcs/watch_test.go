@@ -39,6 +39,7 @@ func changed(t *testing.T, w *vcs.Watcher) vcs.Change {
 // TestWatcher checks the changes that a Watcher sees and does not see. A
 // change must have each part of want. No change must be none.
 func TestWatcher(t *testing.T) {
+	t.Parallel()
 	files := vcs.Change{Files: true}
 	tests := []struct {
 		name string
@@ -84,6 +85,7 @@ func TestWatcher(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			r, dir := newRepo(t)
 			w := newWatcher(t, r)
 			tt.edit(t, dir)
@@ -102,6 +104,7 @@ func TestWatcher(t *testing.T) {
 // TestWatcherNewDirectory checks that an edit in a new untracked directory
 // is a change.
 func TestWatcherNewDirectory(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	w := newWatcher(t, r)
 	testgit.WriteFile(t, dir, "x/c.txt", "c\n")
@@ -115,6 +118,7 @@ func TestWatcherNewDirectory(t *testing.T) {
 // TestWatcherUnignore checks that a file shows after a .gitignore edit
 // stops git from ignoring it.
 func TestWatcherUnignore(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	w := newWatcher(t, r)
 	testgit.WriteFile(t, dir, "ignored.txt", "xx\n")
@@ -135,6 +139,7 @@ func TestWatcherUnignore(t *testing.T) {
 // gets or loses is a change, and an edit of a shown ignored file, as in
 // herdr-reviewr.
 func TestWatcherShown(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	w := newWatcher(t, r)
 	testgit.WriteFile(t, dir, "build/new", "x\n")
@@ -170,9 +175,11 @@ func TestWatcherShown(t *testing.T) {
 // TestWatcherNested checks that a commit in a nested repository or in a
 // submodule is a change.
 func TestWatcherNested(t *testing.T) {
+	t.Parallel()
 	for _, sub := range []bool{false, true} {
 		name := map[bool]string{false: "nested", true: "submodule"}[sub]
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			r, dir := newRepo(t)
 			other := t.TempDir()
 			testgit.Git(t, other, "init", "-q")
@@ -213,6 +220,7 @@ func TestWatcherRunsNoGit(t *testing.T) {
 // TestWatcherBudget checks that a call waits 20 times as long as the last
 // call took.
 func TestWatcherBudget(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	w, err := r.Watch(t.Context())
 	if err != nil {
@@ -240,6 +248,7 @@ func TestWatcherBudget(t *testing.T) {
 // that git lists no file in is a change. A new file in an ignored
 // directory in it is not.
 func TestWatcherUntrackedDir(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name, setup, edit string
 		want              bool
@@ -251,6 +260,7 @@ func TestWatcherUntrackedDir(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			r, dir := newRepo(t)
 			if d, ok := strings.CutSuffix(tt.setup, "/"); ok {
 				if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {

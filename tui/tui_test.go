@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image/color"
 	"os"
 	"path/filepath"
@@ -21,11 +22,10 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// newTestModel makes a repository and a model that shows it. The branch
-// main has a.go. The branch feat adds b.go. The working tree changes a.go.
-func newTestModel(tb testing.TB) (model, string) {
+// testRepo is the repository of newTestModel. The branch main has a.go.
+// The branch feat adds b.go. The working tree changes a.go.
+var testRepo = testgit.NewFixture(func(tb testing.TB, dir string) {
 	tb.Helper()
-	dir := tb.TempDir()
 	run := func(args ...string) { testgit.Git(tb, dir, args...) }
 	testgit.NewRepo(tb, dir)
 	testgit.WriteFile(tb, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
@@ -36,7 +36,14 @@ func newTestModel(tb testing.TB) (model, string) {
 	run("add", ".")
 	run("commit", "-qm", "add b")
 	testgit.WriteFile(tb, dir, "a.go", "package a\n\nfunc A() int {\n\tx := 2\n\treturn x\n}\n")
+})
 
+// newTestModel copies testRepo to a new directory and returns a model that
+// shows it, and the directory.
+func newTestModel(tb testing.TB) (model, string) {
+	tb.Helper()
+	dir := tb.TempDir()
+	testRepo.Copy(tb, dir)
 	repo, err := vcs.Open(tb.Context(), dir)
 	if err != nil {
 		tb.Fatal(err)
@@ -138,6 +145,7 @@ func paths(m model) []string {
 
 // TestScopes checks the files that each scope shows.
 func TestScopes(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	if got := paths(m); !slices.Equal(got, []string{"a.go"}) {
 		t.Fatalf("uncommitted scope shows %v, want [a.go]", got)
@@ -186,6 +194,7 @@ func TestScopes(t *testing.T) {
 // TestComment checks comments in the two layouts, and the send and quit
 // keys with unsent comments.
 func TestComment(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 
 	// The unified layout uses three rows for the change.
@@ -227,6 +236,7 @@ func TestComment(t *testing.T) {
 
 // TestTabs checks the Files tab and the PR tab.
 func TestTabs(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 
 	m = press(t, m, "2")
@@ -246,6 +256,7 @@ func TestTabs(t *testing.T) {
 // TestPRChecks checks that the PR tab shows the counts of the checks of a
 // pull request, and the names of the checks that fail.
 func TestPRChecks(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "3")
 	pr := &vcs.PullRequest{
@@ -267,6 +278,7 @@ func TestPRChecks(t *testing.T) {
 // TestSmallScreens checks that every key works on screens down to 1x1 and
 // that the view fits the screen.
 func TestSmallScreens(t *testing.T) {
+	t.Parallel()
 	keys := []string{
 		"w", "j", "v", "j", "c", "\x1b[31mx\x07", "enter", "f", "F", "]", "[", "n", "N",
 		"|", "p", "m", "t", "b", "u", "G", "esc", "/", "a", "esc", ":", "2", "enter", "?",
@@ -276,29 +288,32 @@ func TestSmallScreens(t *testing.T) {
 		{0, 0}, {1, 1}, {2, 2}, {10, 3}, {20, 5}, {40, 4}, {200, 6},
 	}
 	for _, size := range sizes {
-		m, _ := newTestModel(t)
-		m = step(t, m, tea.WindowSizeMsg{Width: size.w, Height: size.h})
-		for _, k := range keys {
-			m = press(t, m, k)
-			lines := strings.Split(view(m), "\n")
-			if len(lines) > max(size.h, 1) {
-				t.Errorf("%dx%d after %q: %d lines, want %d or fewer",
-					size.w, size.h, k, len(lines), max(size.h, 1))
-			}
-			for _, l := range lines {
-				if w := ansi.StringWidth(l); w > max(size.w, 1) {
-					t.Errorf("%dx%d after %q: line width %d, want %d or fewer: %q",
-						size.w, size.h, k, w, max(size.w, 1), l)
-					break
+		t.Run(fmt.Sprintf("%dx%d", size.w, size.h), func(t *testing.T) {
+			t.Parallel()
+			m, _ := newTestModel(t)
+			m = step(t, m, tea.WindowSizeMsg{Width: size.w, Height: size.h})
+			for _, k := range keys {
+				m = press(t, m, k)
+				lines := strings.Split(view(m), "\n")
+				if len(lines) > max(size.h, 1) {
+					t.Errorf("after %q: %d lines, want %d or fewer", k, len(lines), max(size.h, 1))
+				}
+				for _, l := range lines {
+					if w := ansi.StringWidth(l); w > max(size.w, 1) {
+						t.Errorf("after %q: line width %d, want %d or fewer: %q",
+							k, w, max(size.w, 1), l)
+						break
+					}
 				}
 			}
-		}
+		})
 	}
 }
 
 // TestDragAfterReload checks that a drag does not panic when the pane gets
 // shorter.
 func TestDragAfterReload(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m.drag = dragState{active: true, gutter: true, moved: true, start: 48}
 	m = step(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft})
@@ -330,6 +345,7 @@ func click(t *testing.T, m model, x, y int) model {
 // TestClickOldNumber checks a comment from a click on the old line number of
 // an unchanged line.
 func TestClickOldNumber(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	// The comment goes on the new side, so that it shows and d can delete it.
 	equal := func(r diff.Row) bool { return r.Kind == diff.KindEqual }
@@ -347,6 +363,7 @@ func TestClickOldNumber(t *testing.T) {
 // TestClickCommentBox checks that a click does not change the draft or close
 // the comment box.
 func TestClickCommentBox(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "]", "c", "h", "i")
 	_, rowAt := m.mainLines(m.mainHeight(), nil)
@@ -383,6 +400,7 @@ func TestSendError(t *testing.T) {
 // file as added, when the object of the HEAD commit is missing. The files
 // that show stay, and the error is a flash.
 func TestMissingHead(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	hex := strings.TrimSpace(testgit.Git(t, dir, "rev-parse", "HEAD"))
 	obj := filepath.Join(dir, ".git", "objects", hex[:2], hex[2:])
@@ -416,6 +434,7 @@ func errorHas(err error, texts ...string) bool {
 
 // TestParseConfig checks the settings that the Rex action sends as JSON.
 func TestParseConfig(t *testing.T) {
+	t.Parallel()
 	// Each action in src/keymap.rs of herdr-reviewr has a key.
 	names := strings.Fields(`base-pick collapse comment comments commit-pick copy
 		delete down edit expand find goto-line half-down half-up keys navigator-grow
@@ -519,6 +538,7 @@ func TestParseConfig(t *testing.T) {
 // TestDiffSigns checks that a bar marks a changed line by default, and that
 // the setting diff_signs changes the bar to + and -.
 func TestDiffSigns(t *testing.T) {
+	t.Parallel()
 	line := func(m model, code string) string {
 		for l := range strings.Lines(view(m)) {
 			if strings.Contains(l, code) {
@@ -548,6 +568,7 @@ func TestDiffSigns(t *testing.T) {
 // TestConfigFlags checks that the flags override the settings, and that
 // the settings set the keys and the file list.
 func TestConfigFlags(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	cfg, err := parseConfig(`{
 		"layout": "unified",
@@ -582,6 +603,7 @@ func TestConfigFlags(t *testing.T) {
 // TestNotice checks that the footer shows all of a long notice on its own
 // lines.
 func TestNotice(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	// The path makes the first line end in "--" at column 82, past the
 	// edge, if the wrap breaks at the hyphen.
@@ -614,6 +636,7 @@ func TestNotice(t *testing.T) {
 // TestPalette checks that inserted lines get their tint from the green of
 // the terminal, as in pi's system theme.
 func TestPalette(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = step(t, m, tea.BackgroundColorMsg{Color: color.Black})
 	// The tint is black, mixed 16% toward pure green.
@@ -654,6 +677,7 @@ func twoHunks(t *testing.T, m model, dir, long string) model {
 
 // TestWrap checks that the w key turns wrap on and off.
 func TestWrap(t *testing.T) {
+	t.Parallel()
 	m, _, long := wrapModel(t)
 	cut := len(m.changes.lines)
 
@@ -709,6 +733,7 @@ func TestWrap(t *testing.T) {
 // TestWrapKeepsCursor checks that w keeps the cursor on its source line or
 // on its hunk header.
 func TestWrapKeepsCursor(t *testing.T) {
+	t.Parallel()
 	m, dir, long := wrapModel(t)
 	m.changes.cur = len(m.changes.rows) - 1
 	m = press(t, m, "w")
@@ -737,6 +762,7 @@ func hunks(m model) []int {
 
 // TestTallLine checks a wrapped line that is taller than the screen.
 func TestTallLine(t *testing.T) {
+	t.Parallel()
 	m, dir, long := wrapModel(t)
 	m = press(t, m, "w")
 	m = twoHunks(t, m, dir, long)
@@ -794,6 +820,7 @@ func TestTallLine(t *testing.T) {
 // TestHostileText checks that the screen does not show raw escape sequences
 // from a file name, a comment, an agent, or an error from Rex.
 func TestHostileText(t *testing.T) {
+	t.Parallel()
 	// The diff tests check the review text.
 	const osc = "\x1b]0;owned\x07" // sets the title of the terminal
 	raw := func(where string, m model) {
@@ -832,6 +859,7 @@ func TestHostileText(t *testing.T) {
 // TestMouseOffScreen checks that mouse events outside the screen do not
 // panic, also while an overlay is open and the screen changes size.
 func TestMouseOffScreen(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	for _, keys := range [][]string{{}, {"G"}, {"/"}, {"2"}, {"3"}} {
 		m = press(t, m, keys...)
@@ -857,6 +885,7 @@ func TestMouseOffScreen(t *testing.T) {
 // TestEmptyRepo checks that keys do not panic in a repository with no
 // commits and no files, with key bindings that conflict.
 func TestEmptyRepo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	testgit.NewRepo(t, dir)
 	repo, err := vcs.Open(t.Context(), dir)
@@ -889,6 +918,7 @@ func TestEmptyRepo(t *testing.T) {
 // TestFooterHints checks that the footer shows the keys of the select mode,
 // and the find band.
 func TestFooterHints(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	if m = press(t, m, "]", "v"); !strings.Contains(view(m), "extend") {
 		t.Errorf("select mode: view got:\n%s\nwant the hint extend", view(m))

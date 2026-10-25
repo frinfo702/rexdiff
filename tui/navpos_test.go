@@ -19,6 +19,7 @@ func screenLine(m model, y int) string {
 // TestListPositions checks that p moves the file list clockwise, and that
 // a list above or below takes a quarter of the body rows.
 func TestListPositions(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	want := []position{positionBottom, positionLeft, positionTop, positionRight}
 	for _, w := range want {
@@ -55,6 +56,7 @@ func TestListPositions(t *testing.T) {
 // TestListSizes checks the bounds of the file list at a side and above or
 // below the main pane.
 func TestListSizes(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t) // 120 columns
 	m = press(t, m, "<")
 	if got := m.sideWidth(); got != 42 {
@@ -96,6 +98,7 @@ func TestListSizes(t *testing.T) {
 // that a hidden list does not move or resize, and that the PR tab does
 // not hide the list.
 func TestListHide(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m.focusList = true
 	m = press(t, m, "z")
@@ -121,6 +124,7 @@ func TestListHide(t *testing.T) {
 // TestResumeListLeft checks that a saved state of an older version, with
 // list_left, restores the list at the left.
 func TestResumeListLeft(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	path := filepath.Join(t.TempDir(), "state.json")
 	if err := os.WriteFile(path, []byte(`{"list_left": true, "list_w": 40}`), 0o600); err != nil {

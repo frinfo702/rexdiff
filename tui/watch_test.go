@@ -38,6 +38,7 @@ func TestTickRunsNoGitWhenIdle(t *testing.T) {
 
 // TestTickSeesEdit checks that a tick shows an edit.
 func TestTickSeesEdit(t *testing.T) {
+	t.Parallel()
 	m, dir := watched(t)
 	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
 	if m = step(t, m, tickMsg{}); !shows(m, "return 42") {
@@ -47,6 +48,7 @@ func TestTickSeesEdit(t *testing.T) {
 
 // TestRefreshForces checks that r reloads in the pause after a reload.
 func TestRefreshForces(t *testing.T) {
+	t.Parallel()
 	m, dir := watched(t)
 	m.reloadAt = m.now().Add(time.Hour) // the pause after a slow reload
 	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
@@ -81,6 +83,7 @@ func TestTickRetries(t *testing.T) {
 // TestRetryBackoff checks that each failure doubles the wait, from 1 s to
 // 60 s.
 func TestRetryBackoff(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	want := []int{1, 2, 4, 8, 16, 32, 60, 60}
 	for i, w := range want {
@@ -123,6 +126,7 @@ func openFile(t *testing.T, m model, path string) model {
 // TestFilesTabWaitsForWatcher checks that, with a watcher, a tick reads
 // the open file of the Files tab only after the watcher reports a change.
 func TestFilesTabWaitsForWatcher(t *testing.T) {
+	t.Parallel()
 	m, dir := watchedTree(t)
 	const path = "top.go"
 	m = openFile(t, m, path)
@@ -148,6 +152,7 @@ func TestFilesTabWaitsForWatcher(t *testing.T) {
 // TestTickSeesIgnoredEdit checks that a tick shows an edit of the open
 // file in an expanded ignored directory, as in herdr-reviewr.
 func TestTickSeesIgnoredEdit(t *testing.T) {
+	t.Parallel()
 	m, dir := watchedTree(t)
 	m.fileTree.cur = 0
 	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight}) // expand out

@@ -182,6 +182,7 @@ func TestEditorNotOpened(t *testing.T) {
 // TestTerminalEditorDone checks the message after a terminal editor stops
 // outside Rex.
 func TestTerminalEditorDone(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = step(t, m, editorDoneMsg{path: "a.go"})
 	if !shows(m, "edited a.go") {
@@ -197,6 +198,7 @@ func TestTerminalEditorDone(t *testing.T) {
 // TestNewLineNear checks the line that the editor opens for each kind of
 // row.
 func TestNewLineNear(t *testing.T) {
+	t.Parallel()
 	rows := []diff.Row{
 		{Kind: diff.KindHunk},
 		{Kind: diff.KindEqual, Old: 1, New: 1},

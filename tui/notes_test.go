@@ -16,12 +16,14 @@ import (
 // TestSkippedFileNotes checks the notes in place of a binary file and of a
 // file that is too large, in both tabs.
 func TestSkippedFileNotes(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ content, want string }{
 		{"a\x00b\n", "binary file · no line comments"},
 		{strings.Repeat("x\n", 50_001), "file too large to show"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
+			t.Parallel()
 			m, dir := newTestModel(t)
 			// The name sorts first, so that both tabs select the file.
 			testgit.WriteFile(t, dir, "0.txt", tt.content)
@@ -40,6 +42,7 @@ func TestSkippedFileNotes(t *testing.T) {
 // TestEmptyNotes checks the notes of an empty scope, of an empty list of
 // files, of an empty file, and of a file that rexdiff cannot read.
 func TestEmptyNotes(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
 	if m.reload(); !shows(m, "no changes") {
@@ -67,6 +70,7 @@ func TestEmptyNotes(t *testing.T) {
 // TestStatusMessages checks the short messages in the footer, and how
 // long they show.
 func TestStatusMessages(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	clk := setClock(&m)
 	m = press(t, m, "]", "c", "h", "i", "enter")
@@ -112,6 +116,7 @@ func TestStatusMessages(t *testing.T) {
 // TestRenderedKey checks that m acts only on a markdown file that renders
 // some text.
 func TestRenderedKey(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	if m = press(t, m, "m"); m.rendered {
 		t.Error("m on a.go turns on rendered markdown, want no change")
@@ -134,6 +139,7 @@ func TestRenderedKey(t *testing.T) {
 // TestGotoLineInput checks the go-to-line prompt. It takes only digits
 // and "$", and a paste keeps only a line number.
 func TestGotoLineInput(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	m = press(t, m, ":", "a", "b", "c")
 	if got := m.overlay.input.Value(); got != "" {
@@ -160,6 +166,7 @@ func TestGotoLineInput(t *testing.T) {
 // TestGotoLineClamps checks that : clamps the line to the file, and opens
 // the fold that has the line.
 func TestGotoLineClamps(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input string
 		want  int
@@ -172,6 +179,7 @@ func TestGotoLineClamps(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
 			m := newFoldModel(t)
 			m = press(t, m, ":")
 			m = step(t, m, tea.PasteMsg{Content: tt.input})
@@ -187,6 +195,7 @@ func TestGotoLineClamps(t *testing.T) {
 // TestGotoLineDeletedFile checks that : uses the old lines of a deleted
 // file.
 func TestGotoLineDeletedFile(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	if err := os.Remove(filepath.Join(m.repo.Root(), "f.txt")); err != nil {
 		t.Fatal(err)

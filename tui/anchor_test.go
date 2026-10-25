@@ -13,6 +13,7 @@ import (
 // TestCommentKeepsLine checks that a comment stays on its line numbers
 // when lines come above it, as in herdr-reviewr.
 func TestCommentKeepsLine(t *testing.T) {
+	t.Parallel()
 	m := commented(t)
 	c := m.comments.All()[0]
 	start, end := c.Start, c.End
@@ -33,6 +34,7 @@ func TestCommentKeepsLine(t *testing.T) {
 // TestStaleInList checks that a comment whose file leaves the changes
 // shows "(stale)" in the comment list only.
 func TestStaleInList(t *testing.T) {
+	t.Parallel()
 	m := commented(t)
 	testgit.Git(t, m.repo.Root(), "checkout", "--", "a.go")
 	m.reload()
@@ -47,6 +49,7 @@ func TestStaleInList(t *testing.T) {
 // TestFileCommentView checks that a comment on the Files tab shows only
 // there, and is stale only when its file is gone.
 func TestFileCommentView(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	m = press(t, m, "2", "j", "c", "f", "i", "l", "e", "enter")
 	if m.comments.Len() != 1 || !shows(m, "💬 file") {
@@ -74,6 +77,7 @@ func TestFileCommentView(t *testing.T) {
 // only at that pick, and that the comment list takes no edit of it in
 // another scope.
 func TestCommitsCommentHidden(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "G", "enter") // the newest commit adds b.go
 	if m.scope != scopeCommits {
@@ -126,6 +130,7 @@ func (m *model) fileIndex(path string) int {
 // which has no anchors. A comment gets the revision of the saved scope, so
 // that a comment in the commits scope still shows.
 func TestResumeOldComments(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	path := filepath.Join(t.TempDir(), "state.json")
 	state := `{"tab":0,"scope":"commits","from":"aaa","to":"bbb",` +

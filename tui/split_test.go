@@ -18,6 +18,7 @@ func newSplitModel(t *testing.T, w int) model {
 // TestSplitNeedsWidth checks that a narrow pane shows one column, and that
 // | tells why. The choice of split stays.
 func TestSplitNeedsWidth(t *testing.T) {
+	t.Parallel()
 	m := newSplitModel(t, 120)
 	if m.splitShown() {
 		t.Errorf("width 120 (code %d): split shows, want unified", m.codeWidth())
@@ -31,6 +32,7 @@ func TestSplitNeedsWidth(t *testing.T) {
 // TestSplitFollowsWidth checks that split shows again when the pane gets
 // wide again.
 func TestSplitFollowsWidth(t *testing.T) {
+	t.Parallel()
 	m := newSplitModel(t, 210)
 	if !m.splitShown() {
 		t.Fatalf("width 210 (code %d): unified shows, want split", m.codeWidth())
@@ -52,6 +54,7 @@ func TestSplitFollowsWidth(t *testing.T) {
 // TestSplitAddedFile checks that a file with lines on one side shows one
 // column, and that | does nothing.
 func TestSplitAddedFile(t *testing.T) {
+	t.Parallel()
 	m := newSplitModel(t, 210)
 	m = press(t, m, "b") // the branch scope adds b.go
 	i := -1

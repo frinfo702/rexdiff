@@ -31,6 +31,7 @@ func quits(cmd tea.Cmd) bool {
 // TestQuitPrompt checks the keys of the prompt before a quit. They are
 // the keys of herdr-reviewr.
 func TestQuitPrompt(t *testing.T) {
+	t.Parallel()
 	m := quitPrompt(t)
 	const hint = "Q quit (1 pending) · esc cancel · s send 1 · y copy"
 	if !shows(m, hint) {
@@ -79,6 +80,7 @@ func TestQuitPromptSendCopy(t *testing.T) {
 // TestNoCtrlCHomeEnd checks that ctrl+c, home, and end do nothing, as in
 // herdr-reviewr.
 func TestNoCtrlCHomeEnd(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}); quits(cmd) {
 		t.Error("ctrl+c: a quit, want nothing")
@@ -94,6 +96,7 @@ func TestNoCtrlCHomeEnd(t *testing.T) {
 // TestQuitDiscardInert checks that Q does nothing outside the prompt
 // before a quit, as in herdr-reviewr.
 func TestQuitDiscardInert(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'Q', Text: "Q"}); quits(cmd) {
 		t.Error("Q with no comments: a quit, want nothing")

@@ -29,6 +29,7 @@ func onChange(m model) bool {
 // TestHunkCrossing checks that ] past the last change arms a crossing, and
 // a second ] crosses, as in herdr-reviewr. [ does the same backward.
 func TestHunkCrossing(t *testing.T) {
+	t.Parallel()
 	m := twoFiles(t)
 	cur := m.changes.cur
 	m = press(t, m, "]")
@@ -55,6 +56,7 @@ func TestHunkCrossing(t *testing.T) {
 
 // TestHunkCrossingDisarms checks that another key drops an armed crossing.
 func TestHunkCrossingDisarms(t *testing.T) {
+	t.Parallel()
 	m := press(t, twoFiles(t), "]", "j")
 	if m.armed != 0 {
 		t.Fatalf("] then j: armed %d, want 0", m.armed)
@@ -78,6 +80,7 @@ func TestHunkCrossingDisarms(t *testing.T) {
 // TestEscLadder checks that esc drops one layer with each press: the
 // selection, the armed crossing, then the list of all keys.
 func TestEscLadder(t *testing.T) {
+	t.Parallel()
 	m := press(t, twoFiles(t), "?", "]")
 	if !m.help.ShowAll || m.armed != 1 {
 		t.Fatalf("? ]: all keys %v, armed %d; want both", m.help.ShowAll, m.armed)

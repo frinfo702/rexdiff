@@ -12,6 +12,7 @@ import (
 // TestSavedBase checks that SaveBase keeps a base, and that the default
 // branch deletes it.
 func TestSavedBase(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	if got := r.SavedBase(ctx); got != "" {
@@ -54,6 +55,7 @@ func hashObject(t *testing.T, dir, s string) string {
 // TestSavedTurn checks that SaveTurn keeps a tree, also after git gc, and
 // that "" deletes it.
 func TestSavedTurn(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	tree := snapshot(t, r) // a tree that no commit has
@@ -80,6 +82,7 @@ func TestSavedTurn(t *testing.T) {
 // TestSavedPerWorktree checks that each worktree has its own saved base
 // and turn.
 func TestSavedPerWorktree(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	other := filepath.Join(t.TempDir(), "wt")

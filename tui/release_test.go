@@ -64,6 +64,7 @@ func run(t *testing.T, m model, cmd tea.Cmd) (model, tea.Cmd) {
 // TestUpdate checks the prompt, the install, and the restart of an update
 // from the footer.
 func TestUpdate(t *testing.T) {
+	t.Parallel()
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
 	const prompt = "rexdiff v0.2.0 is out: press U or click here to update"
@@ -129,6 +130,7 @@ func comments(m model) string {
 
 // TestUpdateClick checks that a click on the footer starts the install.
 func TestUpdateClick(t *testing.T) {
+	t.Parallel()
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
 	next, cmd := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: m.h - 1})
@@ -141,6 +143,7 @@ func TestUpdateClick(t *testing.T) {
 // TestUpdateFails checks that a failed install shows the reason, does not
 // restart, and lets the user try again.
 func TestUpdateFails(t *testing.T) {
+	t.Parallel()
 	u := &fakeUpdater{
 		latest:     update.Release{Tag: "v0.2.0"},
 		newer:      true,
@@ -163,6 +166,7 @@ func TestUpdateFails(t *testing.T) {
 // TestNoUpdate checks that the footer shows no release and U does nothing
 // without a newer release, after a failed check, or without an updater.
 func TestNoUpdate(t *testing.T) {
+	t.Parallel()
 	for _, u := range []*fakeUpdater{
 		{latest: update.Release{Tag: "v0.1.0"}},
 		{err: errors.New("no network")},
@@ -185,6 +189,7 @@ func TestNoUpdate(t *testing.T) {
 // TestCommentsJSON checks that the comments give the same review after
 // JSON encoding and decoding.
 func TestCommentsJSON(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "j", "j", "j", "j", "c", "x", "enter")
 	b, err := m.comments.MarshalJSON()
@@ -207,6 +212,7 @@ func TestCommentsJSON(t *testing.T) {
 // TestRestartWaits checks that the restart waits for a running send and for
 // a message whose command is not done.
 func TestRestartWaits(t *testing.T) {
+	t.Parallel()
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
 	m.sends = 1 // a send runs while the install ends
@@ -238,6 +244,7 @@ func TestRestartWaits(t *testing.T) {
 // TestRestorePRPlace checks that the place in the PR tab comes back after
 // a restart, although the PR loads after the restore.
 func TestRestorePRPlace(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	saved := &savedState{PR: savedPane{Cur: 7, Top: 3}, Comments: new(diff.Comments)}
 	m.restoreSettings(saved)
@@ -254,6 +261,7 @@ func TestRestorePRPlace(t *testing.T) {
 // TestUpdateClickRule checks that a click on the footer starts the install,
 // and a click on the rule above it does nothing.
 func TestUpdateClickRule(t *testing.T) {
+	t.Parallel()
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
 	rule := bodyY + m.bodyHeight()
@@ -290,6 +298,7 @@ func TestRestartSaveFails(t *testing.T) {
 // TestRestartOnTick checks that a tick can start the restart, though its
 // command schedules the next tick.
 func TestRestartOnTick(t *testing.T) {
+	t.Parallel()
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
 	m.phase = phaseInstalled
@@ -304,6 +313,7 @@ func TestRestartOnTick(t *testing.T) {
 // TestSavePendingPRPlace checks that a restart before the PR loads saves
 // the PR place of the previous restart.
 func TestSavePendingPRPlace(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m.prPlace = &savedPane{Cur: 7, Top: 3}
 	path, err := m.saveState()
@@ -319,6 +329,7 @@ func TestSavePendingPRPlace(t *testing.T) {
 // TestWrapWordsNarrow checks that a width of 0, or a character wider than
 // the width, does not loop forever.
 func TestWrapWordsNarrow(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		s    string
 		w    int
@@ -338,6 +349,7 @@ func TestWrapWordsNarrow(t *testing.T) {
 // TestRunChecksOptions checks that Run refuses options that it cannot use,
 // before it starts the program.
 func TestRunChecksOptions(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	tests := []struct {
 		o    Options
@@ -358,6 +370,7 @@ func TestRunChecksOptions(t *testing.T) {
 // send runs stays after the send. The user can save the edit before or after
 // the send ends.
 func TestSendKeepsEdits(t *testing.T) {
+	t.Parallel()
 	for _, saveFirst := range []bool{true, false} {
 		m, _ := newTestModel(t)
 		m = press(t, m, "j", "j", "j", "j", "c", "o", "l", "d", "enter")
@@ -388,6 +401,7 @@ func TestSendKeepsEdits(t *testing.T) {
 // TestPickerWaitsForComment checks that the agent picker does not open over
 // a comment that the user starts while the agents load.
 func TestPickerWaitsForComment(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "j", "j", "j", "j", "c", "h", "i")
 	m.sends = 1

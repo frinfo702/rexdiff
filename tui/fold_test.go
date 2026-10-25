@@ -15,12 +15,9 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// newFoldModel returns a model that shows f.txt, a file of 40 lines with
-// changes at lines 10 and 30. The diff folds lines 1 to 6, 14 to 26, and
-// 34 to 40.
-func newFoldModel(t *testing.T) model {
-	t.Helper()
-	dir := t.TempDir()
+// foldRepo is the repository of newFoldModel.
+var foldRepo = testgit.NewFixture(func(tb testing.TB, dir string) {
+	tb.Helper()
 	lines := func(upper ...int) string {
 		var b strings.Builder
 		for i := 1; i <= 40; i++ {
@@ -32,11 +29,20 @@ func newFoldModel(t *testing.T) model {
 		}
 		return b.String()
 	}
-	testgit.NewRepo(t, dir)
-	testgit.WriteFile(t, dir, "f.txt", lines())
-	testgit.Git(t, dir, "add", ".")
-	testgit.Git(t, dir, "commit", "-qm", "init")
-	testgit.WriteFile(t, dir, "f.txt", lines(10, 30))
+	testgit.NewRepo(tb, dir)
+	testgit.WriteFile(tb, dir, "f.txt", lines())
+	testgit.Git(tb, dir, "add", ".")
+	testgit.Git(tb, dir, "commit", "-qm", "init")
+	testgit.WriteFile(tb, dir, "f.txt", lines(10, 30))
+})
+
+// newFoldModel returns a model that shows f.txt, a file of 40 lines with
+// changes at lines 10 and 30. The diff folds lines 1 to 6, 14 to 26, and
+// 34 to 40.
+func newFoldModel(t *testing.T) model {
+	t.Helper()
+	dir := t.TempDir()
+	foldRepo.Copy(t, dir)
 	repo, err := vcs.Open(t.Context(), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +66,7 @@ func foldsOf(p *pane) []int {
 // TestExpandFold checks that the right arrow key shows the lines of a fold.
 // On a line of code, the key scrolls sideways.
 func TestExpandFold(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	p := &m.changes
 	if got := foldsOf(p); !slices.Equal(got, []int{6, 13, 7}) {
@@ -101,6 +108,7 @@ func TestExpandFold(t *testing.T) {
 // TestGotoLineInFold checks that : with a line in a fold shows the fold and
 // moves the cursor to the line.
 func TestGotoLineInFold(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	m = press(t, m, ":", "2", "0", "enter")
 	p := &m.changes
@@ -115,6 +123,7 @@ func TestGotoLineInFold(t *testing.T) {
 // TestExpandKeepsPlaces checks the cursor and the selection after a fold
 // shows.
 func TestExpandKeepsPlaces(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	m.changes.cur = m.changes.rowOf(diff.SideNew, 29)
 	m = press(t, m, "v") // the selection starts on line 29
@@ -132,6 +141,7 @@ func TestExpandKeepsPlaces(t *testing.T) {
 // TestFoldStaysOpen checks that an expanded fold stays open after edits of
 // the agent and closes after a commit.
 func TestFoldStaysOpen(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })
 	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
@@ -174,6 +184,7 @@ func TestFoldStaysOpen(t *testing.T) {
 // TestFoldsSurviveRestart checks that the expanded folds and the cursor
 // line come back after a restart for an update.
 func TestFoldsSurviveRestart(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })
 	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
@@ -201,6 +212,7 @@ func TestFoldsSurviveRestart(t *testing.T) {
 // TestClickFold checks that a click on a fold shows its lines, also in the
 // split layout and with wrap.
 func TestClickFold(t *testing.T) {
+	t.Parallel()
 	for _, keys := range [][]string{nil, {"|"}, {"w"}} {
 		m := step(t, newFoldModel(t), tea.WindowSizeMsg{Width: 210, Height: 70})
 		m = press(t, m, keys...)
@@ -218,6 +230,7 @@ func TestClickFold(t *testing.T) {
 // TestFoldKeepsComment checks that a fold with a comment on one of its
 // lines shows, also after a new scope closes the expanded folds.
 func TestFoldKeepsComment(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })
 	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})

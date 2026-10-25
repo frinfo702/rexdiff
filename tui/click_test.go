@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"slices"
 	"strings"
@@ -37,6 +39,14 @@ func clicks(t *testing.T, m model, n, x, y int) model {
 	return step(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y})
 }
 
+// clearFile removes the file at path if it exists.
+func clearFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal(err)
+	}
+}
+
 // TestMultiClickCopies checks that a double click copies the word, a
 // triple click copies the source line, and a double click on the file list
 // copies the path.
@@ -52,10 +62,14 @@ func TestMultiClickCopies(t *testing.T) {
 		{"four", "return x", 4, "\treturn x"},
 		{"double on a symbol", ":= 2", 2, ""},
 	}
+	// The cases share one clipboard and one model. A click changes only
+	// the fields of the model value, so each case starts from a copy.
+	out := fakeClipboard(t, false)
+	base, _ := newTestModel(t)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out := fakeClipboard(t, false)
-			m, _ := newTestModel(t)
+			clearFile(t, out)
+			m := base
 			x, y := codeCell(t, m, tt.needle)
 			m = clicks(t, m, tt.n, x, y)
 			got, _ := os.ReadFile(out)
@@ -69,8 +83,8 @@ func TestMultiClickCopies(t *testing.T) {
 	}
 
 	t.Run("path", func(t *testing.T) {
-		out := fakeClipboard(t, false)
-		m, _ := newTestModel(t)
+		clearFile(t, out)
+		m := base
 		y := m.listY() + 1 + slices.Index(rowNames(m), "a.go")
 		m = clicks(t, m, 2, m.listX()+3, y)
 		if got, _ := os.ReadFile(out); string(got) != "a.go" || m.status != "copied 4 chars" {
@@ -82,6 +96,7 @@ func TestMultiClickCopies(t *testing.T) {
 // TestClickChain checks that the clicks count only on the same cell and
 // within the window.
 func TestClickChain(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	clk := setClock(&m)
 	at := tea.Mouse{X: 40, Y: 10}

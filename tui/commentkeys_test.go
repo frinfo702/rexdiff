@@ -21,6 +21,7 @@ func commented(t *testing.T) model {
 // TestCommentAddsNew checks that c on a line with a comment adds a second
 // comment, as in herdr-reviewr.
 func TestCommentAddsNew(t *testing.T) {
+	t.Parallel()
 	m := press(t, commented(t), "c", "o", "k", "enter")
 	if m.comments.Len() != 2 || m.status != "comment added" {
 		t.Errorf("c on a comment: %d comments, status %q; want 2, \"comment added\"",
@@ -31,6 +32,7 @@ func TestCommentAddsNew(t *testing.T) {
 // TestEditBlankKeeps checks that an edit with blank text cancels the edit
 // and keeps the comment, as in herdr-reviewr.
 func TestEditBlankKeeps(t *testing.T) {
+	t.Parallel()
 	m := press(t, commented(t), "e")
 	if m.mode != modeComment || m.editor.Value() != "hi" {
 		t.Fatalf("e on a comment: mode %v, text %q; want the box with hi",
@@ -49,6 +51,7 @@ func TestEditBlankKeeps(t *testing.T) {
 // TestDeleteNeedsDiffFocus checks that c and d act only with the focus on
 // the diff.
 func TestDeleteNeedsDiffFocus(t *testing.T) {
+	t.Parallel()
 	m := commented(t)
 	tab := tea.KeyPressMsg{Code: tea.KeyTab}
 	if m = step(t, m, tab); !m.focusList {
@@ -69,6 +72,7 @@ func TestDeleteNeedsDiffFocus(t *testing.T) {
 
 // TestCommentList checks the keys of the comment list.
 func TestCommentList(t *testing.T) {
+	t.Parallel()
 	m := press(t, commented(t), "c", "o", "k", "enter", "l")
 	if !shows(m, "Comments (2)", "s send 2 · esc close · y copy · e edit · d delete") {
 		t.Errorf("the list got:\n%s\nwant the title and the keys", view(m))
@@ -127,6 +131,7 @@ func TestCommentListCopy(t *testing.T) {
 // TestStepCommentInFile checks that n and N step only through the
 // comments of the open file and wrap around in it, as in herdr-reviewr.
 func TestStepCommentInFile(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "b") // the branch changes a.go and adds b.go
 	if len(m.files) != 2 || shownPath(m) != "a.go" {

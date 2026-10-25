@@ -31,6 +31,7 @@ func curRow(m model) diff.Row {
 // TestFindSmartCase checks that a query in lower case ignores case, and a
 // query with an upper case letter does not.
 func TestFindSmartCase(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	for _, tt := range []struct {
 		q    string
@@ -48,6 +49,7 @@ func TestFindSmartCase(t *testing.T) {
 
 // TestFindOpensFold checks that a step to a hit in a fold opens the fold.
 func TestFindOpensFold(t *testing.T) {
+	t.Parallel()
 	m := newFoldModel(t)
 	m = toTop(m) // the fold of lines 1 to 6
 	m = find(t, m, "line 2")
@@ -66,6 +68,7 @@ func TestFindOpensFold(t *testing.T) {
 // TestFindSkipsLineNumbers checks that a find matches the text of the
 // lines, and not their numbers.
 func TestFindSkipsLineNumbers(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	if m = find(t, m, "5"); !strings.HasSuffix(lastLine(m), "no matches") {
 		t.Errorf("a find of a line number: footer %q, want no matches", lastLine(m))
@@ -79,6 +82,7 @@ func TestFindSkipsLineNumbers(t *testing.T) {
 // TestFindSteps checks that enter and down go to the next hit, up goes
 // to the previous hit, and both wrap around. Esc drops the query.
 func TestFindSteps(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = toTop(m)
 	m = find(t, m, "return")
@@ -114,6 +118,7 @@ func TestFindSteps(t *testing.T) {
 // TestFindKeepsCommentKeys checks that n types into the band, and that n
 // goes to the next comment after the band closes.
 func TestFindKeepsCommentKeys(t *testing.T) {
+	t.Parallel()
 	m := commented(t)
 	line := curRow(m).New
 	m = toTop(m)
@@ -129,6 +134,7 @@ func TestFindKeepsCommentKeys(t *testing.T) {
 
 // TestFindNotOnPR checks that the PR tab has no find band.
 func TestFindNotOnPR(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "3")
 	if m = step(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl}); m.mode != modeNormal {

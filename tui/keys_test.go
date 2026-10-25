@@ -9,6 +9,7 @@ import (
 // TestKeybindingErrors checks the errors of the keybindings setting. The
 // messages are the same as in herdr-reviewr.
 func TestKeybindingErrors(t *testing.T) {
+	t.Parallel()
 	const names = "a list of keys, each a character or a named key " +
 		"(left, right, up, down, pageup, pagedown), alone or after ctrl+ or alt+"
 	tests := []struct{ text, want string }{
@@ -35,6 +36,7 @@ func TestKeybindingErrors(t *testing.T) {
 // TestKeybindingsValid checks settings with no error: a swap of two keys,
 // and the names of keys.
 func TestKeybindingsValid(t *testing.T) {
+	t.Parallel()
 	for _, text := range []string{
 		`{"comment": ["v"], "select": ["c"]}`,
 		`{"page-up": ["pageup", "alt+up"], "page-down": ["pgdown"]}`,
@@ -49,6 +51,7 @@ func TestKeybindingsValid(t *testing.T) {
 // TestKeybindingPageUp checks that the herdr-reviewr name pageup binds the
 // page up key.
 func TestKeybindingPageUp(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	cfg, err := parseConfig(`{"keybindings": {"page-up": ["pageup"], "half-up": ["pgup"]}}`)
 	if err == nil {
@@ -72,6 +75,7 @@ func TestKeybindingPageUp(t *testing.T) {
 // TestKeybindingUpgrade checks that a key of the upgrade is not free for
 // another action.
 func TestKeybindingUpgrade(t *testing.T) {
+	t.Parallel()
 	_, err := parseConfig(`{"keybindings": {"send": ["U"]}}`)
 	if !errorHas(err, "`U`", "`send`", "`upgrade`") {
 		t.Errorf("send on U: error %v, want the clash with upgrade", err)

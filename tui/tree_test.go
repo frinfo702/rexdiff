@@ -12,26 +12,31 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// newTreeModel makes a repository with changes in src/a.go, src/b.go, and
-// top.go, and an ignored directory out. The model shows the Changes tab
-// with the focus on the file list.
-func newTreeModel(t *testing.T) (model, string) {
-	t.Helper()
-	dir := t.TempDir()
-	run := func(args ...string) { testgit.Git(t, dir, args...) }
-	testgit.NewRepo(t, dir)
+// treeRepo is the repository of newTreeModel. It has changes in src/a.go,
+// src/b.go, and top.go, and an ignored directory out.
+var treeRepo = testgit.NewFixture(func(tb testing.TB, dir string) {
+	tb.Helper()
+	run := func(args ...string) { testgit.Git(tb, dir, args...) }
+	testgit.NewRepo(tb, dir)
 	for _, p := range []string{"src/a.go", "src/b.go", "top.go"} {
-		testgit.WriteFile(t, dir, p, "package a\n")
+		testgit.WriteFile(tb, dir, p, "package a\n")
 	}
-	testgit.WriteFile(t, dir, ".gitignore", "out/\n")
+	testgit.WriteFile(tb, dir, ".gitignore", "out/\n")
 	run("add", ".")
 	run("commit", "-qm", "init")
 	for _, p := range []string{"src/a.go", "src/b.go", "top.go"} {
-		testgit.WriteFile(t, dir, p, "package a\n\nvar x = 1\n")
+		testgit.WriteFile(tb, dir, p, "package a\n\nvar x = 1\n")
 	}
-	testgit.WriteFile(t, dir, "out/x.txt", "x\n")
-	testgit.WriteFile(t, dir, "out/sub/y.txt", "y\n")
+	testgit.WriteFile(tb, dir, "out/x.txt", "x\n")
+	testgit.WriteFile(tb, dir, "out/sub/y.txt", "y\n")
+})
 
+// newTreeModel copies treeRepo to a new directory. The model shows the
+// Changes tab with the focus on the file list.
+func newTreeModel(t *testing.T) (model, string) {
+	t.Helper()
+	dir := t.TempDir()
+	treeRepo.Copy(t, dir)
 	repo, err := vcs.Open(t.Context(), dir)
 	if err != nil {
 		t.Fatal(err)
@@ -69,6 +74,7 @@ func shownPath(m model) string {
 // TestTreeKeys checks the cursor, the expand and collapse keys, and the
 // keys f and F in the tree of the Changes tab.
 func TestTreeKeys(t *testing.T) {
+	t.Parallel()
 	m, _ := newTreeModel(t)
 	if got, want := rowNames(m), []string{"src/", "a.go", "b.go", "top.go"}; !slices.Equal(got, want) {
 		t.Fatalf("rows %q, want %q", got, want)
@@ -123,6 +129,7 @@ func TestTreeKeys(t *testing.T) {
 // collapsed, a collapsed directory with a change has a dot, a click
 // toggles, and an ignored directory reads its entries when it expands.
 func TestFileTree(t *testing.T) {
+	t.Parallel()
 	m, _ := newTreeModel(t)
 	m = press(t, m, "2")
 	m.focusList = true
@@ -182,6 +189,7 @@ func listLine(m model, text string) string {
 // TestShownIgnored checks that the watcher gets the expanded ignored
 // directories of the Files tab, as in herdr-reviewr.
 func TestShownIgnored(t *testing.T) {
+	t.Parallel()
 	m, _ := newTreeModel(t)
 	m = press(t, m, "2")
 	if got := m.shownIgnored(); len(got) != 0 {

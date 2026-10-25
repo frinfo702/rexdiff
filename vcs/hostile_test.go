@@ -26,6 +26,7 @@ func commitAll(t *testing.T, dir string) {
 // TestRevIsNotAnOption checks that git does not read a rev that starts
 // with "-" as an option.
 func TestRevIsNotAnOption(t *testing.T) {
+	t.Parallel()
 	r, _ := newRepo(t)
 	ctx := t.Context()
 	out := filepath.Join(t.TempDir(), "out")
@@ -54,6 +55,7 @@ func TestRevIsNotAnOption(t *testing.T) {
 
 // TestHostilePaths checks that each part of the API keeps a path as it is.
 func TestHostilePaths(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	commitAll(t, dir)
@@ -109,6 +111,7 @@ func TestHostilePaths(t *testing.T) {
 // TestDiffFileKinds checks what Diff gives for links, file modes,
 // directories, line ends, and empty files.
 func TestDiffFileKinds(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	testgit.Git(t, dir, "config", "core.autocrlf", "false")
 	testgit.WriteFile(t, dir, "mode.sh", "echo\n")
@@ -160,6 +163,7 @@ func TestDiffFileKinds(t *testing.T) {
 // TestSnapshotNestedRepo checks that Snapshot adds the other files when git
 // cannot add a nested repository with no commit.
 func TestSnapshotNestedRepo(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	commitAll(t, dir)
 	testgit.Git(t, dir, "init", "-q", "empty")
@@ -179,6 +183,7 @@ func TestSnapshotNestedRepo(t *testing.T) {
 // TestReadFileStaysInRoot checks that ReadFile reads only the regular files
 // in the root.
 func TestReadFileStaysInRoot(t *testing.T) {
+	t.Parallel()
 	// A repository can link to a secret file, or to a device that does not
 	// end, for example /dev/zero.
 	r, dir := newRepo(t)
@@ -214,6 +219,7 @@ func TestReadFileStaysInRoot(t *testing.T) {
 // TestOpenRootWithNewline checks Open and Diff in a root whose path has a
 // newline.
 func TestOpenRootWithNewline(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "a\nb")
 	testgit.Git(t, filepath.Dir(dir), "init", "-q", dir)
 	testgit.WriteFile(t, dir, "a.txt", "one\n")
@@ -232,6 +238,7 @@ func TestOpenRootWithNewline(t *testing.T) {
 // TestGitWorktree checks Diff and Snapshot in a working tree that
 // "git worktree add" creates.
 func TestGitWorktree(t *testing.T) {
+	t.Parallel()
 	// Such a working tree has its own index. Snapshot must not change it.
 	_, dir := newRepo(t)
 	ctx := t.Context()
@@ -258,6 +265,7 @@ func TestGitWorktree(t *testing.T) {
 
 // TestDetachedHead checks Diff and Commits when HEAD is detached.
 func TestDetachedHead(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	testgit.Git(t, dir, "checkout", "-q", "--detach", "main")
@@ -274,6 +282,7 @@ func TestDetachedHead(t *testing.T) {
 // TestGrepIsLiteral checks that Grep finds the text, and does not read it
 // as a pattern or as an option.
 func TestGrepIsLiteral(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	testgit.WriteFile(t, dir, "g.txt", "abc\na.c\n-v\n--help\n[x\n(y\n\\d\n*\n^a\nx$\n")
@@ -312,6 +321,7 @@ func TestGrepIsLiteral(t *testing.T) {
 // TestCommitsHostileSubject checks that Commits keeps each byte of a
 // subject, for example the field separator of the log.
 func TestCommitsHostileSubject(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	subjects := []string{"a\x1fb", "\x1b[31mred\x1b[0m", "tab\there"}
 	for _, s := range subjects {

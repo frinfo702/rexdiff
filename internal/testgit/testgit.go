@@ -8,11 +8,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
-// set is true after Main sets the environment.
-var set bool
+// root is the directory of the fixtures. It is "" until Main runs.
+var root string
 
 // Main runs the tests of m in a git environment that ignores the setup of
 // the user. Each package that runs git calls it from its TestMain.
@@ -22,6 +23,11 @@ var set bool
 // a template. The variables that point git to another repository, or that
 // add config, are unset. The commits have a fixed author.
 func Main(m *testing.M) {
+	dir, err := os.MkdirTemp("", "testgit")
+	if err != nil {
+		panic(err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
 	for _, kv := range Env() {
 		k, v, _ := strings.Cut(kv, "=")
 		if err := os.Setenv(k, v); err != nil {
@@ -33,7 +39,7 @@ func Main(m *testing.M) {
 			panic(err)
 		}
 	}
-	set = true
+	root = dir
 	m.Run()
 }
 
@@ -72,7 +78,7 @@ var unset = []string{
 // ready fails tb if Main does not run.
 func ready(tb testing.TB) {
 	tb.Helper()
-	if !set {
+	if root == "" {
 		tb.Fatal("testgit: TestMain does not call testgit.Main")
 	}
 }
@@ -127,4 +133,38 @@ func Script(tb testing.TB, dir, name, body string) string {
 		tb.Fatal(err)
 	}
 	return p
+}
+
+// Fixture is a repository that a package makes once and copies for each
+// test. A copy costs less than the git processes that make it.
+type Fixture struct {
+	build func(tb testing.TB, dir string)
+	once  sync.Once
+	dir   string // the repository, or "" if build fails
+}
+
+// NewFixture returns a fixture that build makes in an empty directory.
+func NewFixture(build func(tb testing.TB, dir string)) *Fixture {
+	return &Fixture{build: build}
+}
+
+// Copy copies the repository of f to dir. The first call makes the
+// repository with the build function of f.
+func (f *Fixture) Copy(tb testing.TB, dir string) {
+	tb.Helper()
+	ready(tb)
+	f.once.Do(func() {
+		dir, err := os.MkdirTemp(root, "fixture")
+		if err != nil {
+			tb.Fatal(err)
+		}
+		f.build(tb, dir)
+		f.dir = dir
+	})
+	if f.dir == "" {
+		tb.Fatal("testgit: the fixture fails to build")
+	}
+	if err := os.CopyFS(dir, os.DirFS(f.dir)); err != nil {
+		tb.Fatal(err)
+	}
 }

@@ -13,6 +13,7 @@ import (
 // TestTinyStackedList checks that a body of 3 rows with the list below
 // fits the screen, and that the list then takes no clicks.
 func TestTinyStackedList(t *testing.T) {
+	t.Parallel()
 	for _, pos := range []position{positionBottom, positionTop} {
 		m, _ := newTestModel(t)
 		m.listPos = pos
@@ -34,6 +35,7 @@ func TestTinyStackedList(t *testing.T) {
 // TestListDefaultWidth checks that the file list at a side takes 32% of
 // the width if file_list_width is not set, as in herdr-reviewr.
 func TestListDefaultWidth(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	if got := m.sideWidth(); got != 120*32/100 {
 		t.Errorf("120 columns: list width %d, want %d", got, 120*32/100)
@@ -54,6 +56,7 @@ func TestListDefaultWidth(t *testing.T) {
 // TestMarkdownNotRerendered checks that a tick does not render the
 // markdown of the Files tab again if the file does not change.
 func TestMarkdownNotRerendered(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	testgit.WriteFile(t, dir, "notes.md", "# Title\n\nSome text.\n")
 	m = press(t, m, "2")

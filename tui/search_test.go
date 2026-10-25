@@ -15,8 +15,12 @@ import (
 )
 
 // typeQuery types q in the search and returns the command of the last key.
+// The cursor does not blink, so the command has no timer of a blink.
 func typeQuery(t *testing.T, m model, q string) (model, tea.Cmd) {
 	t.Helper()
+	st := m.overlay.input.Styles()
+	st.Cursor.Blink = false
+	m.overlay.input.SetStyles(st)
 	var cmd tea.Cmd
 	for _, r := range q {
 		next, c := m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
@@ -66,6 +70,7 @@ var tabKey = tea.KeyPressMsg{Code: tea.KeyTab}
 // TestSearchFlip checks that tab switches the mode of the search and
 // keeps the query, as in herdr-reviewr.
 func TestSearchFlip(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = openQuery(t, m, "package")
 	if m.overlay.search.code {
@@ -91,6 +96,7 @@ func TestSearchFlip(t *testing.T) {
 // TestSearchFileLimit checks that the search shows 50 files, then a
 // "… more" row, and the count of all the matches in the chip.
 func TestSearchFileLimit(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	for i := range 60 {
 		testgit.WriteFile(t, dir, fmt.Sprintf("zz%02d.txt", i), "x\n")
@@ -115,6 +121,7 @@ func TestSearchFileLimit(t *testing.T) {
 // TestSearchCodeGroups checks that the code matches show under a header
 // for each file, and that the cursor skips the headers.
 func TestSearchCodeGroups(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = openQuery(t, m, "package")
 	m = step(t, m, tabKey)
@@ -138,6 +145,7 @@ func TestSearchCodeGroups(t *testing.T) {
 // TestSearchCodeMore checks the "+" of the chip and the "… more" row when
 // git finds more matches than the search shows.
 func TestSearchCodeMore(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	testgit.WriteFile(t, dir, "many.txt", strings.Repeat("hit\n", 300))
 	m = openQuery(t, m, "hit")
@@ -154,6 +162,7 @@ func TestSearchCodeMore(t *testing.T) {
 // TestSearchStaleGrep checks that a code search for an old query shows
 // nothing, and that a change of the query stops the old search.
 func TestSearchStaleGrep(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "/")
 	m, first := typeQuery(t, m, "pack")
@@ -172,6 +181,7 @@ func TestSearchStaleGrep(t *testing.T) {
 // the user picks in this session first, then the other files, and no
 // code.
 func TestSearchEmptyQuery(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "/")
 	if want := []string{"a.go", "b.go"}; !slices.Equal(labels(m), want) {
@@ -190,6 +200,7 @@ func TestSearchEmptyQuery(t *testing.T) {
 
 // TestSearchNoMatches checks the message of a search with no result.
 func TestSearchNoMatches(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = openQuery(t, m, "qqqq")
 	if !shows(m, "no matches") {
@@ -227,6 +238,7 @@ func lineOf(m model, s string) int {
 // match below the results, with the match in the middle, and that the
 // results and the preview share the space, as in herdr-reviewr.
 func TestSearchPreview(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	longFile(t, dir)
 	m = openQuery(t, m, "needle")
@@ -246,6 +258,7 @@ func TestSearchPreview(t *testing.T) {
 
 // TestSearchPreviewScroll checks that pgdown and pgup scroll the preview.
 func TestSearchPreviewScroll(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	longFile(t, dir)
 	m = openQuery(t, m, "needle")
@@ -271,6 +284,7 @@ func TestSearchPreviewScroll(t *testing.T) {
 // TestSearchPreviewFile checks the preview of a file in the files mode,
 // and the note of a binary file and of no result.
 func TestSearchPreviewFile(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	testgit.WriteFile(t, dir, "bin.dat", "a\x00b")
 	m = openQuery(t, m, "a.go")

@@ -17,26 +17,33 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// newRepo makes a repository with two commits: "init" on main and "b" on
-// the branch feat. The working tree has uncommitted changes, an untracked
-// file, and an ignored file.
-func newRepo(t *testing.T) (*vcs.Repo, string) {
-	t.Helper()
-	dir := filepath.Join(t.TempDir(), "a repo ") // git keeps the space
-	testgit.NewRepo(t, dir)
-	run := func(args ...string) { testgit.Git(t, dir, args...) }
-	testgit.WriteFile(t, dir, "a.txt", "one\n")
+// testRepo is the repository of newRepo. It has two commits: "init" on
+// main and "b" on the branch feat. The working tree has uncommitted
+// changes, an untracked file, and an ignored file.
+var testRepo = testgit.NewFixture(func(tb testing.TB, dir string) {
+	tb.Helper()
+	testgit.NewRepo(tb, dir)
+	run := func(args ...string) { testgit.Git(tb, dir, args...) }
+	testgit.WriteFile(tb, dir, "a.txt", "one\n")
 	run("add", ".")
 	run("commit", "-qm", "init")
 	run("checkout", "-qb", "feat")
-	testgit.WriteFile(t, dir, "b.txt", "bee\n")
+	testgit.WriteFile(tb, dir, "b.txt", "bee\n")
 	run("add", ".")
 	run("commit", "-qm", "b")
-	testgit.WriteFile(t, dir, "a.txt", "one\ntwo\n")
-	testgit.WriteFile(t, dir, "new.txt", "untracked\n")
-	testgit.WriteFile(t, dir, ".gitignore", "ignored.txt\nbuild/\n")
-	testgit.WriteFile(t, dir, "ignored.txt", "x\n")
-	testgit.WriteFile(t, dir, "build/out", "x\n")
+	testgit.WriteFile(tb, dir, "a.txt", "one\ntwo\n")
+	testgit.WriteFile(tb, dir, "new.txt", "untracked\n")
+	testgit.WriteFile(tb, dir, ".gitignore", "ignored.txt\nbuild/\n")
+	testgit.WriteFile(tb, dir, "ignored.txt", "x\n")
+	testgit.WriteFile(tb, dir, "build/out", "x\n")
+})
+
+// newRepo copies testRepo to a new directory, and returns the repository
+// and its directory.
+func newRepo(t *testing.T) (*vcs.Repo, string) {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "a repo ") // git keeps the space
+	testRepo.Copy(t, dir)
 
 	// Open from a subdirectory. Open must find the root.
 	r, err := vcs.Open(t.Context(), filepath.Join(dir, "build"))
@@ -98,6 +105,7 @@ func names(fs []vcs.File) string {
 
 // TestScopes checks the trees that each scope of a review compares.
 func TestScopes(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 
@@ -157,6 +165,7 @@ func TestScopes(t *testing.T) {
 // TestMissingCommit checks that Head and Parent fail when a commit object
 // is missing.
 func TestMissingCommit(t *testing.T) {
+	t.Parallel()
 	// The empty tree is not a correct result. It shows every file as added.
 	r, dir := newRepo(t)
 	ctx := t.Context()
@@ -188,6 +197,7 @@ func TestMissingCommit(t *testing.T) {
 // and big files, and do not read their content. The limits are the same as
 // in herdr-reviewr. Diff adds the sizes of the two versions.
 func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	half := strings.Repeat("x", 1_100_000) + "\n" // two make 2,200,002 bytes
 	lines := strings.Repeat("x\n", 30_000)        // two make 60,000 lines
@@ -245,6 +255,7 @@ func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 // TestFilesInConflict checks that Files lists a path in a merge conflict
 // once.
 func TestFilesInConflict(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	testgit.NewRepo(t, dir)
 	run := func(args ...string) { testgit.Git(t, dir, args...) }
@@ -282,6 +293,7 @@ func TestFilesInConflict(t *testing.T) {
 // TestWorktree checks Files, Grep, ReadFile, and Contains in the working
 // tree.
 func TestWorktree(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 
@@ -384,6 +396,7 @@ func TestOwns(t *testing.T) {
 
 // TestRefs checks Branches, DefaultBase, and Resolve.
 func TestRefs(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	if bs, err := r.Branches(ctx); err != nil || strings.Join(bs, " ") != "feat main" {
@@ -409,6 +422,7 @@ func TestRefs(t *testing.T) {
 
 // TestEditor checks that Editor returns core.editor, or "" if it is not set.
 func TestEditor(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	if got := r.Editor(t.Context()); got != "" {
 		t.Errorf("Editor with no core.editor = %q, want \"\"", got)
@@ -422,6 +436,7 @@ func TestEditor(t *testing.T) {
 // TestDiffRenameAndSubmodule checks the old path of a rename and the
 // content that Diff gives for a submodule.
 func TestDiffRenameAndSubmodule(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	testgit.Git(t, dir, "init", "-q")
 	testgit.WriteFile(t, dir, "old.txt", "one\ntwo\nthree\n")
@@ -468,6 +483,7 @@ func TestDiffRenameAndSubmodule(t *testing.T) {
 
 // TestOpenOutsideARepo checks that Open fails outside a repository.
 func TestOpenOutsideARepo(t *testing.T) {
+	t.Parallel()
 	if _, err := vcs.Open(t.Context(), t.TempDir()); err == nil {
 		t.Error("Open outside a repository: no error, want an error")
 	}
@@ -476,6 +492,7 @@ func TestOpenOutsideARepo(t *testing.T) {
 // TestNewRepo checks Head and Snapshot in a repository with no commit and
 // no index.
 func TestNewRepo(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	testgit.Git(t, dir, "init", "-q")
 	testgit.WriteFile(t, dir, "a.txt", "one\n")
@@ -491,6 +508,7 @@ func TestNewRepo(t *testing.T) {
 // TestSnapshotBadIndex checks that Snapshot fails if it cannot read the
 // real index. Only a missing index means no index.
 func TestSnapshotBadIndex(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	idx := filepath.Join(dir, ".git", "index")
 	if err := os.Remove(idx); err != nil {
@@ -507,6 +525,7 @@ func TestSnapshotBadIndex(t *testing.T) {
 // TestSnapshotRacyEdit checks that Snapshot sees a same-size edit in the
 // same second as the last write of the index.
 func TestSnapshotRacyEdit(t *testing.T) {
+	t.Parallel()
 	// git checks such "racily clean" files by their content. It finds them by
 	// the modification time of the index. The copy of the index must keep
 	// that time.
@@ -537,6 +556,7 @@ func TestSnapshotRacyEdit(t *testing.T) {
 // TestCommitsLikeHerdr checks the commits of the commit picker. They are
 // the first-parent commits after since, else the last 50.
 func TestCommitsLikeHerdr(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	run := func(args ...string) { testgit.Git(t, dir, args...) }
@@ -587,6 +607,7 @@ func TestCommitsLikeHerdr(t *testing.T) {
 // TestGrepLimit checks that Grep stops at the limit and tells that there
 // are more matches.
 func TestGrepLimit(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	testgit.WriteFile(t, dir, "many.txt", strings.Repeat("hit\n", 5000))
@@ -615,6 +636,7 @@ func TestGrepLimit(t *testing.T) {
 // TestGrepCanceled checks that Grep returns the error of a canceled
 // context.
 func TestGrepCanceled(t *testing.T) {
+	t.Parallel()
 	r, _ := newRepo(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

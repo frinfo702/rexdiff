@@ -9,6 +9,7 @@ import (
 // TestCommitPicker checks the commit picker of herdr-reviewr: no filter,
 // v anchors a range, and esc clears the anchor, then closes.
 func TestCommitPicker(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	for _, s := range []string{"c1", "c2", "c3"} {
 		testgit.Git(t, dir, "commit", "-q", "--allow-empty", "-m", s)
@@ -53,6 +54,7 @@ func TestCommitPicker(t *testing.T) {
 // TestCommitPickerOnBase checks that the picker lists the last commits on
 // the base branch.
 func TestCommitPickerOnBase(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	testgit.Git(t, dir, "stash", "-q")
 	testgit.Git(t, dir, "checkout", "-q", "main")

@@ -11,6 +11,7 @@ import (
 // TestPRStaleResult checks that the result of an earlier read does not
 // show.
 func TestPRStaleResult(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "3")
 	m.loadPR()
@@ -28,6 +29,7 @@ func TestPRStaleResult(t *testing.T) {
 // TestPRPoll checks that a tick reads the pull request again a minute
 // after the last request, but only on the PR tab.
 func TestPRPoll(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	clk := setClock(&m)
 	clk.advance(61 * time.Second)
@@ -53,6 +55,7 @@ func TestPRPoll(t *testing.T) {
 // TestPRTrailing checks that an ambient request during a read starts one
 // more read after it, and that r and a hung read start one at once.
 func TestPRTrailing(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	clk := setClock(&m)
 	m = press(t, m, "3")
@@ -84,6 +87,7 @@ func TestPRTrailing(t *testing.T) {
 // TestPRBranchSwitch checks that a switch to another branch blanks the PR
 // tab, and that a commit on the branch keeps the pull request.
 func TestPRBranchSwitch(t *testing.T) {
+	t.Parallel()
 	m, dir := watched(t)
 	m = press(t, m, "3")
 	m = step(t, m, prMsg{gen: m.prf.gen, pr: &vcs.PullRequest{Title: "T"}})

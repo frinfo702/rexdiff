@@ -30,6 +30,7 @@ func pickBase(t *testing.T, m model, ref string) model {
 // TestSavedBase checks that a restart keeps the picked base, and that the
 // default branch clears it.
 func TestSavedBase(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	if m = pickBase(t, m, "feat"); m.base != "feat" {
 		t.Fatalf("base = %q, want feat", m.base)
@@ -46,6 +47,7 @@ func TestSavedBase(t *testing.T) {
 // TestBaseFlagWins checks that the flag wins over the saved base, and that
 // B then opens no picker.
 func TestBaseFlagWins(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = pickBase(t, m, "feat")
 	m = reopen(t, m, "main")
@@ -60,6 +62,7 @@ func TestBaseFlagWins(t *testing.T) {
 // TestSavedTurn checks that a restart keeps the tree at the start of the
 // last turn.
 func TestSavedTurn(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	m = step(t, m, sample("block:agent", "pi", dir))
 	m = step(t, m, status("block:agent", "pi", rex.StateWorking))

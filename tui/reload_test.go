@@ -14,6 +14,7 @@ import (
 // TestNoReloadInCommentBox checks that a tick does not reload while the
 // comment box is open, and that the reload runs when the box closes.
 func TestNoReloadInCommentBox(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	m = press(t, m, "]", "c")
 	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
@@ -57,6 +58,7 @@ func TestReloadErrorNote(t *testing.T) {
 // TestPRErrorKeepsPR checks that a failed read keeps the last good pull
 // request, and that the end of the pull request clears it.
 func TestPRErrorKeepsPR(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "3")
 	m = step(t, m, prMsg{gen: m.prf.gen, pr: &vcs.PullRequest{Title: "Good"}})
@@ -74,6 +76,7 @@ func TestPRErrorKeepsPR(t *testing.T) {
 // TestPollWithoutWatcher checks that without a watcher a tick reloads
 // only every pollEvery.
 func TestPollWithoutWatcher(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	clk := setClock(&m)
 	m = step(t, m, tickMsg{})

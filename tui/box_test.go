@@ -36,6 +36,7 @@ func longFileModel(t *testing.T) model {
 // TestEditorWidth checks that the width of the comment box follows the
 // width of the main pane.
 func TestEditorWidth(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "z", "]", "c")
 	want := m.editor
@@ -48,6 +49,7 @@ func TestEditorWidth(t *testing.T) {
 // TestGutterClickShowsBox checks that a click on the line numbers of the
 // last row on the screen scrolls the comment box into view.
 func TestGutterClickShowsBox(t *testing.T) {
+	t.Parallel()
 	m := longFileModel(t)
 	y := m.mainY() + m.mainHeight() - 1
 	m = step(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: m.mainX() + gutter, Y: y})
@@ -60,6 +62,7 @@ func TestGutterClickShowsBox(t *testing.T) {
 // TestTypingShowsBox checks that a key in the comment box scrolls the box
 // into view.
 func TestTypingShowsBox(t *testing.T) {
+	t.Parallel()
 	m := longFileModel(t)
 	m = press(t, m, ":", "8", "0", "enter", "c")
 	m.viewer.top = 0
@@ -72,6 +75,7 @@ func TestTypingShowsBox(t *testing.T) {
 // the pane does not show the line of the comment. Here the file of the
 // comment leaves the changes, so the jump shows it in the Files tab.
 func TestListEditNeedsLine(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	m = press(t, m, "]", "c", "h", "i", "enter")
 	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")

@@ -11,6 +11,7 @@ import (
 // TestGrepKeepsFileCursor checks that the end of a code search does not
 // move the cursor of the file matches.
 func TestGrepKeepsFileCursor(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "/")
 	m, cmd := typeQuery(t, m, "go")
@@ -26,6 +27,7 @@ func TestGrepKeepsFileCursor(t *testing.T) {
 // TestClickDisarms checks that a click or a pick of a file drops an armed
 // crossing.
 func TestClickDisarms(t *testing.T) {
+	t.Parallel()
 	m := press(t, twoFiles(t), "]")
 	if m.armed != 1 {
 		t.Fatalf("armed %d, want 1", m.armed)
@@ -42,6 +44,7 @@ func TestClickDisarms(t *testing.T) {
 // TestFocusShowsList checks that tab shows a hidden file list and gives it
 // the focus, as in herdr-reviewr.
 func TestFocusShowsList(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "z")
 	if m = step(t, m, tabKey); m.listHidden || !m.focusList {
@@ -53,6 +56,7 @@ func TestFocusShowsList(t *testing.T) {
 // TestOverlayClickAboveRows checks that a click above the rows that show
 // picks no row.
 func TestOverlayClickAboveRows(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	for i := range 12 {
 		testgit.Git(t, dir, "branch", fmt.Sprintf("b%02d", i))
@@ -77,6 +81,7 @@ func TestOverlayClickAboveRows(t *testing.T) {
 // TestScopeClearsSelection checks that a change of the scope clears the
 // selection and the armed crossing.
 func TestScopeClearsSelection(t *testing.T) {
+	t.Parallel()
 	m, _ := newTestModel(t)
 	m = press(t, m, "]", "v")
 	m.armed = 1

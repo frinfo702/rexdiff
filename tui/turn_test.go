@@ -23,6 +23,7 @@ func turnModel(t *testing.T) (model, string) {
 // TestTurnNeedsSample checks that a state before the first list of the
 // agents starts no turn. The start of that turn is not seen.
 func TestTurnNeedsSample(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	m.agents["p"] = &agentState{cwd: dir, hasCwd: true}
 	m = step(t, m, status("p", "pi", rex.StateIdle))
@@ -43,6 +44,7 @@ func TestTurnNeedsSample(t *testing.T) {
 // agents and lists them again. A list at work after the gap starts no
 // turn, because the start is not seen.
 func TestTurnReconnect(t *testing.T) {
+	t.Parallel()
 	m, dir := turnModel(t)
 	next, cmd := m.Update(eventMsg{Reconnect: true})
 	m = *next.(*model)
@@ -60,6 +62,7 @@ func TestTurnReconnect(t *testing.T) {
 // TestTurnWithoutChange checks that a turn that changes no file does not
 // become the last turn.
 func TestTurnWithoutChange(t *testing.T) {
+	t.Parallel()
 	m, _ := turnModel(t)
 	m = step(t, m, status("p", "pi", rex.StateWorking))
 	if m.pending == nil {
@@ -77,6 +80,7 @@ func TestTurnWithoutChange(t *testing.T) {
 // TestTurnKeepsOldBaseline checks that a turn with no change keeps the
 // last turn that changes a file.
 func TestTurnKeepsOldBaseline(t *testing.T) {
+	t.Parallel()
 	m, dir := turnModel(t)
 	m = step(t, m, status("p", "pi", rex.StateWorking))
 	testgit.WriteFile(t, dir, "c.go", "package a\n")
@@ -98,6 +102,7 @@ func TestTurnKeepsOldBaseline(t *testing.T) {
 // TestTurnPromotesOnChange checks that the first change in a turn makes
 // it the last turn, before the turn ends.
 func TestTurnPromotesOnChange(t *testing.T) {
+	t.Parallel()
 	m, dir := turnModel(t)
 	clk := setClock(&m)
 	m = step(t, m, status("p", "pi", rex.StateWorking))
@@ -125,6 +130,7 @@ func TestTurnPromotesOnChange(t *testing.T) {
 // TestTurnTwoAgents checks that a turn ends only when all the agents in
 // the repository rest.
 func TestTurnTwoAgents(t *testing.T) {
+	t.Parallel()
 	m, dir := turnModel(t)
 	m = step(t, m, agentsMsg{agents: []rex.Agent{
 		{Block: "p", Cwd: dir, Status: rex.Status{App: "pi", State: rex.StateIdle}},
@@ -150,6 +156,7 @@ func TestTurnTwoAgents(t *testing.T) {
 // TestTurnOutsideAgent checks that an agent outside the repository starts
 // no turn, and that the scope tells that no agent works here.
 func TestTurnOutsideAgent(t *testing.T) {
+	t.Parallel()
 	m, dir := newTestModel(t)
 	m = press(t, m, "t")
 	m = step(t, m, sample("p", "pi", t.TempDir()))
@@ -172,6 +179,7 @@ func TestTurnOutsideAgent(t *testing.T) {
 // TestTurnUnknownCwdHolds checks that an agent whose directory is not
 // known holds the state, so it does not end a turn.
 func TestTurnUnknownCwdHolds(t *testing.T) {
+	t.Parallel()
 	m, dir := turnModel(t)
 	m = step(t, m, status("p", "pi", rex.StateWorking))
 	testgit.WriteFile(t, dir, "c.go", "package a\n")
