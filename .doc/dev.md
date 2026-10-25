@@ -35,28 +35,12 @@ go fix -diff ./...
 go mod tidy -diff
 ```
 
-On a clean tree, `go fix` and `go mod tidy` print nothing.
-
-## Tests
-
-[test.md](test.md) describes the tests. They need git, and nothing else:
+On a clean tree, `go fix` and `go mod tidy` print nothing. [test.md](test.md) describes
+the tests. To also run them against a real Rex:
 
 ```sh
-go test ./...                    # all tests
-go test -run TestSearch ./test/  # one black-box test
+REX_BIN_DIR=$(dirname $(which rex)) REXDIFF_REX=$(which rex) go test ./test/
 ```
-
-Two settings also use a real Rex. Neither changes your Rex config.
-
-```sh
-REX_BIN_DIR=$(dirname $(which rex)) go test ./test/  # check the installed Lua with rex
-REXDIFF_REX=$(which rex) go test -run TestRealRex ./test/
-```
-
-`TestRealRex` opens a Rex session of its own and closes it at the end. If Rex
-changes its output, record `test/testdata/rex` again as its README says.
-
-A fuzz test saves a failing input in `testdata/fuzz`. Commit that file with the fix.
 
 ## Release
 
