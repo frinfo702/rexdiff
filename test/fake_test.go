@@ -56,9 +56,9 @@ func newRepo(t *testing.T) string {
 }
 
 // fakeRex is a rex for the session S. rexdiff runs in the block
-// block:self. The agents run in repo. The fake logs each call, reads the
-// blocks and the status of each agent from files, and "rex events"
-// prints the lines that the test adds.
+// block:self. The agents run in repo. The fake logs each call and prints
+// the output of a real rex from testdata/rex, with the values of the test.
+// "rex events" prints the lines that the test adds.
 type fakeRex struct {
 	dir    string
 	blocks []string // the JSON of each block
@@ -72,28 +72,44 @@ func newRex(t *testing.T, repo string) *fakeRex {
 printf '%s\n' "$*" >> "$d/calls"
 case "$*" in
 "api call -s S session.list_blocks {}") cat "$d/blocks" ;;
-"session inspect S --json")
-  echo '{"windows":[{"window_id":"w1","label":"main"}]}' ;;
+"session inspect S --json") cat "$d/session" ;;
 "block call -s S -b "*" program_status") cat "$d/status.$6" ;;
-"block call -s S -b "*" process")
-  echo '{"foreground":{"cwd":"file://`+repo+`"}}' ;;
-"block inspect "*) echo '{"block":{"block_id":"'"$3"'"}}' ;;
+"block call -s S -b "*" process") cat "$d/process" ;;
+"block inspect "*) cat "$d/inspect.$3" ;;
 "events -s S --json") touch "$d/events"; exec tail -n +1 -f "$d/events" ;;
 esac
 `)
-	r.blocks = []string{`{"block_id":"block:self","label":"rexdiff",` +
-		`"window_id":"w1","creator_name":"com.superlogical.terminal"}`}
+	r.write(t, "session", recorded(t, "session.json"))
+	r.write(t, "process", recorded(t, "process.json", "{{CWD}}", repo))
+	r.addBlock(t, "block:self", "rexdiff")
 	r.addAgent(t, "block:pi", "agent", "pi")
 	return r
 }
 
-// addAgent adds an idle agent app in block with the label.
+// recorded returns the file name of testdata/rex, with each pair of
+// old and new values replaced.
+func recorded(t *testing.T, name string, oldNew ...string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "rex", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(strings.NewReplacer(oldNew...).Replace(string(b)))
+}
+
+// addBlock adds a terminal block with the label.
+func (r *fakeRex) addBlock(t *testing.T, block, label string) {
+	t.Helper()
+	r.blocks = append(r.blocks, recorded(t, "block.json", "{{ID}}", block, "{{LABEL}}", label))
+	r.write(t, "blocks", `{"blocks":[`+strings.Join(r.blocks, ",")+`]}`)
+	r.write(t, "inspect."+label, recorded(t, "inspect.json", "{{ID}}", block, "{{LABEL}}", label))
+}
+
+// addAgent adds a block with the label, and an idle agent app in it.
 func (r *fakeRex) addAgent(t *testing.T, block, label, app string) {
 	t.Helper()
-	r.blocks = append(r.blocks, `{"block_id":"`+block+`","label":"`+label+
-		`","window_id":"w1","creator_name":"com.superlogical.terminal"}`)
-	r.write(t, "blocks", `{"blocks":[`+strings.Join(r.blocks, ",")+`]}`)
-	r.write(t, "status."+block, status(app, "idle"))
+	r.addBlock(t, block, label)
+	r.write(t, "status."+block, recorded(t, "status.json", "{{STATE}}", "idle", "{{APP}}", app))
 }
 
 // write writes content to the file name of the fake.
@@ -102,11 +118,6 @@ func (r *fakeRex) write(t *testing.T, name, content string) {
 	if err := os.WriteFile(filepath.Join(r.dir, name), []byte(content+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// status returns the program status of app in state.
-func status(app, state string) string {
-	return `{"records":[{"state":"` + state + `","app":"` + app + `"}]}`
 }
 
 // calls returns the calls of rex, one a line.
@@ -123,16 +134,13 @@ func (r *fakeRex) calls(t *testing.T) string {
 // change.
 func (r *fakeRex) setState(t *testing.T, state string) {
 	t.Helper()
-	r.write(t, "status.block:pi", status("pi", state))
-	event := `{"type":"session_event","payload":{"session_id":"S",` +
-		`"event":{"type":"block_event","payload":{"block_id":"block:pi",` +
-		`"name":"program_status_changed","payload":{"id":"","record":` +
-		`{"state":"` + state + `","app":"pi"},"reason":"report"}}}}}`
+	values := []string{"{{ID}}", "block:pi", "{{STATE}}", state, "{{APP}}", "pi"}
+	r.write(t, "status.block:pi", recorded(t, "status.json", values...))
 	f, err := os.OpenFile(filepath.Join(r.dir, "events"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.WriteString(event + "\n"); err != nil {
+	if _, err := f.WriteString(recorded(t, "event.json", values...) + "\n"); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.Close(); err != nil {

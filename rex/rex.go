@@ -182,7 +182,7 @@ func (c *Client) Status(ctx context.Context, block string) (Status, error) {
 // Cwd returns the working directory of the program in block.
 func (c *Client) Cwd(ctx context.Context, block string) (string, error) {
 	type process struct {
-		Cwd string `json:"cwd"` // a file:// URL
+		Cwd string `json:"cwd"` // a path, or a file:// URL
 	}
 	// The foreground process is the program that holds the terminal, for
 	// example an agent that runs in a shell. The child is the shell.

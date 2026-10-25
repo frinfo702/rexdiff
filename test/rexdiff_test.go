@@ -207,6 +207,7 @@ func (tm *term) click(text string, times int) {
 				tm.t.Fatal(err)
 			}
 		}
+		time.Sleep(50 * time.Millisecond) // as a hand clicks
 	}
 }
 
