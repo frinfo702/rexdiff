@@ -17,18 +17,19 @@ type Fold struct {
 	Before, After, Lines int
 }
 
-// Show shows the lines of each fold for which show returns true.
-func (v *View) Show(show func(Fold) bool) *View {
-	v.show = show
+// Expand shows the lines of each fold for which expanded returns true.
+func (v *View) Expand(expanded func(Fold) bool) *View {
+	v.expanded = expanded
+	v.isComputed = false
 	return v
 }
 
 // foldHunk splits h, the hunk of the whole file, into the hunks that show.
 // folds[i] is the run of lines that hides above hunks[i]. If the last run
-// of equal lines hides, the last hunk has no lines. A run hides if more
-// than one of its lines is farther than foldMargin from a change, and show
-// is nil or returns false for it.
-func foldHunk(h *udiff.Hunk, show func(Fold) bool) (hunks []*udiff.Hunk, folds []Fold) {
+// hides, the last hunk has no lines. A run hides if it has more than one
+// line, and no line of it is within foldMargin of a change. A run that
+// expanded accepts does not hide.
+func foldHunk(h *udiff.Hunk, expanded func(Fold) bool) (hunks []*udiff.Hunk, folds []Fold) {
 	n := len(h.Lines)
 	keep := make([]bool, n)
 	for i, l := range h.Lines {
@@ -48,7 +49,7 @@ func foldHunk(h *udiff.Hunk, show func(Fold) bool) (hunks []*udiff.Hunk, folds [
 				j++
 			}
 			f := Fold{Before: b, After: a, Lines: j - i}
-			if f.Lines > 1 && (show == nil || !show(f)) {
+			if f.Lines > 1 && (expanded == nil || !expanded(f)) {
 				above, cur = f, nil
 				b, a, i = b+f.Lines, a+f.Lines, j
 				continue
@@ -80,10 +81,11 @@ func foldHunk(h *udiff.Hunk, show func(Fold) bool) (hunks []*udiff.Hunk, folds [
 	return hunks, folds
 }
 
-// header returns the header line of hunk i: the fold above it, if lines
-// hide, and the hunk header, if the hunk has lines. For example
-// "  ⋯ 12 unmodified lines  @@ -15,7 +15,8 @@ ".
-func (v *View) header(i int) string {
+// headerText returns the text of the header of hunk i: the fold above it,
+// if lines hide, and the hunk header, if the hunk has lines. For example
+// "  ⋯ 12 unmodified lines  @@ -15,7 +15,8 @@ ". The text ends with a
+// space, as the hunk header does.
+func (v *View) headerText(i int) string {
 	h, s := v.unified.Hunks[i], ""
 	if f := v.folds[i]; f.Lines > 0 {
 		s = fmt.Sprintf("  ⋯ %d unmodified lines", f.Lines)

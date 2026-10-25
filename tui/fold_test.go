@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/vcs"
@@ -54,11 +55,6 @@ func foldsOf(p *pane) []int {
 	return out
 }
 
-// rowOf returns the row of new line n in p, or -1.
-func rowOf(p *pane, n int) int {
-	return slices.IndexFunc(p.rows, func(r diff.Row) bool { return r.New == n && r.Kind != diff.KindHunk })
-}
-
 // TestExpandFold checks that → on a fold shows its lines, and moves the
 // cursor to the first of them. The footer tells about the key. On a line
 // of code, → scrolls sideways.
@@ -88,7 +84,7 @@ func TestExpandFold(t *testing.T) {
 		t.Errorf("after →, the cursor is on %+v, want line 14", r)
 	}
 	for n := 14; n <= 26; n++ {
-		if rowOf(p, n) < 0 {
+		if p.rowOf(diff.SideNew, n) < 0 {
 			t.Errorf("line %d does not show", n)
 		}
 	}
@@ -116,6 +112,39 @@ func TestGotoLineInFold(t *testing.T) {
 	}
 }
 
+// TestExpandKeepsPlaces checks the cursor, the selection, and the hits of
+// a find after a fold shows. The cursor goes to the first line of the
+// fold, also for the fold at the top. The selection and the hits stay on
+// their lines.
+func TestExpandKeepsPlaces(t *testing.T) {
+	m := newFoldModel(t)
+	m.changes.cur = m.changes.rowOf(diff.SideNew, 29)
+	m = press(t, m, "v") // the selection starts on line 29
+	m = step(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	m = step(t, m, tea.KeyPressMsg{Text: "line 3", Code: 'l'})
+	m = press(t, m, "enter")
+	if !m.find.active() {
+		t.Fatal("the find has no hits")
+	}
+	m.changes.cur = 0 // the fold at the top
+	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
+	p := &m.changes
+	if r := p.rows[p.cur]; r.New != 1 {
+		t.Errorf("the cursor is on %+v, want line 1", r)
+	}
+	if r := p.rows[p.anchor]; r.New != 29 {
+		t.Errorf("the selection starts on %+v, want line 29", r)
+	}
+	if len(m.find.hits) == 0 {
+		t.Error("the find has no hits after the fold shows")
+	}
+	for _, h := range m.find.hits {
+		if l := strings.ToLower(ansi.Strip(p.lines[h])); !strings.Contains(l, "line 3") {
+			t.Errorf("a hit is on %q, want a line with line 3", l)
+		}
+	}
+}
+
 // TestClickFold checks that a click on a fold shows its lines, also in the
 // split layout and with wrap.
 func TestClickFold(t *testing.T) {
@@ -126,20 +155,20 @@ func TestClickFold(t *testing.T) {
 		if got := foldsOf(&m.changes); !slices.Equal(got, []int{6, 13}) {
 			t.Errorf("keys %v: after the click, folds = %v, want [6 13]", keys, got)
 		}
-		if rowOf(&m.changes, 40) < 0 {
+		if m.changes.rowOf(diff.SideNew, 40) < 0 {
 			t.Errorf("keys %v: line 40 does not show", keys)
 		}
 	}
 }
 
 // TestFoldKeepsComment checks that a fold with a comment on one of its
-// lines shows. A new scope folds the lines again, but the comment must
-// stay on the screen.
+// lines shows. A new scope folds the lines. The comment must stay on the
+// screen.
 func TestFoldKeepsComment(t *testing.T) {
 	m := newFoldModel(t)
 	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })
 	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
-	m.changes.cur = rowOf(&m.changes, 20)
+	m.changes.cur = m.changes.rowOf(diff.SideNew, 20)
 	m = press(t, m, "c")
 	m = step(t, m, tea.KeyPressMsg{Text: "why", Code: 'w'})
 	m = press(t, m, "enter")
@@ -150,7 +179,7 @@ func TestFoldKeepsComment(t *testing.T) {
 	if m.folds != nil {
 		t.Errorf("a new scope keeps the expanded folds %v", m.folds)
 	}
-	if rowOf(&m.changes, 20) < 0 || !shows(m, "why") {
+	if m.changes.rowOf(diff.SideNew, 20) < 0 || !shows(m, "why") {
 		t.Errorf("the commented line 20 does not show:\n%s", view(m))
 	}
 	if got := foldsOf(&m.changes); !slices.Equal(got, []int{6, 7}) {

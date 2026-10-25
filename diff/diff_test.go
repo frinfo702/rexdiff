@@ -163,22 +163,13 @@ func TestMarks(t *testing.T) {
 				t.Errorf("%s: line %d = %q, want %q", tt.name, i+1, got, want)
 			}
 		}
-		// The mark has the colour of the line: ANSI red for a delete, and
-		// ANSI green for an insert.
-		for _, c := range []struct {
-			line int
-			fg   string
-		}{{2, "31"}, {3, "32"}} {
-			if tt.o.Split && c.line == 3 {
-				continue // the split layout has the insert on the same row
-			}
-			if got := markColour(d.Lines[c.line]); got != c.fg {
-				t.Errorf("%s: the mark of line %d has colour %q, want %q", tt.name, c.line, got, c.fg)
-			}
+		// The marks have the colour of their lines: ANSI red for the
+		// delete, then ANSI green for the insert.
+		if got := markColours(d.Lines[1:]); !slices.Equal(got, []string{"31", "32"}) {
+			t.Errorf("%s: the marks have colours %q, want 31 and 32", tt.name, got)
 		}
 	}
-	// With a scroll to the right, the bar keeps its colour and shows an
-	// ellipsis after it.
+	// With a scroll to the right, an ellipsis shows after the bar.
 	d := diff.Render("x.txt", "", "abcdefgh\n", diff.Options{Width: 40, Offset: 2})
 	if got := ansi.Strip(d.Lines[1]); !strings.Contains(got, "▌…cdefgh") {
 		t.Errorf("offset: line = %q, want ▌…cdefgh", got)
@@ -193,16 +184,24 @@ func TestMarks(t *testing.T) {
 	}
 }
 
-// markColour returns the foreground of the SGR sequence just before the
-// first bar, + or - in line, for example "31".
-func markColour(line string) string {
-	i := strings.IndexAny(line, "▌+-")
-	if i < 0 {
-		return ""
+// markColours returns the foreground of each bar, + or - in lines, in
+// order, for example "31". The foreground is in the SGR sequence just
+// before the mark.
+func markColours(lines []string) []string {
+	var out []string
+	for _, l := range lines {
+		for {
+			i := strings.IndexAny(l, "▌+-")
+			if i < 0 {
+				break
+			}
+			sgr := l[strings.LastIndex(l[:i], "\x1b[")+2 : i]
+			fg, _, _ := strings.Cut(strings.TrimSuffix(sgr, "m"), ";")
+			out = append(out, fg)
+			l = l[i+1:]
+		}
 	}
-	sgr := line[strings.LastIndex(line[:i], "\x1b[")+2 : i]
-	fg, _, _ := strings.Cut(strings.TrimSuffix(sgr, "m"), ";")
-	return fg
+	return out
 }
 
 func TestSideAt(t *testing.T) {

@@ -11,21 +11,22 @@ import (
 	"github.com/rednafi/rexdiff/diff"
 )
 
-// numbered returns lines "line 1" to "line n", with the lines in upper
-// case changed to "LINE n".
+// numbered returns lines "line 1" to "line n". The lines in upper are
+// "LINE 1" and so on.
 func numbered(n int, upper ...int) string {
 	var b strings.Builder
 	for i := 1; i <= n; i++ {
 		word := "line"
-		for _, u := range upper {
-			if u == i {
-				word = "LINE"
-			}
+		if slices.Contains(upper, i) {
+			word = "LINE"
 		}
 		fmt.Fprintf(&b, "%s %d\n", word, i)
 	}
 	return b.String()
 }
+
+// foldText writes a hunk header with fold f, for example "@14/14+13".
+func foldText(f diff.Fold) string { return fmt.Sprintf("@%d/%d+%d", f.Old, f.New, f.Lines) }
 
 // layout writes the rows of d as one entry each: "@" and its fold for a
 // hunk header, else the old and the new line number.
@@ -33,7 +34,7 @@ func layout(d *diff.Diff) []string {
 	var out []string
 	for _, r := range d.Rows {
 		if r.Kind == diff.KindHunk {
-			out = append(out, fmt.Sprintf("@%d/%d+%d", r.Fold.Old, r.Fold.New, r.Fold.Lines))
+			out = append(out, foldText(r.Fold))
 			continue
 		}
 		out = append(out, fmt.Sprintf("%d:%d", r.Old, r.New))
@@ -41,12 +42,23 @@ func layout(d *diff.Diff) []string {
 	return out
 }
 
+// headers returns the text of the hunk headers of d.
+func headers(d *diff.Diff) string {
+	var out []string
+	for i, r := range d.Rows {
+		if r.Kind == diff.KindHunk {
+			out = append(out, strings.TrimSpace(ansi.Strip(d.Lines[i])))
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 // TestFolds checks that a long run of equal lines folds into the hunk
-// header below it. Three lines show beside each change. A fold that Show
-// accepts shows all its lines.
+// header below it. Three lines show beside each change. A fold that
+// [diff.Options.Expanded] accepts shows all its lines.
 func TestFolds(t *testing.T) {
 	old, new := numbered(40), numbered(40, 10, 30)
-	fold := func(old, new, n int) string { return fmt.Sprintf("@%d/%d+%d", old, new, n) }
+	header := func(old, new, n int) []string { return []string{foldText(diff.Fold{Old: old, New: new, Lines: n})} }
 	lines := func(lo, hi int) []string {
 		var out []string
 		for i := lo; i <= hi; i++ {
@@ -55,70 +67,59 @@ func TestFolds(t *testing.T) {
 		return out
 	}
 	change := func(n int) []string { return []string{fmt.Sprintf("%d:0", n), fmt.Sprintf("0:%d", n)} }
-	join := func(parts ...[]string) []string {
-		var out []string
-		for _, p := range parts {
-			out = append(out, p...)
-		}
-		return out
-	}
-	top, middle, tail := fold(1, 1, 6), fold(14, 14, 13), fold(34, 34, 7)
+	top, middle, tail, none := header(1, 1, 6), header(14, 14, 13), header(34, 34, 7), header(0, 0, 0)
 	tests := []struct {
-		name string
-		show func(diff.Fold) bool
-		want []string
+		name     string
+		expanded func(diff.Fold) bool
+		want     []string
 	}{
-		{"all folded", nil, join(
-			[]string{top}, lines(7, 9), change(10), lines(11, 13),
-			[]string{middle}, lines(27, 29), change(30), lines(31, 33),
-			[]string{tail},
+		{"all folded", nil, slices.Concat(
+			top, lines(7, 9), change(10), lines(11, 13),
+			middle, lines(27, 29), change(30), lines(31, 33),
+			tail,
 		)},
-		{"middle shows", func(f diff.Fold) bool { return f.New == 14 }, join(
-			[]string{top}, lines(7, 9), change(10), lines(11, 29), change(30), lines(31, 33),
-			[]string{tail},
+		{"middle shows", func(f diff.Fold) bool { return f.New == 14 }, slices.Concat(
+			top, lines(7, 9), change(10), lines(11, 29), change(30), lines(31, 33),
+			tail,
 		)},
-		{"top and tail show", func(f diff.Fold) bool { return f.New != 14 }, join(
-			[]string{fold(0, 0, 0)}, lines(1, 9), change(10), lines(11, 13),
-			[]string{middle}, lines(27, 29), change(30), lines(31, 40),
+		{"top and tail show", func(f diff.Fold) bool { return f.New != 14 }, slices.Concat(
+			none, lines(1, 9), change(10), lines(11, 13),
+			middle, lines(27, 29), change(30), lines(31, 40),
 		)},
-		{"all show", func(diff.Fold) bool { return true }, join(
-			[]string{fold(0, 0, 0)}, lines(1, 9), change(10), lines(11, 29), change(30), lines(31, 40),
+		{"all show", func(diff.Fold) bool { return true }, slices.Concat(
+			none, lines(1, 9), change(10), lines(11, 29), change(30), lines(31, 40),
 		)},
 	}
 	for _, tt := range tests {
-		d := diff.Render("f.txt", old, new, diff.Options{Width: 60, Show: tt.show})
-		if got := layout(d); strings.Join(got, " ") != strings.Join(tt.want, " ") {
+		d := diff.Render("f.txt", old, new, diff.Options{Width: 60, Expanded: tt.expanded})
+		if got := layout(d); !slices.Equal(got, tt.want) {
 			t.Errorf("%s:\n got %v\nwant %v", tt.name, got, tt.want)
 		}
 	}
 
 	// The header tells how many lines hide. A fold at the end has no hunk
 	// header. In the split layout, the header goes on across the right
-	// side, and no line is wider than the screen.
-	headers := func(o diff.Options) string {
-		d := diff.Render("f.txt", old, new, o)
-		var out []string
-		for i, r := range d.Rows {
-			if w := ansi.StringWidth(d.Lines[i]); w > o.Width {
-				t.Errorf("split %v: line %d is %d cells wide", o.Split, i, w)
-			}
-			if r.Kind == diff.KindHunk {
-				out = append(out, strings.TrimSpace(ansi.Strip(d.Lines[i])))
+	// side. No line is wider than the screen.
+	for _, tt := range []struct {
+		o    diff.Options
+		want string
+	}{
+		{diff.Options{Width: 60}, "…   …   ⋯ 6 unmodified lines  @@ -7,7 +7,7 @@\n" +
+			"…   …   ⋯ 13 unmodified lines  @@ -27,7 +27,7 @@\n" +
+			"…   …   ⋯ 7 unmodified lines"},
+		{diff.Options{Width: 60, Split: true}, "…   ⋯ 6 unmodified lines  @@ -7,7 +7,7 @@\n" +
+			"…   ⋯ 13 unmodified lines  @@ -27,7 +27,7 @@\n" +
+			"…   ⋯ 7 unmodified lines"},
+	} {
+		d := diff.Render("f.txt", old, new, tt.o)
+		if got := headers(d); got != tt.want {
+			t.Errorf("split %v: headers:\n%s\nwant:\n%s", tt.o.Split, got, tt.want)
+		}
+		for i, l := range d.Lines {
+			if w := ansi.StringWidth(l); w > tt.o.Width {
+				t.Errorf("split %v: line %d is %d cells wide", tt.o.Split, i, w)
 			}
 		}
-		return strings.Join(out, "\n")
-	}
-	want := "…   …   ⋯ 6 unmodified lines  @@ -7,7 +7,7 @@\n" +
-		"…   …   ⋯ 13 unmodified lines  @@ -27,7 +27,7 @@\n" +
-		"…   …   ⋯ 7 unmodified lines"
-	if got := headers(diff.Options{Width: 60}); got != want {
-		t.Errorf("headers:\n%s\nwant:\n%s", got, want)
-	}
-	want = "…   ⋯ 6 unmodified lines  @@ -7,7 +7,7 @@\n" +
-		"…   ⋯ 13 unmodified lines  @@ -27,7 +27,7 @@\n" +
-		"…   ⋯ 7 unmodified lines"
-	if got := headers(diff.Options{Width: 60, Split: true}); got != want {
-		t.Errorf("split headers:\n%s\nwant:\n%s", got, want)
 	}
 }
 

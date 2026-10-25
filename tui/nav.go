@@ -145,7 +145,7 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.PrevFile):
 		m.pickFile(m.listSel() - 1)
 	case key.Matches(msg, k.Right) && m.onFold():
-		m.expandFold(p.cur)
+		m.expandFold(p.rows[p.cur].Fold)
 	case key.Matches(msg, k.Right) && !m.wrap:
 		p.xoff += scrollStep
 		m.rerender()
@@ -294,10 +294,17 @@ func (m *model) onFold() bool {
 	return m.tab == tabChanges && p.cur < len(p.rows) && p.rows[p.cur].Fold.Lines > 0
 }
 
-// showFold tells if the lines of fold f of the file at path show: the user
-// expanded the fold, or a comment is on one of its lines.
-func (m *model) showFold(path string, f diff.Fold) bool {
-	if m.folds[path][f.New] {
+// foldKey names a fold that the user expanded: the path of the file, and
+// the new line number of the first line of the fold.
+type foldKey struct {
+	path string
+	line int
+}
+
+// expanded tells if the lines of fold f of the file at path show: the
+// user expanded the fold, or a comment is on one of its lines.
+func (m *model) expanded(path string, f diff.Fold) bool {
+	if m.folds[foldKey{path, f.New}] {
 		return true
 	}
 	for _, c := range m.comments.All() {
@@ -312,18 +319,22 @@ func (m *model) showFold(path string, f diff.Fold) bool {
 	return false
 }
 
-// expandFold shows the lines of the fold at row i of the Changes tab. A
-// cursor on the fold moves to the first of them.
-func (m *model) expandFold(i int) {
+// expandFold shows the lines of fold f in the Changes tab, and moves the
+// cursor to the first of them. The selection and the hits of a find stay
+// on their lines.
+func (m *model) expandFold(f diff.Fold) {
 	p := &m.changes
 	if m.folds == nil {
-		m.folds = map[string]map[int]bool{}
+		m.folds = map[foldKey]bool{}
 	}
-	if m.folds[p.path] == nil {
-		m.folds[p.path] = map[int]bool{}
+	m.folds[foldKey{p.path, f.New}] = true
+	m.rerender()
+	p.cur = max(p.rowOf(diff.SideNew, f.New), 0)
+	if m.find.active() {
+		cur := p.cur
+		m.runFind(m.find.query)
+		p.cur = cur
 	}
-	m.folds[p.path][p.rows[i].Fold.New] = true
-	m.renderChanges()
 }
 
 // listSel returns the index of the selected file in the file list.
@@ -507,11 +518,13 @@ func (m *model) gotoLine(s string) {
 		m.flash("not a line number: " + s)
 		return
 	}
-	// A line in a fold shows after the fold expands.
-	for i, r := range p.rows {
-		if f := r.Fold; p == &m.changes && n >= f.New && n < f.New+f.Lines {
-			m.expandFold(i)
-			break
+	if p == &m.changes {
+		// Show the fold that has line n.
+		for _, r := range p.rows {
+			if f := r.Fold; n >= f.New && n < f.New+f.Lines {
+				m.expandFold(f)
+				break
+			}
 		}
 	}
 	for i, r := range p.rows {

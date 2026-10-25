@@ -121,7 +121,7 @@ func (m *model) renderChanges() {
 		m.setMarkdown(p, f.New)
 	default:
 		o := m.diffOptions(p.xoff)
-		o.Show = func(fd diff.Fold) bool { return m.showFold(f.Path, fd) }
+		o.Expanded = func(fd diff.Fold) bool { return m.expanded(f.Path, fd) }
 		p.setDiff(diff.Render(f.Path, f.Old, f.New, o))
 	}
 }

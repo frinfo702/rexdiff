@@ -353,15 +353,8 @@ func TestClickCommentBox(t *testing.T) {
 // TestSendError sends the review when Rex fails. The footer shows the
 // error of Rex.
 func TestSendError(t *testing.T) {
-	m, dir := newTestModel(t)
-	bin := filepath.Join(dir, "rex")
-	script := "#!/bin/sh\necho 'Error: no Rex server' >&2\nexit 1\n"
-	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("REX_SESSION", "S")
-	t.Setenv("REX_BIN_DIR", dir)
-	m.rex = rex.FromEnv()
+	m, _ := newTestModel(t)
+	fakeRex(t, &m, "echo 'Error: no Rex server' >&2\nexit 1\n")
 	m = press(t, m, "]", "c", "h", "i", "enter")
 	m = step(t, m, m.deliver(rex.Agent{Block: "b", Name: "pi"})())
 	if !strings.Contains(m.status, "no Rex server") {

@@ -58,7 +58,7 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	m.focusList = false
 	p.cur, p.anchor = p.head(rowAt[y]), -1
 	if m.onFold() {
-		m.expandFold(p.cur)
+		m.expandFold(p.rows[p.cur].Fold)
 		return nil
 	}
 	side, onNumber := p.side(mouse.X - m.mainX() - gutter)
