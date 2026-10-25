@@ -204,7 +204,8 @@ func (m *model) commentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.Send):
 		return m.startSend(), true
 	case key.Matches(msg, k.Copy):
-		return m.copyComments(), true
+		m.copyComments()
+		return nil, true
 	default:
 		return nil, false
 	}

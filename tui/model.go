@@ -366,11 +366,6 @@ type (
 		ids   []int // the IDs of the sent comments
 		err   error
 	}
-	copiedMsg struct {
-		ids  []int  // the comments to remove, or nil
-		done string // the status if the copy works
-		err  error
-	}
 	grepMsg struct {
 		query string
 		hits  []vcs.Match
@@ -626,8 +621,6 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		cmd = m.onAgents(msg)
 	case sentMsg:
 		m.onSent(msg)
-	case copiedMsg:
-		m.onCopied(msg)
 	case eventMsg:
 		cmd = m.onEvent(rex.Event(msg))
 	case prMsg:

@@ -48,7 +48,8 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 			r := m.listStart(m.listRows()) + y - 1
 			if m.countClick(mouse) >= 2 {
 				if path := m.rowPath(r); path != "" {
-					return m.copyChars(path)
+					m.copyChars(path)
+					return nil
 				}
 			}
 			m.clickRow(r)
@@ -75,7 +76,8 @@ func (m *model) clickMain(mouse tea.Mouse) tea.Cmd {
 	x := mouse.X - m.mainX() - gutter
 	if n := m.countClick(mouse); n >= 2 {
 		if text := m.clickText(rowAt[y], x, n); text != "" {
-			return m.copyChars(text)
+			m.copyChars(text)
+			return nil
 		}
 	}
 	m.focusList = false
@@ -223,11 +225,10 @@ func (m *model) textAt(i, x int) (line string, char int, ok bool) {
 
 // copyChars copies text and then shows the count of its characters, as
 // herdr-reviewr does.
-func (m *model) copyChars(text string) tea.Cmd {
-	if text == "" {
-		return nil
+func (m *model) copyChars(text string) {
+	if text != "" {
+		m.copyText(text, "copied "+plural(utf8.RuneCountInString(text), "char"), nil)
 	}
-	return m.copyText(text, "copied "+plural(utf8.RuneCountInString(text), "char"), nil)
 }
 
 // onRelease ends a drag. A drag on the line numbers opens the comment
@@ -248,7 +249,7 @@ func (m *model) onRelease() tea.Cmd {
 		return m.startComment(d.pref)
 	case d.moved: // a drag on the code copies the range
 		lo, hi := p.span(d.start, p.cur)
-		return m.copyChars(strings.Join(m.sourceLines(lo, hi, d.pref), "\n"))
+		m.copyChars(strings.Join(m.sourceLines(lo, hi, d.pref), "\n"))
 	}
 	return nil
 }

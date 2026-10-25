@@ -584,7 +584,7 @@ func (m *model) updateQuit(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, k.Send):
 		return m.startSend()
 	case key.Matches(msg, k.Copy):
-		return m.copyComments()
+		m.copyComments()
 	}
 	return nil
 }
@@ -606,7 +606,7 @@ func (m *model) updateCommentList(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, k.Send):
 		return m.startSend()
 	case key.Matches(msg, k.Copy):
-		return m.copyComments()
+		m.copyComments()
 	case key.Matches(msg, k.Edit) && it != nil:
 		// As in herdr-reviewr, a comment on another diff takes no edit.
 		c := m.comments.Find(it.comment)

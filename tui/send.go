@@ -359,45 +359,32 @@ func (m *model) startSend() tea.Cmd {
 
 // copyComments copies the review to the clipboard. A good copy clears
 // the comments, as a send does.
-func (m *model) copyComments() tea.Cmd {
+func (m *model) copyComments() {
 	if m.comments.Len() == 0 {
 		m.flash("no comments yet")
-		return nil
+		return
 	}
 	var ids []int
 	for _, c := range m.comments.All() {
 		ids = append(ids, c.ID)
 	}
-	m.sends++
-	return m.copyText(m.reviewText(), "copied "+plural(len(ids), "comment"), ids)
+	m.copyText(m.reviewText(), "copied "+plural(len(ids), "comment"), ids)
 }
 
-// copyText returns a command that writes text to the clipboard. If the
-// copy works, onCopied removes the comments ids and shows done.
-func (m *model) copyText(text, done string, ids []int) tea.Cmd {
-	ctx := m.ctx
-	return func() tea.Msg {
-		err := clipboard.Write(ctx, text)
-		return copiedMsg{ids: ids, done: done, err: err}
-	}
-}
-
-// onCopied shows the result of a copy. A good copy of the comments
-// removes them. The comments that the user adds or changes during the
-// copy stay.
-func (m *model) onCopied(msg copiedMsg) {
-	if msg.ids != nil {
-		m.sends--
-	}
+// copyText writes text to the clipboard. If the copy works, it removes
+// the comments ids and shows done. As in herdr-reviewr, the copy runs
+// before the next frame, so two copies keep their order.
+func (m *model) copyText(text, done string, ids []int) {
+	err := clipboard.Write(m.ctx, text)
 	switch {
-	case errors.Is(msg.err, clipboard.ErrNoTool):
+	case errors.Is(err, clipboard.ErrNoTool):
 		m.flash("copy failed: install wl-clipboard, xclip, or xsel")
-	case msg.err != nil:
-		m.log.Warn("copy failed", "err", msg.err)
+	case err != nil:
+		m.log.Warn("copy failed", "err", err)
 		m.flash("copy failed")
 	default:
-		m.clearComments(msg.ids)
-		m.flash(msg.done)
+		m.clearComments(ids)
+		m.flash(done)
 	}
 }
 
