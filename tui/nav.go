@@ -546,10 +546,7 @@ func (m *model) stepComment(d int) {
 		return
 	}
 	slices.Sort(stops)
-	k := slices.IndexFunc(stops, func(r int) bool { return r > p.cur })
-	if k < 0 {
-		k = 0
-	}
+	k := max(slices.IndexFunc(stops, func(r int) bool { return r > p.cur }), 0)
 	if d < 0 {
 		k = len(stops) - 1
 		if i := slices.IndexFunc(stops, func(r int) bool { return r >= p.cur }); i > 0 {

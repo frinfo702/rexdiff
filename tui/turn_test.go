@@ -106,8 +106,8 @@ func TestTurnPromotesOnChange(t *testing.T) {
 func TestTurnTwoAgents(t *testing.T) {
 	m, dir := turnModel(t)
 	m = step(t, m, agentsMsg{agents: []rex.Agent{
-		{Block: "p", Cwd: dir, Status: rex.Status{App: "pi", State: rex.StateIdle}},
-		{Block: "q", Cwd: dir, Status: rex.Status{App: "cc", State: rex.StateIdle}},
+		{Block: "p", Cwd: dir, App: "pi", State: rex.StateIdle},
+		{Block: "q", Cwd: dir, App: "cc", State: rex.StateIdle},
 	}})
 	m = step(t, m, status("p", "pi", rex.StateWorking))
 	m = step(t, m, status("q", "cc", rex.StateWorking))

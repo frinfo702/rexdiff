@@ -17,8 +17,8 @@ func codeCell(t *testing.T, m model, needle string) (x, y int) {
 	p := m.cur()
 	for i, l := range p.lines {
 		plain := ansi.Strip(l)
-		if k := strings.Index(plain, needle); k >= 0 {
-			return m.mainX() + gutter + ansi.StringWidth(plain[:k]), screenY(t, m, i)
+		if before, _, ok := strings.Cut(plain, needle); ok {
+			return m.mainX() + gutter + ansi.StringWidth(before), screenY(t, m, i)
 		}
 	}
 	t.Fatalf("no %q in the main pane", needle)
