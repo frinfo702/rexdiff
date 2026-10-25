@@ -35,19 +35,19 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		}
 		return nil
 	}
-	h := m.bodyHeight()
-	y := mouse.Y - bodyY
-	if y > h { // the footer, under the rule at y == h
+	if y := mouse.Y - bodyY; y > m.bodyHeight() { // the footer, under the rule
 		return m.install()
 	}
-	if y < 0 || y >= h {
+	if m.inList(mouse.X, mouse.Y) {
+		if y := mouse.Y - m.listY(); y >= 1 {
+			m.focusList = true
+			m.pickFile(m.listStart(m.listRows()) + y - 1)
+		}
 		return nil
 	}
-	if m.inList(mouse.X) {
-		if y >= 1 {
-			m.focusList = true
-			m.pickFile(m.listStart(h) + y - 1)
-		}
+	h := m.mainHeight()
+	y := mouse.Y - m.mainY()
+	if y < 0 || y >= h || mouse.X < m.mainX() || mouse.X >= m.mainX()+m.mainWidth() {
 		return nil
 	}
 	_, rowAt := m.mainLines(h)
@@ -71,10 +71,11 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	return nil
 }
 
-// inList tells if screen column x is on the file list.
-func (m *model) inList(x int) bool {
-	lw := m.listWidth()
-	return lw > 0 && x >= m.listX() && x < m.listX()+lw
+// inList tells if the screen cell at column x and line y is on the file
+// list.
+func (m *model) inList(x, y int) bool {
+	lw, ly := m.listWidth(), m.listY()
+	return lw > 0 && x >= m.listX() && x < m.listX()+lw && y >= ly && y < ly+m.listRows()
 }
 
 // onDrag moves the cursor with a drag. A drag past the top or the bottom
@@ -84,8 +85,8 @@ func (m *model) onDrag(mouse tea.Mouse) {
 		return
 	}
 	p := m.cur()
-	h := m.bodyHeight()
-	y := mouse.Y - bodyY
+	h := m.mainHeight()
+	y := mouse.Y - m.mainY()
 	switch {
 	case y < 0:
 		p.top = max(p.top-1, 0)
@@ -176,12 +177,12 @@ func (m *model) onWheel(mouse tea.Mouse) {
 		m.overlay.move(d)
 		return
 	}
-	if m.inList(mouse.X) {
+	if m.inList(mouse.X, mouse.Y) {
 		m.pickFile(m.listSel() + d)
 		return
 	}
 	p := m.cur()
-	h := m.bodyHeight()
+	h := m.mainHeight()
 	p.top = min(max(p.top+wheelStep*d, 0), max(len(p.lines)-h, 0))
 	// The wheel moves the view and not the cursor.
 	p.free = true

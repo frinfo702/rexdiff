@@ -15,10 +15,12 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// These are the steps of the keys that move or resize, in columns.
+// These are the steps of the keys that move or resize.
 const (
-	scrollStep    = 8 // the sideways scroll
-	listWidthStep = 4 // the width of the file list
+	scrollStep = 8 // the sideways scroll, in columns
+	// listStep resizes the file list. It is in columns at a side, and in
+	// percent of the body rows above or below.
+	listStep = 4
 )
 
 // updateNormal handles a key when no box is open.
@@ -128,13 +130,13 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.Up):
 		p.cur = max(p.cur-1, 0)
 	case key.Matches(msg, k.PageDown):
-		p.cur = min(p.cur+m.bodyHeight(), last)
+		p.cur = min(p.cur+m.mainHeight(), last)
 	case key.Matches(msg, k.PageUp):
-		p.cur = max(p.cur-m.bodyHeight(), 0)
+		p.cur = max(p.cur-m.mainHeight(), 0)
 	case key.Matches(msg, k.HalfDown):
-		p.cur = min(p.cur+m.bodyHeight()/2, last)
+		p.cur = min(p.cur+m.mainHeight()/2, last)
 	case key.Matches(msg, k.HalfUp):
-		p.cur = max(p.cur-m.bodyHeight()/2, 0)
+		p.cur = max(p.cur-m.mainHeight()/2, 0)
 	case key.Matches(msg, k.NextHunk):
 		m.stepChange(1)
 	case key.Matches(msg, k.PrevHunk):
@@ -236,16 +238,13 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.flash("too narrow for split")
 		}
 	case key.Matches(msg, k.NavPosition):
-		m.listLeft = !m.listLeft
+		m.moveList()
 	case key.Matches(msg, k.NavHide):
-		m.listHidden = !m.listHidden
-		m.rerender()
+		m.hideList()
 	case key.Matches(msg, k.NavGrow):
-		m.listW = min(m.listW+listWidthStep, m.w/2)
-		m.rerender()
+		m.resizeList(listStep)
 	case key.Matches(msg, k.NavShrink):
-		m.listW = max(m.listW-listWidthStep, minListWidth)
-		m.rerender()
+		m.resizeList(-listStep)
 	case key.Matches(msg, k.OpenPR):
 		m.openPR()
 	case key.Matches(msg, k.Refresh):
@@ -256,6 +255,47 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	return nil, true
+}
+
+// listHiddenHere reports whether the user hides the file list on this
+// tab. The PR tab never hides it.
+func (m *model) listHiddenHere() bool { return m.listHidden && m.tab != tabPR }
+
+// moveList moves the file list clockwise around the main pane. A hidden
+// list does not move.
+func (m *model) moveList() {
+	if m.listHiddenHere() {
+		return
+	}
+	m.listPos = m.listPos.next()
+	m.rerender()
+}
+
+// hideList hides the file list and gives the focus to the main pane, or
+// shows the list again. The PR tab does not hide it.
+func (m *model) hideList() {
+	if m.tab == tabPR {
+		return
+	}
+	m.listHidden = !m.listHidden
+	if m.listHidden {
+		m.focusList = false
+	}
+	m.rerender()
+}
+
+// resizeList makes the file list larger by d, or smaller for a negative
+// d. A hidden list keeps its size.
+func (m *model) resizeList(d int) {
+	if m.listHiddenHere() {
+		return
+	}
+	if m.listPos.stacked() {
+		m.listPct = min(max(m.listPct+d, listMinPct), listMaxStackPct)
+	} else {
+		m.listW = m.clampSide(m.sideWidth() + d)
+	}
+	m.rerender()
 }
 
 // openPR opens the pull request in the browser.

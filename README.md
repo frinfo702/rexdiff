@@ -84,6 +84,9 @@ that show.
 | `/` | search files. `tab` switches to code, `↑` `↓` or `ctrl+n` `ctrl+p` move, `pgup` `pgdn` scroll the preview, enter opens |
 | `ctrl+f` | find in the file (smart case): enter or `↓` next, `↑` previous, esc closes |
 | `m` | rendered markdown |
+| `p` | move the file list: right, bottom, left, top |
+| `z` | hide or show the file list |
+| `<` `>` | make the file list larger or smaller |
 | `1` `2` `3` | changes, all files, or pull request |
 | `esc` | clear the selection, then the armed `]` or `[`, then the key list |
 | `?` | all keys |
@@ -92,6 +95,9 @@ that show.
 The search shows up to 50 files and 200 lines of code, then "… more". With no
 query, it lists the files you opened from the search in this session first.
 The preview below the results shows the file, with the match in the middle.
+
+At a side, the file list takes 15% to 60% of the width. Above or below, it takes
+a quarter of the rows, and `<` `>` change that from 15% to 50%.
 
 Side by side needs 135 columns. A narrower pane shows one column.
 
@@ -126,8 +132,8 @@ Other settings:
 
 - `default_scope`
 - `markdown_view`
-- `file_list`
-- `file_list_width`
+- `file_list`: `right`, `bottom`, `left`, or `top`
+- `file_list_width`: the width of the file list at a side, in columns
 - `diff_signs`: `true` marks changed lines with `+` and `-`, in place of a coloured bar
 - `review_prefix`
 - `url_opener`

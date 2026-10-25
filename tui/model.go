@@ -242,14 +242,15 @@ type model struct {
 	split      bool // show the diff side by side
 	wrap       bool
 	rendered   bool // show markdown rendered
-	listLeft   bool
+	listPos    position
 	listHidden bool
 	focusList  bool // the keys j and k move in the file list
 	// armed is 1 or -1 after a ] or a [ past the last change arms a
 	// crossing to the file at armedPath. Else it is 0.
 	armed     int
 	armedPath string
-	listW     int
+	listW     int        // the width of the file list at a side, in columns
+	listPct   int        // the share of the body rows, above or below
 	cache     diff.Cache // the syntax colours, for a fast sideways scroll
 
 	comments diff.Comments
@@ -327,8 +328,7 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	m.cfg = cfg
 	m.keys = defaultKeys()
 	m.keys.applyConfig(cfg.Keybindings)
-	m.listLeft = cfg.FileList == positionLeft
-	m.listW = cfg.FileListWidth
+	m.listPos, m.listW, m.listPct = cfg.FileList, cfg.FileListWidth, listStackPct
 	m.rendered = cfg.MarkdownView == markdownViewRendered
 	// The flags win over the settings.
 	m.split = cmp.Or(o.Layout, cfg.Layout) == LayoutSplit

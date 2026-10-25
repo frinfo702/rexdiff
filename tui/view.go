@@ -420,7 +420,7 @@ func (m *model) commentLines(c *diff.Comment) []string {
 // the box is closed, the line shows only its first rows.
 func (m *model) ensureVisible() {
 	p := m.cur()
-	h := m.bodyHeight()
+	h := m.mainHeight()
 	if p.free {
 		p.top = min(p.top, max(len(p.lines)-h, 0))
 		return
@@ -539,19 +539,28 @@ func (m *model) View() tea.View {
 	h := m.heightAbove(footer)
 	hdr, _ := m.header()
 
-	ml, _ := m.mainLines(h)
-	main := box(ml, m.mainWidth(), h)
+	mh := m.mainHeightOf(h)
+	ml, _ := m.mainLines(mh)
+	main := box(ml, m.mainWidth(), mh)
 	body := main
-	if lw := m.listWidth(); lw > 0 {
+	rule := dimStyle.Render(strings.Repeat("─", m.w))
+	switch lw, lh := m.listWidth(), m.listHeight(h); {
+	case lh > 0:
+		list := box(m.listLines(lh-1), lw, lh-1)
+		if m.listPos == positionTop {
+			body = lipgloss.JoinVertical(lipgloss.Left, list, rule, main)
+		} else {
+			body = lipgloss.JoinVertical(lipgloss.Left, main, rule, list)
+		}
+	case lw > 0:
 		list := box(m.listLines(h), lw, h)
 		sep := dimStyle.Render(strings.TrimSuffix(strings.Repeat(" │ \n", h), "\n"))
-		if m.listLeft {
+		if m.listPos == positionLeft {
 			body = lipgloss.JoinHorizontal(lipgloss.Top, list, sep, main)
 		} else {
 			body = lipgloss.JoinHorizontal(lipgloss.Top, main, sep, list)
 		}
 	}
-	rule := dimStyle.Render(strings.Repeat("─", m.w))
 	screen := hdr + "\n" + body + "\n" + rule + "\n" + footer
 
 	if m.mode == modeOverlay && m.overlay != nil {
@@ -596,18 +605,44 @@ func (m *model) programStatus() *tea.ProgramStatus {
 
 // mainX returns the screen column where the main pane starts.
 func (m *model) mainX() int {
-	if lw := m.listWidth(); lw > 0 && m.listLeft {
-		return lw + sepWidth
+	if m.listPos == positionLeft && m.listWidth() > 0 {
+		return m.listWidth() + sepWidth
 	}
 	return 0
 }
 
+// mainY returns the screen line where the main pane starts.
+func (m *model) mainY() int {
+	if m.listPos == positionTop {
+		return bodyY + m.listHeight(m.bodyHeight())
+	}
+	return bodyY
+}
+
 // listX returns the screen column where the file list starts.
 func (m *model) listX() int {
-	if !m.listLeft {
+	if m.listPos == positionRight {
 		return m.mainWidth() + sepWidth
 	}
 	return 0
+}
+
+// listY returns the screen line where the file list starts. Below the
+// main pane, the list starts under the rule.
+func (m *model) listY() int {
+	if m.listPos == positionBottom {
+		return bodyY + m.mainHeight() + 1
+	}
+	return bodyY
+}
+
+// listRows returns the number of lines of the file list, with its title.
+func (m *model) listRows() int {
+	h := m.bodyHeight()
+	if lh := m.listHeight(h); lh > 0 {
+		return lh - 1
+	}
+	return h
 }
 
 // sepWidth is the width of the line " │ " between the panes.

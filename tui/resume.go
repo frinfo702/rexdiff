@@ -32,13 +32,17 @@ type savedState struct {
 	Viewer     savedPane `json:"viewer"`
 	PR         savedPane `json:"pr"`
 
-	Split      bool `json:"split"`
-	Wrap       bool `json:"wrap"`
-	Rendered   bool `json:"rendered"`
-	ListLeft   bool `json:"list_left"`
+	Split    bool     `json:"split"`
+	Wrap     bool     `json:"wrap"`
+	Rendered bool     `json:"rendered"`
+	ListPos  position `json:"list_pos"`
+	// ListLeft is the place of the list in the state of an older version.
+	// Then ListPos is "".
+	ListLeft   bool `json:"list_left,omitzero"`
 	ListHidden bool `json:"list_hidden"`
 	FocusList  bool `json:"focus_list"`
 	ListW      int  `json:"list_w"`
+	ListPct    int  `json:"list_pct,omitzero"`
 
 	Folds map[string]*openFolds `json:"folds"`
 
@@ -79,8 +83,8 @@ func (m *model) saveState() (string, error) {
 		Viewer:  m.viewer.place(),
 		PR:      m.prPane.place(),
 		Split:   m.split, Wrap: m.wrap, Rendered: m.rendered,
-		ListLeft: m.listLeft, ListHidden: m.listHidden, FocusList: m.focusList,
-		ListW: m.listW, Folds: m.folds, Comments: &m.comments, LastSent: m.lastSent, Beside: m.beside,
+		ListPos: m.listPos, ListHidden: m.listHidden, FocusList: m.focusList,
+		ListW: m.listW, ListPct: m.listPct, Folds: m.folds, Comments: &m.comments, LastSent: m.lastSent, Beside: m.beside,
 	}
 	if t := m.turn; t != nil {
 		s.Turn = &savedTurn{t.block, t.app, t.tree, t.running, t.at}
@@ -132,7 +136,17 @@ func (m *model) restoreSettings(s *savedState) {
 		m.turn = &turnState{block: t.Block, app: t.App, tree: t.Tree, running: t.Running, at: t.At}
 	}
 	m.split, m.wrap, m.rendered = s.Split, s.Wrap, s.Rendered
-	m.listLeft, m.listHidden, m.focusList, m.listW = s.ListLeft, s.ListHidden, s.FocusList, s.ListW
+	m.listPos, m.listHidden, m.focusList, m.listW = s.ListPos, s.ListHidden, s.FocusList, s.ListW
+	switch {
+	case m.listPos != "":
+	case s.ListLeft:
+		m.listPos = positionLeft
+	default:
+		m.listPos = positionRight
+	}
+	if s.ListPct > 0 {
+		m.listPct = s.ListPct
+	}
 	m.folds = s.Folds
 	if s.Comments != nil {
 		m.comments = *s.Comments

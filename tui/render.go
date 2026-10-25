@@ -20,24 +20,67 @@ import (
 // left of the main pane.
 const gutter = 2
 
+// The sizes of the file list, as in herdr-reviewr. At a side, the width
+// stays between listMinPct and listMaxSidePct of the screen width. Above
+// or below, the list takes listStackPct of the body rows by default, and
+// stays between listMinPct and listMaxStackPct.
+const (
+	listStackPct    = 25
+	listMinPct      = 15
+	listMaxSidePct  = 60
+	listMaxStackPct = 50
+)
+
+// listShown reports whether the file list shows. The PR tab has no file
+// list.
+func (m *model) listShown() bool { return !m.listHidden && m.tab != tabPR }
+
+// sideWidth returns the width of the file list at a side, in columns.
+func (m *model) sideWidth() int { return m.clampSide(m.listW) }
+
+// clampSide returns w within the bounds of the width of the file list at
+// a side.
+func (m *model) clampSide(w int) int {
+	return min(max(w, m.w*listMinPct/100), m.w*listMaxSidePct/100)
+}
+
 // listWidth returns the width of the file list, or 0 if the list does not
 // show.
 func (m *model) listWidth() int {
-	if m.listHidden || m.tab == tabPR {
+	switch {
+	case !m.listShown():
+		return 0
+	case m.listPos.stacked():
+		return m.w
+	}
+	return m.sideWidth()
+}
+
+// listHeight returns the number of body rows that the file list takes
+// above or below the main pane, with its rule. The body has h rows. It
+// returns 0 if the list does not show there.
+func (m *model) listHeight(h int) int {
+	if !m.listShown() || !m.listPos.stacked() {
 		return 0
 	}
-	// The list never takes more than a third of a narrow pane.
-	return min(m.listW, max(m.w/3, minListWidth))
+	return splitAxis(h, m.listPct)
 }
 
 // mainWidth returns the width of the main pane, with its gutter.
 func (m *model) mainWidth() int {
 	w := m.w
-	if lw := m.listWidth(); lw > 0 {
+	if lw := m.listWidth(); lw > 0 && !m.listPos.stacked() {
 		w -= lw + sepWidth
 	}
 	return max(w, 24)
 }
+
+// mainHeight returns the number of rows of the main pane.
+func (m *model) mainHeight() int { return m.mainHeightOf(m.bodyHeight()) }
+
+// mainHeightOf returns the number of rows of the main pane in a body of h
+// rows.
+func (m *model) mainHeightOf(h int) int { return h - m.listHeight(h) }
 
 // codeWidth returns the width of the main pane, without its gutter.
 func (m *model) codeWidth() int { return m.mainWidth() - gutter }

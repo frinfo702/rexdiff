@@ -320,12 +320,12 @@ func TestDragAfterReload(t *testing.T) {
 // screenY returns the screen line of row i of the current pane.
 func screenY(t *testing.T, m model, i int) int {
 	t.Helper()
-	_, rowAt := m.mainLines(m.bodyHeight())
+	_, rowAt := m.mainLines(m.mainHeight())
 	y := slices.Index(rowAt, i)
 	if y < 0 {
 		t.Fatalf("row %d is not on the screen, want it on the screen", i)
 	}
-	return bodyY + y
+	return m.mainY() + y
 }
 
 // click presses and releases the left button at x, y.
@@ -357,7 +357,7 @@ func TestClickOldNumber(t *testing.T) {
 func TestClickCommentBox(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "]", "c", "h", "i")
-	_, rowAt := m.mainLines(m.bodyHeight())
+	_, rowAt := m.mainLines(m.mainHeight())
 	box := bodyY + slices.Index(rowAt, m.changes.cur) + 1
 	clicks := []struct {
 		where string
@@ -471,7 +471,7 @@ func TestParseConfig(t *testing.T) {
 		{`{"layout": "sideways"}`, `layout: expected one of unified, split, not "sideways"`},
 		{`{"default_scope": "commits"}`, scopes + `, not "commits"`},
 		{`{"markdown_view": "preview"}`, mdView + `, not "preview"`},
-		{`{"file_list": "top"}`, `file_list: expected one of right, left, not "top"`},
+		{`{"file_list": "middle"}`, `file_list: expected one of right, bottom, left, top, not "middle"`},
 		{`{"file_list_width": 3}`, `file_list_width: expected 16 or more, not "3"`},
 		{`{"editor": " "}`, editor + `, not " "`},
 		{`{"editor": "code {fil"}`, editor + `, not "code {fil"`},
@@ -562,9 +562,9 @@ func TestConfigFlags(t *testing.T) {
 	}
 	o := Options{Repo: m.repo, Layout: LayoutSplit}
 	m = newModel(t.Context(), o, cfg)
-	if !m.split || m.scope != ScopeBranch || !m.listLeft || m.listW != 40 {
-		t.Errorf("split %v, scope %q, list left %v, width %d; want true, branch, true, 40",
-			m.split, m.scope, m.listLeft, m.listW)
+	if !m.split || m.scope != ScopeBranch || m.listPos != positionLeft || m.listW != 40 {
+		t.Errorf("split %v, scope %q, list %q, width %d; want true, branch, left, 40",
+			m.split, m.scope, m.listPos, m.listW)
 	}
 	o.Scope = ScopeLastTurn
 	if m := newModel(t.Context(), o, cfg); m.scope != ScopeLastTurn {
@@ -757,9 +757,9 @@ func TestTallLine(t *testing.T) {
 	}
 	// A taller screen shows more rows, not blank space below the view.
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 40})
-	if last := max(len(m.changes.lines)-m.bodyHeight(), 0); m.changes.top > last {
+	if last := max(len(m.changes.lines)-m.mainHeight(), 0); m.changes.top > last {
 		t.Errorf("top %d of %d rows on a screen of %d rows, want %d or less",
-			m.changes.top, len(m.changes.lines), m.bodyHeight(), last)
+			m.changes.top, len(m.changes.lines), m.mainHeight(), last)
 	}
 	if m = press(t, m, "j"); m.changes.top > m.changes.cur {
 		t.Errorf("after j: top %d, cursor %d; want the cursor on the screen",
