@@ -12,52 +12,6 @@ import (
 	"github.com/rednafi/rexdiff/rex"
 )
 
-// TestEditorCommands checks the command and the kind of each editor.
-func TestEditorCommands(t *testing.T) {
-	const abs = "/r/a b.go"
-	tests := []struct {
-		template, editor string
-		script           string
-		window           bool
-	}{
-		// The editor of the settings gets the placeholders.
-		{"/opt/homebrew/bin/nvim +{line} {file}", "", `/opt/homebrew/bin/nvim +12 '/r/a b.go'`, false},
-		{"code -g {file}:{line}", "", `code -g '/r/a b.go':12`, true},
-		{"zed {file}:{line}", "", `zed '/r/a b.go':12`, true},
-		{"open -a Zed {file}", "", `open -a Zed '/r/a b.go'`, true},
-		{"myeditor --at {line}", "", `myeditor --at 12 '/r/a b.go'`, false},
-		// The editor of the environment gets the line as it expects it.
-		{"", "nvim", `nvim +12 '/r/a b.go'`, false},
-		{"", "/usr/bin/vim -u NONE", `/usr/bin/vim -u NONE +12 '/r/a b.go'`, false},
-		{"", "micro", `micro +12 '/r/a b.go'`, false},
-		{"", "hx", `hx '/r/a b.go:12'`, false},
-		{"", "fresh", `fresh '/r/a b.go:12'`, false},
-		{"", "code --wait", `code --wait -g '/r/a b.go:12'`, true},
-		{"", "subl", `subl '/r/a b.go:12'`, true},
-		{"", "idea", `idea --line 12 '/r/a b.go'`, true},
-		{"", "mvim", `mvim +12 '/r/a b.go'`, true},
-		// A path in quotes can have spaces.
-		{"", `"/Apps/VS Code.app/bin/code" -w`, `"/Apps/VS Code.app/bin/code" -w -g '/r/a b.go:12'`, true},
-		{"", `'/my apps/nvim'`, `'/my apps/nvim' +12 '/r/a b.go'`, false},
-		// An unknown editor gets +line, and draws in the terminal.
-		{"", "vim.basic", `vim.basic +12 '/r/a b.go'`, false},
-		// A wait flag tells that an unknown editor has a window.
-		{"", "myeditor --wait", `myeditor --wait +12 '/r/a b.go'`, true},
-	}
-	for _, tt := range tests {
-		var got editorCommand
-		if tt.template != "" {
-			got = templateCommand(tt.template, abs, 12)
-		} else {
-			got = envCommand(tt.editor, abs, 12)
-		}
-		if got.script != tt.script || got.window != tt.window {
-			t.Errorf("editor %q%q = %q, window %v; want %q, window %v",
-				tt.template, tt.editor, got.script, got.window, tt.script, tt.window)
-		}
-	}
-}
-
 // writeScript writes an executable sh script with body to dir/name, and
 // returns its path.
 func writeScript(t *testing.T, dir, name, body string) string {

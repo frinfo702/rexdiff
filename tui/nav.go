@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -461,7 +462,7 @@ func (m *model) jumpTo(path string, s diff.Side, line int) {
 	m.loadFiles()
 	i := slices.IndexFunc(m.allFiles, func(e vcs.Entry) bool { return e.Path == path })
 	if i < 0 {
-		m.flash("no such file: " + diff.Quote(path))
+		m.flash("no such file: " + termtext.Quote(path))
 		return
 	}
 	m.tab = tabFiles

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -199,26 +198,6 @@ func FuzzRenderFile(f *testing.F) {
 		}
 		if want := len(diff.Lines(src)); n != want {
 			t.Fatalf("%d rows for a file of %d lines", n, want)
-		}
-	})
-}
-
-// FuzzPlain checks that Plain and Quote remove all unsafe control characters.
-func FuzzPlain(f *testing.F) {
-	for _, s := range hostile {
-		f.Add(s)
-	}
-	f.Fuzz(func(t *testing.T, s string) {
-		p := diff.Plain(s)
-		if strings.ContainsFunc(p, isUnsafeControl) {
-			t.Errorf("Plain(%q) = %q, has a control character", s, p)
-		}
-		if pp := diff.Plain(p); pp != p {
-			t.Errorf("Plain is not idempotent: %q, then %q", p, pp)
-		}
-		q := diff.Quote(s)
-		if strings.ContainsFunc(q, unicode.IsControl) || !utf8.ValidString(q) {
-			t.Errorf("Quote(%q) = %q, has a control character", s, q)
 		}
 	})
 }

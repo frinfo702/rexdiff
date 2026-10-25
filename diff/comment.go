@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/rednafi/rexdiff/internal/termtext"
 )
 
 // Comment is a review note on a range of lines on one side of a file. Use
@@ -58,7 +60,7 @@ func NewComment(path string, s Side, rows []Row, old, new string) Comment {
 // A comment on the old side has " (removed)" at the end. The path is
 // quoted with [Quote].
 func (c *Comment) Location() string {
-	loc := fmt.Sprintf("%s:%d", Quote(c.Path), c.Start)
+	loc := fmt.Sprintf("%s:%d", termtext.Quote(c.Path), c.Start)
 	if c.End != c.Start {
 		loc += fmt.Sprintf("-%d", c.End)
 	}
@@ -78,7 +80,7 @@ type Comments struct {
 // Len returns the number of comments.
 func (cs *Comments) Len() int { return len(cs.items) }
 
-// Add adds a copy of c with a new ID, and returns the copy.
+// Add adds c with a new ID, and returns the comment in the set.
 func (cs *Comments) Add(c Comment) *Comment {
 	cs.last++
 	c.ID = cs.last

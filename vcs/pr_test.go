@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/rednafi/rexdiff/vcs"
@@ -193,6 +194,29 @@ func TestPullRequestErrors(t *testing.T) {
 		case tt.msg != "" && err.Error() != tt.msg:
 			t.Errorf("PullRequest(%q): err = %q, want %q", tt.remote, err, tt.msg)
 		}
+	}
+}
+
+// TestPullRequestHostile checks that the text of a pull request has no
+// control characters.
+func TestPullRequestHostile(t *testing.T) {
+	dir := t.TempDir()
+	fakePath(t, dir)
+	const osc = `\u001b]0;owned\u0007`
+	fakeTool(t, dir, "gh", map[string]string{ghArgs: `{
+		"number": 7, "title": "Add` + osc + `", "state": "OPEN",
+		"body": "a` + osc + `\nb", "author": {"login": "ann` + osc + `"},
+		"comments": [{"author": {"login": "bob"}, "body": "x` + osc + `"}],
+		"statusCheckRollup": [{"name": "t` + osc + `", "conclusion": "SUCCESS"}]}`})
+	r, _ := repoAt(t, "https://github.com/o/r")
+	pr, err := r.PullRequest(t.Context(), vcs.Hosts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{pr.Title, pr.Body, pr.Author, pr.Comments[0].Body, pr.Checks[0].Name}
+	want := []string{"Add]0;owned", "a]0;owned\nb", "ann]0;owned", "x]0;owned", "t]0;owned"}
+	if !slices.Equal(got, want) {
+		t.Errorf("PullRequest texts = %q, want %q", got, want)
 	}
 }
 

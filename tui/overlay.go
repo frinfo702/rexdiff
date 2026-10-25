@@ -12,6 +12,7 @@ import (
 	"github.com/sahilm/fuzzy"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/rex"
 	"github.com/rednafi/rexdiff/vcs"
 )
@@ -509,7 +510,7 @@ func (m *model) overlayRows(inner int) (rows []string, start int) {
 		if ov.kind == overlayCommits && ov.mark == ov.shown[i] {
 			tag += "  " + cursorStyle.Render("range start")
 		}
-		text := diff.Quote(it.label) + "  " + dimStyle.Render(diff.Quote(it.detail)) + tag
+		text := termtext.Quote(it.label) + "  " + dimStyle.Render(termtext.Quote(it.detail)) + tag
 		row := truncate(text, inner-2)
 		if i == ov.cur {
 			row = m.selStyle().Width(inner).Render("▶ " + row)

@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -158,7 +159,7 @@ func (m *model) turnLabel() string {
 		return dimStyle.Render("waiting for a turn")
 	}
 	ago := time.Since(m.turn.at).Round(time.Second)
-	app := diff.Quote(m.turn.app) // the app name comes from the agent
+	app := termtext.Quote(m.turn.app) // the app name comes from the agent
 	if m.turn.running {
 		return noteStyle.Render("● ") + app + dimStyle.Render(" working · "+ago.String())
 	}
@@ -267,7 +268,7 @@ func (m *model) listStart(h int) int { return max(0, m.listSel()-(h-2)) }
 // fileRow returns " M name/of/file.go  +3 -1". If the path is too long, it
 // removes the directory first, then the start of the name.
 func fileRow(mark, p, stat string, w int) string {
-	p = diff.Quote(p)
+	p = termtext.Quote(p)
 	room := w - lipgloss.Width(stat) - 4
 	if n := ansi.StringWidth(p); n > room {
 		if base := path.Base(p); ansi.StringWidth(base)+2 <= room {

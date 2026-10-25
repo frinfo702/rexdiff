@@ -10,6 +10,7 @@ import (
 	"charm.land/glamour/v2"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -115,7 +116,7 @@ func (m *model) renderChanges() {
 		// A rename without changes, or a change of the file mode.
 		note := "no change to the content"
 		if f.From != "" {
-			note = "renamed from " + diff.Quote(f.From) + ", no change to the content"
+			note = "renamed from " + termtext.Quote(f.From) + ", no change to the content"
 		}
 		p.setNote(note)
 	case m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted:
@@ -205,7 +206,7 @@ func renderMarkdown(r *glamour.TermRenderer, src string) []string {
 // setMarkdown shows src as rendered markdown. The rendered lines take no
 // comments. Press m to see the source.
 func (m *model) setMarkdown(p *pane, src string) {
-	lines := renderMarkdown(m.markdown(m.codeWidth()-2), diff.Plain(src))
+	lines := renderMarkdown(m.markdown(m.codeWidth()-2), termtext.Plain(src))
 	p.path = ""
 	p.set(lines, make([]diff.Row, len(lines)))
 }

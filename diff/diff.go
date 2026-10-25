@@ -216,7 +216,7 @@ func Count(old, new string) (added, deleted int) {
 }
 
 // Lines splits s into lines, without the LF or CRLF line endings. Line n of
-// s is Lines(s)[n-1]. A comment counts lines in this way.
+// s is Lines(s)[n-1]. The lines of a [Comment] count in this way.
 func Lines(s string) []string {
 	var lines []string
 	for l := range strings.Lines(s) {

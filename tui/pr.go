@@ -24,26 +24,7 @@ func (m *model) loadPR() tea.Cmd {
 	}
 	return func() tea.Msg {
 		pr, err := repo.PullRequest(ctx, hosts)
-		if pr != nil {
-			cleanPR(pr)
-		}
 		return prMsg{pr, err}
-	}
-}
-
-// cleanPR removes the control characters from the text of pr, because the
-// text comes from other users.
-func cleanPR(pr *vcs.PullRequest) {
-	texts := []*string{&pr.Title, &pr.URL, &pr.Author, &pr.Head, &pr.Base, &pr.Body}
-	for i := range pr.Checks {
-		texts = append(texts, &pr.Checks[i].Name)
-	}
-	for i := range pr.Comments {
-		c := &pr.Comments[i]
-		texts = append(texts, &c.Author, &c.When, &c.Body)
-	}
-	for _, s := range texts {
-		*s = diff.Plain(*s)
 	}
 }
 

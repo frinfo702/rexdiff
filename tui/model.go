@@ -14,6 +14,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/rex"
 	"github.com/rednafi/rexdiff/update"
 	"github.com/rednafi/rexdiff/vcs"
@@ -347,7 +348,7 @@ const flashTime = 6 * time.Second
 // flash shows s in the footer for a short time. The text can come from Rex
 // or from git, so flash quotes it if it has control characters.
 func (m *model) flash(s string) {
-	m.status, m.statusTill = diff.Quote(s), time.Now().Add(flashTime)
+	m.status, m.statusTill = termtext.Quote(s), time.Now().Add(flashTime)
 }
 
 // trees returns the two trees that the Changes tab compares in the scope.
