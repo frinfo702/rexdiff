@@ -92,7 +92,7 @@ func TestUpdate(t *testing.T) {
 	if m.restartState == "" {
 		t.Fatal("no restart after the comment, want a restart")
 	}
-	t.Cleanup(func() { os.Remove(m.restartState) })
+	t.Cleanup(func() { removeState(t, m.restartState) })
 
 	// The new rexdiff reads back the comment and the place.
 	saved, err := loadState(m.restartState)
@@ -218,7 +218,7 @@ func TestRestartWaits(t *testing.T) {
 	if m.restartState == "" {
 		t.Fatal("no restart after the send, want a restart")
 	}
-	os.Remove(m.restartState)
+	removeState(t, m.restartState)
 
 	// In the PR tab, the key r returns the command that loads the PR. So r
 	// does not restart. A message without a command starts the restart.
@@ -232,7 +232,7 @@ func TestRestartWaits(t *testing.T) {
 	if m.restartState == "" {
 		t.Fatal("no restart on a message without a command, want a restart")
 	}
-	os.Remove(m.restartState)
+	removeState(t, m.restartState)
 }
 
 // TestRestorePRPlace checks that the place in the PR tab comes back after
@@ -298,7 +298,7 @@ func TestRestartOnTick(t *testing.T) {
 	if m.restartState == "" || cmd == nil {
 		t.Fatal("no restart on a tick, want a restart")
 	}
-	os.Remove(m.restartState)
+	removeState(t, m.restartState)
 }
 
 // TestSavePendingPRPlace checks that a restart before the PR loads saves
@@ -402,5 +402,14 @@ func TestPickerWaitsForComment(t *testing.T) {
 	m = press(t, m, "enter")
 	if got := comments(m); !strings.Contains(got, "hi") {
 		t.Errorf("comments = %q, want the comment that the user wrote", got)
+	}
+}
+
+// removeState removes the state file at path, if it is there, and fails the
+// test if it cannot.
+func removeState(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		t.Error(err)
 	}
 }

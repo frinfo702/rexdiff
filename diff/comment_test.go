@@ -198,7 +198,7 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 		}
 	}
 	// git diff exits with 1 when the files differ.
-	git := exec.Command(
+	git := exec.CommandContext(t.Context(),
 		"git", "diff", "--no-index", "-U1",
 		filepath.Join(dir, "old"),
 		filepath.Join(dir, "new"),

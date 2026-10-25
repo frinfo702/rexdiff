@@ -54,7 +54,7 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 		}
 		m.log.Debug("editor split", "err", err)
 	}
-	return tea.ExecProcess(exec.Command("sh", "-c", ed.Script), func(err error) tea.Msg {
+	return tea.ExecProcess(command("sh", "-c", ed.Script), func(err error) tea.Msg {
 		return editorDoneMsg{path: path, err: err}
 	})
 }
@@ -64,7 +64,7 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 // If the editor fails, the returned command gives the error and the last
 // line of the stderr of the editor.
 func (m *model) runWindowEditor(path, script string) tea.Cmd {
-	cmd := exec.Command("sh", "-c", script)
+	cmd := command("sh", "-c", script)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -119,10 +119,17 @@ func openURL(cfg config, url string) error {
 // waits for the program, so that the program does not stay a zombie
 // process.
 func start(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+	cmd := command(name, args...)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	go cmd.Wait()
+	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// command returns the command for an editor or a URL opener. The command
+// has no context, because the program must not stop when rexdiff stops.
+// For example, a kill of the editor can lose the edits of the user.
+func command(name string, args ...string) *exec.Cmd {
+	return exec.Command(name, args...) //nolint:noctx // see the doc comment
 }

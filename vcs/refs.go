@@ -37,7 +37,7 @@ func (r *Repo) Commits(ctx context.Context, since string) ([]Commit, error) {
 		nFields = 5 // the number of fields in format
 	)
 	_, err := r.run(ctx, nil, "rev-parse", "-q", "--verify", "HEAD")
-	if exitedWith(err, 1) {
+	if exitedOne(err) {
 		return nil, nil
 	}
 	args := []string{"log", "--first-parent", format}
@@ -229,11 +229,11 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int) (ms []Match, more 
 	}
 	ms, more = readMatches(bufio.NewReader(out), limit)
 	if more {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 	}
 	err = cmd.Wait()
 	switch {
-	case err == nil, more, exitedWith(err, 1): // done, stopped, or no match
+	case err == nil, more, exitedOne(err): // done, stopped, or no match
 		return ms, more, nil
 	case pastDeadline(ctx):
 		return ms, true, nil

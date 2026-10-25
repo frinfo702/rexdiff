@@ -23,35 +23,35 @@ import (
 
 // newTestModel makes a repository and a model that shows it. The branch
 // main has a.go. The branch feat adds b.go. The working tree changes a.go.
-func newTestModel(t testing.TB) (model, string) {
-	t.Helper()
-	dir := t.TempDir()
-	run := func(args ...string) { git(t, dir, args...) }
+func newTestModel(tb testing.TB) (model, string) {
+	tb.Helper()
+	dir := tb.TempDir()
+	run := func(args ...string) { git(tb, dir, args...) }
 	run("init", "-q", "-b", "main")
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
+	write(tb, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
 	run("add", ".")
 	run("commit", "-qm", "init")
 	run("checkout", "-qb", "feat")
-	write(t, dir, "b.go", "package a\n")
+	write(tb, dir, "b.go", "package a\n")
 	run("add", ".")
 	run("commit", "-qm", "add b")
-	write(t, dir, "a.go", "package a\n\nfunc A() int {\n\tx := 2\n\treturn x\n}\n")
+	write(tb, dir, "a.go", "package a\n\nfunc A() int {\n\tx := 2\n\treturn x\n}\n")
 
-	repo, err := vcs.Open(t.Context(), dir)
+	repo, err := vcs.Open(tb.Context(), dir)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
-	m := newModel(t.Context(), Options{Repo: repo}, defaultConfig())
+	m := newModel(tb.Context(), Options{Repo: repo}, defaultConfig())
 	m.grepBudget = time.Minute // a slow test machine does not cut the searches
 	m.reload()
-	m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = step(tb, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	return m, dir
 }
 
 // git runs git in dir and fails the test if git fails.
-func git(t testing.TB, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
+func git(tb testing.TB, dir string, args ...string) {
+	tb.Helper()
+	cmd := exec.CommandContext(tb.Context(), "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(
 		os.Environ(),
@@ -61,21 +61,21 @@ func git(t testing.TB, dir string, args ...string) {
 		"GIT_COMMITTER_EMAIL=t@t",
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %v: %s", args, out)
+		tb.Fatalf("git %v: %s", args, out)
 	}
 }
 
 // write writes a file in dir and fails the test if it cannot.
-func write(t testing.TB, dir, name, content string) {
-	t.Helper()
+func write(tb testing.TB, dir, name, content string) {
+	tb.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 }
 
 // step gives msg to m and returns the new model.
-func step(t testing.TB, m model, msg tea.Msg) model {
-	t.Helper()
+func step(tb testing.TB, m model, msg tea.Msg) model {
+	tb.Helper()
 	next, _ := m.Update(msg)
 	return *next.(*model)
 }
@@ -394,7 +394,7 @@ func TestSendError(t *testing.T) {
 // that show stay, and the error is a flash.
 func TestMissingHead(t *testing.T) {
 	m, dir := newTestModel(t)
-	sha, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	sha, err := exec.CommandContext(t.Context(), "git", "-C", dir, "rev-parse", "HEAD").Output()
 	if err != nil {
 		t.Fatal(err)
 	}

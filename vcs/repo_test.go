@@ -51,7 +51,7 @@ func newRepo(t *testing.T) (*vcs.Repo, string) {
 // git runs git in dir and fails the test if git fails.
 func git(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"GIT_AUTHOR_NAME=t",
@@ -161,7 +161,7 @@ func TestScopes(t *testing.T) {
 	}
 
 	// Snapshot must not change the real index.
-	st, _ := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
+	st, _ := exec.CommandContext(t.Context(), "git", "-C", dir, "status", "--porcelain").Output()
 	if !strings.Contains(string(st), "?? new.txt") {
 		t.Errorf("git status after Snapshot = %q, want ?? new.txt", st)
 	}
@@ -287,7 +287,7 @@ func TestFilesInConflict(t *testing.T) {
 	run("checkout", "-q", "main")
 	write(t, dir, "f.txt", "main\n")
 	run("commit", "-qam", "main")
-	cmd := exec.Command("git", "merge", "other")
+	cmd := exec.CommandContext(t.Context(), "git", "merge", "other")
 	cmd.Dir = dir
 	if err := cmd.Run(); err == nil {
 		t.Fatal("git merge other: no error, want a conflict")

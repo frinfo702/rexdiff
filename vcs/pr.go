@@ -353,10 +353,9 @@ func (r *Repo) gitLab(ctx context.Context) (*PullRequest, error) {
 	// request without them.
 	var ds []gitLabDiscussion
 	args := []string{"mr", "note", "list", "--output", "json"}
-	if err := r.decode(ctx, nil, &ds, "glab", args...); err != nil {
-		return pr, nil
+	if err := r.decode(ctx, nil, &ds, "glab", args...); err == nil {
+		pr.Comments = gitLabComments(ds)
 	}
-	pr.Comments = gitLabComments(ds)
 	return pr, nil
 }
 

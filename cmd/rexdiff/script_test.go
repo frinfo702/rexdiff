@@ -28,7 +28,9 @@ func fakeRex() {
 		panic(err)
 	}
 	fmt.Fprintln(f, strings.Join(os.Args[1:], " "))
-	f.Close()
+	if err := f.Close(); err != nil {
+		panic(err)
+	}
 	if os.Getenv("REX_FAIL") != "" {
 		fmt.Fprintln(os.Stderr, "no Rex server")
 		os.Exit(1)

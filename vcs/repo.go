@@ -133,10 +133,10 @@ type runError struct {
 func (e *runError) Error() string { return e.msg }
 func (e *runError) Unwrap() error { return e.err }
 
-// exitedWith reports whether err is from a process that exited with code.
-func exitedWith(err error, code int) bool {
+// exitedOne reports whether err is from a process that exited with code 1.
+func exitedOne(err error) bool {
 	ee, ok := errors.AsType[*exec.ExitError](err)
-	return ok && ee.ExitCode() == code
+	return ok && ee.ExitCode() == 1
 }
 
 // Resolve returns the object ID of rev, for example "HEAD" or "main^{tree}".
@@ -163,7 +163,7 @@ func (r *Repo) Head(ctx context.Context) (string, error) {
 	// rev-parse exits with 1 if HEAD names no commit yet. A broken HEAD,
 	// for example one whose commit is missing, is an error.
 	_, rerr := r.run(ctx, nil, "rev-parse", "-q", "--verify", "HEAD")
-	if exitedWith(rerr, 1) {
+	if exitedOne(rerr) {
 		return emptyTree, nil
 	}
 	return "", err
@@ -220,14 +220,14 @@ func (r *Repo) Snapshot(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	idx := filepath.Join(dir, "index")
 	if err := r.copyIndex(idx); err != nil {
 		return "", err
 	}
 	env := []string{"GIT_INDEX_FILE=" + idx}
 	_, err = r.run(ctx, env, "add", "-A", "--ignore-errors")
-	if exitedWith(err, 1) {
+	if exitedOne(err) {
 		err = nil // git cannot add some files, but it adds the others
 	}
 	if err != nil {
@@ -401,7 +401,7 @@ func (r *Repo) readBlobs(ctx context.Context, ids []string, blobs []blob) error 
 	}
 	err = readBatch(bufio.NewReader(out), batch, blobs)
 	if err != nil {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 	}
 	if werr := cmd.Wait(); err == nil {
 		err = werr
@@ -481,7 +481,7 @@ func (r *Repo) ReadFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	st, err := root.Stat(path)
 	if err != nil {
 		return "", err

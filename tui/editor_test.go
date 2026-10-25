@@ -199,7 +199,7 @@ func TestTerminalEditorDone(t *testing.T) {
 	if !shows(m, "edited a.go") {
 		t.Errorf("view got:\n%s\nwant \"edited a.go\"", view(m))
 	}
-	err := exec.Command("sh", "-c", "exit 2").Run()
+	err := exec.CommandContext(t.Context(), "sh", "-c", "exit 2").Run()
 	m = step(t, m, editorDoneMsg{path: "a.go", err: err})
 	if !shows(m, "editor exited with exit status 2") {
 		t.Errorf("view got:\n%s\nwant \"editor exited with exit status 2\"", view(m))

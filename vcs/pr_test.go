@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rednafi/rexdiff/vcs"
@@ -17,12 +18,13 @@ import (
 // "unexpected call".
 func fakeTool(t *testing.T, dir, name string, calls map[string]string) {
 	t.Helper()
-	script := "#!/bin/sh\ncase \"$*\" in\n"
+	var script strings.Builder
+	script.WriteString("#!/bin/sh\ncase \"$*\" in\n")
 	for args, out := range calls {
-		script += "'" + args + "') cat <<'EOF'\n" + out + "\nEOF\n;;\n"
+		script.WriteString("'" + args + "') cat <<'EOF'\n" + out + "\nEOF\n;;\n")
 	}
-	script += "*) echo unexpected call: \"$*\" >&2; exit 1 ;;\nesac\n"
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
+	script.WriteString("*) echo unexpected call: \"$*\" >&2; exit 1 ;;\nesac\n")
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(script.String()), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }

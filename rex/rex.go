@@ -432,9 +432,9 @@ func (c *Client) watchOnce(ctx context.Context, again bool, fn func(Event)) {
 	if lines.Err() != nil {
 		// A line is too long. Stop rex, because rex can wait until Watch
 		// reads the rest of its output.
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 	}
-	cmd.Wait()
+	_ = cmd.Wait() // Watch starts rex again, whatever the error
 }
 
 // blockEvent is an event of one block in "rex events --json".

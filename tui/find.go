@@ -6,6 +6,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -208,7 +209,7 @@ func (m *model) findBand(hits []findHit) string {
 		case on:
 			count = fmt.Sprintf("%d/%d", before+1, len(hits))
 		default:
-			count = fmt.Sprint(len(hits))
+			count = strconv.Itoa(len(hits))
 		}
 	}
 	w := max(m.w-ansi.StringWidth(count)-1, 1)

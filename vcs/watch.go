@@ -210,7 +210,7 @@ func (r *Repo) notIgnored(ctx context.Context, paths []string) ([]string, error)
 	}
 	in := strings.NewReader(strings.Join(paths, "\x00"))
 	out, err := r.runInput(ctx, nil, in, "check-ignore", "-z", "--stdin")
-	if exitedWith(err, 1) {
+	if exitedOne(err) {
 		return paths, nil // git ignores none
 	}
 	if err != nil {
@@ -296,6 +296,11 @@ func (s *sum) num(v uint64) {
 	}
 }
 
+// int adds v, for example a size or a time.
+func (s *sum) int(v int64) {
+	s.num(uint64(v)) //nolint:gosec // a hash keeps all bits, so a wrap is fine
+}
+
 // stat adds the path and the file status of p. A missing file adds a
 // marker. stat reports whether p is a directory.
 func (s *sum) stat(p string) (isDir bool) {
@@ -305,8 +310,8 @@ func (s *sum) stat(p string) (isDir bool) {
 		s.num(0)
 		return false
 	}
-	s.num(uint64(fi.Size()))
-	s.num(uint64(fi.ModTime().UnixNano()))
+	s.int(fi.Size())
+	s.int(fi.ModTime().UnixNano())
 	s.num(uint64(fi.Mode()))
 	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
 		s.num(st.Ino)
@@ -342,8 +347,8 @@ func (s *sum) nested(p string) {
 			s.num(0)
 			continue
 		}
-		s.num(uint64(fi.Size()))
-		s.num(uint64(fi.ModTime().UnixNano()))
+		s.int(fi.Size())
+		s.int(fi.ModTime().UnixNano())
 	}
 }
 

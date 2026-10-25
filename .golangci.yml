@@ -7,6 +7,29 @@ linters:
     - ineffassign
     - staticcheck
     - unused
+    - errcheck
+    - errorlint
+    - nilerr
+    - noctx
+    - bodyclose
+    - forcetypeassert
+    - durationcheck
+    - makezero
+    - reassign
+    - nakedret
+    - gocritic
+    - revive
+    - misspell
+    - usestdlibvars
+    - perfsprint
+    - intrange
+    - copyloopvar
+    - modernize
+    - thelper
+    - dupword
+    - nolintlint
+    - gosec
+    - unparam
   settings:
     staticcheck:
       checks:
@@ -18,7 +41,39 @@ linters:
         - -ST1021
         - -ST1022
         - -QF1001 # De Morgan: the current form reads better
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    dupword:
+      # The Lua code in cmd/rexdiff/install.go ends two blocks with "end end".
+      ignore:
+        - end
+    misspell:
+      # No locale: the comments use British spelling, for example "colour".
+      ignore-rules:
+        - reviewr
+    gosec:
+      # rexdiff runs git and rex, and reads and writes the user's files.
+      excludes:
+        - G204 # subprocess with a variable
+        - G301 # directory permissions
+        - G302 # file permissions on chmod
+        - G304 # file path from a variable
+        - G306 # file permissions on write
+        - G703 # file path from a variable, found by taint analysis
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [forcetypeassert, unparam]
+      - linters: [revive]
+        text: redefines-builtin-id
 
 formatters:
   enable:
     - gofmt
+    - gofumpt

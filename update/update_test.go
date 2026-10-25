@@ -234,7 +234,9 @@ func TestDownload(t *testing.T) {
 			http.NotFound(w, req)
 			return
 		}
-		w.Write(b)
+		if _, err := w.Write(b); err != nil {
+			t.Error(err)
+		}
 	}))
 	t.Cleanup(srv.Close)
 	release := func(prefix string) Release {

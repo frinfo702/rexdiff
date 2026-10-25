@@ -18,6 +18,7 @@ import (
 // Kind is the type of a rendered row.
 type Kind int
 
+// These are the kinds of a row.
 const (
 	KindHunk   Kind = iota // a hunk header, with no source line
 	KindEqual              // a line that is the same on the two sides
@@ -29,6 +30,7 @@ const (
 // Side identifies one version of a file.
 type Side int
 
+// These are the two sides of a file.
 const (
 	SideOld Side = iota // the version before the change
 	SideNew             // the version after the change

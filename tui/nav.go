@@ -379,7 +379,7 @@ type openFolds struct {
 // hash returns the FNV-1a hash of s.
 func hash(s string) uint64 {
 	h := fnv.New64a()
-	h.Write([]byte(s)) // a hash.Hash does not fail
+	_, _ = h.Write([]byte(s)) // a hash.Hash does not fail
 	return h.Sum64()
 }
 
@@ -714,7 +714,7 @@ func lineKey(msg tea.KeyPressMsg) bool {
 	case tea.KeyBackspace, tea.KeyDelete, tea.KeyLeft, tea.KeyRight, tea.KeyHome, tea.KeyEnd:
 		return true
 	}
-	return len(msg.Text) == 1 && strings.Contains("0123456789$", msg.Text)
+	return len(msg.Text) == 1 && strings.ContainsAny(msg.Text, "0123456789$")
 }
 
 // pastedLine returns the line in pasted text for the go-to-line prompt.

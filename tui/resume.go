@@ -107,8 +107,8 @@ func (m *model) saveState() (string, error) {
 		return "", err
 	}
 	if _, err := f.Write(b); err != nil {
-		f.Close()
-		os.Remove(f.Name())
+		_ = f.Close()
+		_ = os.Remove(f.Name())
 		return "", err
 	}
 	return f.Name(), f.Close()
@@ -120,7 +120,8 @@ func loadState(path string) (*savedState, error) {
 	if err != nil {
 		return nil, err
 	}
-	os.Remove(path)
+	// A file that stays in the temporary directory does no harm.
+	_ = os.Remove(path)
 	s := &savedState{Comments: new(diff.Comments)}
 	if err := json.Unmarshal(b, s); err != nil {
 		return nil, err

@@ -347,9 +347,9 @@ func replaceFile(path string, content []byte, check func(tmp string) error) erro
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name()) // does nothing after the rename
+	defer func() { _ = os.Remove(tmp.Name()) }() // fails after the rename
 	if _, err := tmp.Write(content); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -375,7 +375,7 @@ func get(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
 	}

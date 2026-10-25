@@ -46,6 +46,7 @@ func TestWatcher(t *testing.T) {
 	}{
 		{"nothing", func(*testing.T, string) {}, vcs.Change{}},
 		{"same size, new time", func(t *testing.T, dir string) {
+			t.Helper()
 			write(t, dir, "a.txt", "one\nxyz\n") // the same size
 			p := filepath.Join(dir, "a.txt")
 			later := time.Now().Add(time.Hour)
@@ -54,23 +55,29 @@ func TestWatcher(t *testing.T) {
 			}
 		}, files},
 		{"new file", func(t *testing.T, dir string) {
+			t.Helper()
 			write(t, dir, "c.txt", "c\n")
 		}, files},
 		{"new directory", func(t *testing.T, dir string) {
+			t.Helper()
 			write(t, dir, "x/y/c.txt", "c\n")
 		}, files},
 		{"ignored", func(t *testing.T, dir string) {
+			t.Helper()
 			write(t, dir, "build/more", "x\n")
 		}, vcs.Change{}},
 		{"deleted", func(t *testing.T, dir string) {
+			t.Helper()
 			if err := os.Remove(filepath.Join(dir, "b.txt")); err != nil {
 				t.Fatal(err)
 			}
 		}, files},
 		{"commit", func(t *testing.T, dir string) {
+			t.Helper()
 			git(t, dir, "commit", "-qam", "c")
 		}, vcs.Change{Refs: true}},
 		{"checkout", func(t *testing.T, dir string) {
+			t.Helper()
 			git(t, dir, "checkout", "-qb", "other")
 		}, vcs.Change{Refs: true}},
 	}

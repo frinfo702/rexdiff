@@ -77,6 +77,7 @@ func BenchmarkScroll(b *testing.B) {
 // bigChange returns a model that shows a change to big.go, a file of 5,000
 // long lines. The change edits each 100th line.
 func bigChange(b *testing.B) model {
+	b.Helper()
 	m, dir := newTestModel(b)
 	var old, cur strings.Builder
 	for i := range 5000 {

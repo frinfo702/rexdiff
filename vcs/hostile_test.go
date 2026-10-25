@@ -193,7 +193,7 @@ func TestReadFileStaysInRoot(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := exec.Command("mkfifo", filepath.Join(dir, "fifo")).Run(); err != nil {
+	if err := exec.CommandContext(t.Context(), "mkfifo", filepath.Join(dir, "fifo")).Run(); err != nil {
 		t.Fatal(err)
 	}
 	bad := []string{"../secret", secret, "to-secret", "to-zero", "to-dir", "fifo"}
@@ -248,7 +248,7 @@ func TestGitWorktree(t *testing.T) {
 	if got != "Ma.txt Astaged.txt" {
 		t.Errorf("Diff(Head, Snapshot) = %s, want Ma.txt Astaged.txt", got)
 	}
-	st, _ := exec.Command("git", "-C", wt, "status", "--porcelain").Output()
+	st, _ := exec.CommandContext(t.Context(), "git", "-C", wt, "status", "--porcelain").Output()
 	if string(st) != " M a.txt\nA  staged.txt\n" {
 		t.Errorf("git status in the worktree got:\n%s\nwant:\n%s",
 			st, " M a.txt\nA  staged.txt\n")

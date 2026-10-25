@@ -25,7 +25,7 @@ func codeCell(t *testing.T, m model, needle string) (x, y int) {
 	return 0, 0
 }
 
-// clicks clicks n times at x, y, and runs the command of the last click.
+// clicks sends n clicks at x, y, and runs the command of the last click.
 func clicks(t *testing.T, m model, n, x, y int) model {
 	t.Helper()
 	for range n - 1 {

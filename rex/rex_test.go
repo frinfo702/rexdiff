@@ -208,11 +208,14 @@ func TestWatchReconnect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	var got []rex.Event
-	c.Watch(ctx, func(e rex.Event) {
+	err := c.Watch(ctx, func(e rex.Event) {
 		if got = append(got, e); len(got) == len(want) {
 			cancel()
 		}
 	})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Watch = %v, want context.Canceled", err)
+	}
 	if !slices.Equal(got, want) {
 		t.Errorf("events got:\n%+v\nwant:\n%+v", got, want)
 	}

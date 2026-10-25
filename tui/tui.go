@@ -116,7 +116,10 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 	}
 	program := tea.NewProgram(&m, tea.WithContext(ctx))
 	if o.Rex != nil {
-		go o.Rex.Watch(ctx, func(e rex.Event) { program.Send(eventMsg(e)) })
+		// Watch returns only the error of ctx, when ctx is done.
+		go func() {
+			_ = o.Rex.Watch(ctx, func(e rex.Event) { program.Send(eventMsg(e)) })
+		}()
 	}
 	final, err := program.Run()
 	if fm, ok := final.(*model); ok && err == nil {

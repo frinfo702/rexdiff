@@ -31,10 +31,10 @@ import (
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	err := run(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	stop()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "rexdiff:", err)
-		stop()
 		os.Exit(1)
 	}
 }
@@ -207,16 +207,17 @@ func oneOf[T ~string](p *T, allowed ...T) func(string) error {
 	}
 }
 
-// openLog returns a logger that appends to the file at path. If path is
-// empty, the logger discards everything.
-func openLog(path string) (*slog.Logger, func() error, error) {
+// openLog returns a logger that appends to the file at path, and a function
+// that closes the file. If path is empty, the logger discards everything.
+// The log is only for debugging, so the close ignores errors.
+func openLog(path string) (*slog.Logger, func(), error) {
 	if path == "" {
-		return slog.New(slog.DiscardHandler), func() error { return nil }, nil
+		return slog.New(slog.DiscardHandler), func() {}, nil
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, nil, err
 	}
 	h := slog.NewTextHandler(f, &slog.HandlerOptions{Level: slog.LevelDebug})
-	return slog.New(h), f.Close, nil
+	return slog.New(h), func() { _ = f.Close() }, nil
 }

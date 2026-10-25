@@ -45,7 +45,7 @@ func TestSavedBase(t *testing.T) {
 // hashObject writes s as a blob in the repository dir and returns its ID.
 func hashObject(t *testing.T, dir, s string) string {
 	t.Helper()
-	cmd := exec.Command("git", "hash-object", "-w", "--stdin")
+	cmd := exec.CommandContext(t.Context(), "git", "hash-object", "-w", "--stdin")
 	cmd.Dir, cmd.Stdin = dir, strings.NewReader(s)
 	out, err := cmd.Output()
 	if err != nil {
