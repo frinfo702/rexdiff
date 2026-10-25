@@ -18,10 +18,14 @@ const (
 	CodeLimit = 200
 )
 
-// CodeBudget is the time that a code search takes at most. After it, the
-// search shows the lines that it finds, and a "+" tells that there can be
-// others.
-const CodeBudget = 80 * time.Millisecond
+// CodeBudget is the time of a code search, as in herdr-reviewr. After it,
+// the search shows the lines that it finds, and a "+" tells that there can
+// be others. A search with no line yet goes on until its first line, or
+// until CodeTimeout.
+const (
+	CodeBudget  = 80 * time.Millisecond
+	CodeTimeout = 2 * time.Second
+)
 
 // Files returns at most limit of paths that match q, the best match
 // first, and the number of all the matches. For an empty q, the paths in

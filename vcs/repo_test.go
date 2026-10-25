@@ -332,19 +332,19 @@ func TestWorktree(t *testing.T) {
 		t.Errorf("IgnoredDir(no such dir) = %v, want none", es)
 	}
 
-	ms, _, err := r.Grep(ctx, "TWO", 10)
+	ms, _, err := r.Grep(ctx, "TWO", 10, time.Minute)
 	match := vcs.Match{Path: "a.txt", Line: 2, Text: "two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
 		t.Errorf("Grep(TWO) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
 	// git quotes this name unless -z.
 	testgit.WriteFile(t, dir, "a:é\n.txt", "x: two\n")
-	ms, _, err = r.Grep(ctx, "x: two", 10)
+	ms, _, err = r.Grep(ctx, "x: two", 10, time.Minute)
 	match = vcs.Match{Path: "a:é\n.txt", Line: 1, Text: "x: two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
 		t.Errorf("Grep(x: two) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
-	if ms, _, err := r.Grep(ctx, "nothing has this", 10); err != nil || len(ms) != 0 {
+	if ms, _, err := r.Grep(ctx, "nothing has this", 10, time.Minute); err != nil || len(ms) != 0 {
 		t.Errorf("Grep with no match = %+v, %v, want none, nil", ms, err)
 	}
 
@@ -643,13 +643,13 @@ func TestGrepLimit(t *testing.T) {
 		{6000, 5000, false},
 	}
 	for _, tt := range tests {
-		ms, more, err := r.Grep(ctx, "hit", tt.limit)
+		ms, more, err := r.Grep(ctx, "hit", tt.limit, time.Minute)
 		if err != nil || len(ms) != tt.wantN || more != tt.wantMore {
 			t.Errorf("Grep(hit, %d) = %d matches, more %t, %v; want %d, %t, nil",
 				tt.limit, len(ms), more, err, tt.wantN, tt.wantMore)
 		}
 	}
-	if ms, _, _ := r.Grep(ctx, "hit", 2); ms[1] != (vcs.Match{Path: "many.txt", Line: 2, Text: "hit"}) {
+	if ms, _, _ := r.Grep(ctx, "hit", 2, time.Minute); ms[1] != (vcs.Match{Path: "many.txt", Line: 2, Text: "hit"}) {
 		t.Errorf("Grep(hit, 2)[1] = %+v, want many.txt:2", ms[1])
 	}
 }
@@ -661,7 +661,7 @@ func TestGrepCanceled(t *testing.T) {
 	r, _ := newRepo(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, _, err := r.Grep(ctx, "one", 10); !errors.Is(err, context.Canceled) {
+	if _, _, err := r.Grep(ctx, "one", 10, time.Minute); !errors.Is(err, context.Canceled) {
 		t.Errorf("Grep with a canceled context = %v, want %v", err, context.Canceled)
 	}
 }

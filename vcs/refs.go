@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 // Commit is a commit in the log.
@@ -198,9 +200,10 @@ type Match struct {
 // Grep returns at most limit lines of the tracked and the untracked files
 // that contain the text q. The search ignores case and binary files. When
 // it finds limit lines, it stops git, and more tells if there are others.
-// At the deadline of ctx, Grep stops git and returns the lines that it
-// finds before it, with more set to true.
-func (r *Repo) Grep(ctx context.Context, q string, limit int) (ms []Match, more bool, err error) {
+// After the time budget, Grep stops git when it has a line, and returns
+// the lines with more set to true. At the deadline of ctx, Grep stops git
+// and returns the lines that it finds before it, with more set to true.
+func (r *Repo) Grep(ctx context.Context, q string, limit int, budget time.Duration) (ms []Match, more bool, err error) {
 	if strings.Contains(q, "\n") {
 		// git reads each line of q as a pattern. A match is one line, so no
 		// match can have the newline of q.
@@ -227,7 +230,22 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int) (ms []Match, more 
 		}
 		return nil, false, fmt.Errorf("git grep: %w", err)
 	}
-	ms, more = readMatches(bufio.NewReader(out), limit)
+	// Past the budget, Grep stops git if it has a line, or else at the
+	// next line.
+	var found, late, killed atomic.Bool
+	timer := time.AfterFunc(budget, func() {
+		late.Store(true)
+		if found.Load() {
+			killed.Store(true)
+			_ = cmd.Process.Kill()
+		}
+	})
+	ms, more = readMatches(bufio.NewReader(out), limit, func() bool {
+		found.Store(true)
+		return late.Load()
+	})
+	timer.Stop()
+	more = more || killed.Load()
 	if more {
 		_ = cmd.Process.Kill()
 	}
@@ -251,8 +269,9 @@ func pastDeadline(ctx context.Context) bool {
 
 // readMatches reads at most limit matches of "git grep -n -z". Each match
 // is "path NUL line NUL text LF". Only the text ends with a newline,
-// because the path can have a newline. more tells if there is more output.
-func readMatches(r *bufio.Reader, limit int) (ms []Match, more bool) {
+// because the path can have a newline. After each match, a true stop ends
+// the read. more tells if there is more output.
+func readMatches(r *bufio.Reader, limit int, stop func() bool) (ms []Match, more bool) {
 	for len(ms) < limit {
 		path, err := r.ReadString(0)
 		if err != nil {
@@ -274,6 +293,9 @@ func readMatches(r *bufio.Reader, limit int) (ms []Match, more bool) {
 			Line: n,
 			Text: strings.TrimSpace(text),
 		})
+		if stop() {
+			return ms, true
+		}
 	}
 	_, err := r.Peek(1)
 	return ms, err == nil

@@ -100,7 +100,7 @@ func TestHostilePaths(t *testing.T) {
 			t.Errorf("ReadFile(%q) = %q, %v; want %q", p, got, err, s)
 		}
 		q := strings.TrimSpace(s)
-		if ms, _, err := r.Grep(ctx, q, 10); err != nil || len(ms) != 1 || ms[0].Path != p {
+		if ms, _, err := r.Grep(ctx, q, 10, time.Minute); err != nil || len(ms) != 1 || ms[0].Path != p {
 			t.Errorf("Grep(%q) = %+v, %v; want one match in %q", q, ms, err, p)
 		}
 	}
@@ -281,7 +281,7 @@ func TestGrepIsLiteral(t *testing.T) {
 		{"abc\na.c", nil}, // no line has a newline
 	}
 	for _, tt := range tests {
-		ms, _, err := r.Grep(ctx, tt.q, 10)
+		ms, _, err := r.Grep(ctx, tt.q, 10, time.Minute)
 		if err != nil {
 			t.Errorf("Grep(%q) = %v, want no error", tt.q, err)
 			continue
@@ -365,20 +365,27 @@ func TestPullRequestBadJSON(t *testing.T) {
 func TestGrepDeadline(t *testing.T) {
 	r, _ := newRepo(t)
 	bin := t.TempDir()
-	// The fake git prints one match and a cut record, then hangs.
-	testgit.Script(t, bin, "git", "printf 'a.go\\0001\\000hit\\nb.go\\00012'\nexec /bin/sleep 10\n")
+	// The fake git prints one match and a cut record, then hangs. With
+	// SLOW set, it first waits past the budget.
+	testgit.Script(t, bin, "git", `[ -n "$SLOW" ] && /bin/sleep 0.3
+printf 'a.go\0001\000hit\nb.go\00012'
+exec /bin/sleep 10
+`)
 	t.Setenv("PATH", bin)
-
-	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
-	defer cancel()
-	ms, more, err := r.Grep(ctx, "hit", 10)
-	if err != nil || !more || len(ms) != 1 || ms[0].Text != "hit" {
-		t.Errorf("Grep past the deadline = %+v, %v, %v; want the hit, more, no error", ms, more, err)
+	grep := func(timeout, budget time.Duration) ([]vcs.Match, bool, error) {
+		ctx, cancel := context.WithTimeout(t.Context(), timeout)
+		defer cancel()
+		return r.Grep(ctx, "hit", 10, budget)
 	}
-
-	ctx, cancel = context.WithTimeout(t.Context(), 0)
-	defer cancel()
-	if ms, more, err := r.Grep(ctx, "hit", 10); err != nil || !more || len(ms) != 0 {
-		t.Errorf("Grep after the deadline = %+v, %v, %v; want none, more, no error", ms, more, err)
+	if ms, more, err := grep(5*time.Second, 50*time.Millisecond); err != nil || !more ||
+		len(ms) != 1 || ms[0].Text != "hit" {
+		t.Errorf("Grep past the budget = %+v, %v, %v; want the hit, more, no error", ms, more, err)
+	}
+	t.Setenv("SLOW", "1")
+	if ms, more, err := grep(5*time.Second, time.Millisecond); err != nil || !more || len(ms) != 1 {
+		t.Errorf("Grep with no line at the budget = %+v, %v, %v; want the first hit, more", ms, more, err)
+	}
+	if ms, more, err := grep(100*time.Millisecond, time.Millisecond); err != nil || !more || len(ms) != 0 {
+		t.Errorf("Grep past the deadline = %+v, %v, %v; want none, more, no error", ms, more, err)
 	}
 }
