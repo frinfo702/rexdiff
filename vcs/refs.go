@@ -93,8 +93,9 @@ func (r *Repo) DefaultBase(ctx context.Context) string {
 	return "HEAD"
 }
 
-// currentBranch returns the name of the branch that HEAD points to.
-func (r *Repo) currentBranch(ctx context.Context) (string, error) {
+// Branch returns the name of the branch that HEAD points to. With a
+// detached HEAD, it returns "HEAD".
+func (r *Repo) Branch(ctx context.Context) (string, error) {
 	out, err := r.run(ctx, nil, "rev-parse", "--abbrev-ref", "HEAD")
 	return strings.TrimSpace(out), err
 }

@@ -236,6 +236,7 @@ type model struct {
 
 	changes, viewer, prPane pane
 	pr                      prState
+	prf                     prFetch
 	prPlace                 *savedPane // the place of prPane after a restart
 
 	split      bool // show the diff side by side
@@ -355,6 +356,7 @@ type (
 		err   error
 	}
 	prMsg struct {
+		gen int // the read, see prFetch
 		pr  *vcs.PullRequest
 		err error
 	}
@@ -384,7 +386,7 @@ func tick(d time.Duration) tea.Cmd {
 // Init starts the ticks, asks for the colours of the terminal, and loads
 // the pull request and the agents.
 func (m *model) Init() tea.Cmd {
-	cmds := []tea.Cmd{tick(time.Second), m.loadPR()}
+	cmds := []tea.Cmd{tick(time.Second), m.requestPR(true)}
 	cmds = append(cmds, requestColors...)
 	if m.rex != nil {
 		cmds = append(cmds, m.listAgents(agentsMsg{}))
@@ -577,7 +579,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case eventMsg:
 		m.onEvent(rex.Event(msg))
 	case prMsg:
-		m.onPR(msg)
+		cmd = m.onPR(msg)
 	case grepMsg:
 		m.onGrep(msg)
 	case *update.Release:
@@ -640,8 +642,19 @@ func (m *model) onGrep(msg grepMsg) {
 	ov.setSearch(m.allFiles, msg.hits)
 }
 
-// onPR shows the pull request that loadPR reads.
-func (m *model) onPR(msg prMsg) {
+// onPR shows the pull request that loadPR reads, unless a later read
+// replaces it. After a read with a trailing request, onPR starts the next
+// read.
+func (m *model) onPR(msg prMsg) tea.Cmd {
+	f := &m.prf
+	if msg.gen != f.gen {
+		return nil
+	}
+	f.inFlight, f.cancel = false, nil
+	var next tea.Cmd
+	if f.trailing {
+		next = m.loadPR()
+	}
 	m.pr = prState{pr: msg.pr}
 	if msg.err != nil {
 		m.pr.err = msg.err.Error()
@@ -652,6 +665,7 @@ func (m *model) onPR(msg prMsg) {
 		m.prPlace = nil
 		m.prPane.restore(*p)
 	}
+	return next
 }
 
 // onPaste adds text to the comment box or to the input of the overlay.
@@ -741,6 +755,14 @@ func (m *model) onTick() tea.Cmd {
 		m.status = ""
 	}
 	cmds := []tea.Cmd{tick(time.Second)}
+	// Without a watcher, each tick reports a change of the refs. Then only
+	// the poll reads the pull request.
+	if ch.Refs && m.watch != nil {
+		cmds = append(cmds, m.refsChanged())
+	}
+	if m.tab == tabPR && time.Since(m.prf.polled) >= prPoll {
+		cmds = append(cmds, m.requestPR(false))
+	}
 	if m.ticks%colorTicks == 0 { // follow the changes of the terminal theme
 		cmds = append(cmds, requestColors...)
 	}

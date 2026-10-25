@@ -4,8 +4,10 @@ package tui
 // the pull request.
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -14,18 +16,88 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// loadPR returns a command that reads the pull request of the branch.
+// The times of the reads of the pull request, as in herdr-reviewr.
+const (
+	// prPoll is the time between two reads while the PR tab shows. A
+	// change on the forge has no local sign.
+	prPoll = time.Minute
+	// prHang is the time after which a new request drops a read that
+	// does not end.
+	prHang = time.Minute
+)
+
+// prFetch follows the reads of the pull request.
+type prFetch struct {
+	gen      int       // the read whose result shows; others are stale
+	inFlight bool      // the read gen runs
+	started  time.Time // the start of the read gen
+	polled   time.Time // the last request, for prPoll
+	cancel   context.CancelFunc
+	// trailing is true if an ambient request comes while a read runs.
+	// Then one more read follows that read.
+	trailing bool
+	branch   string // the branch at the last change of the refs
+	seen     bool   // the watcher reports the refs once
+}
+
+// requestPR asks for a read of the pull request. A forced request starts
+// a read at once. An ambient request during a read starts one more read
+// after it, unless the read hangs.
+func (m *model) requestPR(forced bool) tea.Cmd {
+	f := &m.prf
+	f.polled = time.Now()
+	hung := f.inFlight && time.Since(f.started) >= prHang
+	if !forced && f.inFlight && !hung {
+		f.trailing = true
+		return nil
+	}
+	return m.loadPR()
+}
+
+// loadPR stops the read that runs, and returns a command that reads the
+// pull request of the branch.
 func (m *model) loadPR() tea.Cmd {
-	repo, ctx := m.repo, m.ctx
+	f := &m.prf
+	if f.cancel != nil {
+		f.cancel()
+	}
+	ctx, cancel := context.WithCancel(m.ctx)
+	f.gen++
+	f.inFlight, f.trailing, f.started, f.cancel = true, false, time.Now(), cancel
+	repo, gen := m.repo, f.gen
 	hosts := vcs.Hosts{
 		GitHub: m.cfg.GitHubHost,
 		GitLab: m.cfg.GitLabHost,
 		Azure:  m.cfg.AzureHost,
 	}
 	return func() tea.Msg {
+		defer cancel()
 		pr, err := repo.PullRequest(ctx, hosts)
-		return prMsg{pr, err}
+		return prMsg{gen, pr, err}
 	}
+}
+
+// refsChanged reads the pull request again after a change of the refs.
+// After a switch to another branch, the PR tab is blank until the read
+// ends. A detached HEAD keeps the branch, so a rebase is not a switch.
+func (m *model) refsChanged() tea.Cmd {
+	f := &m.prf
+	b, err := m.repo.Branch(m.ctx)
+	if err != nil || b == "HEAD" {
+		b = f.branch
+	}
+	old := f.branch
+	f.branch = b
+	if !f.seen { // the first report is the start, and Init reads the PR
+		f.seen = true
+		return nil
+	}
+	if old != "" && b != old {
+		m.pr = prState{loading: true}
+		m.renderPR()
+		return m.requestPR(true)
+	}
+	return m.requestPR(false)
 }
 
 // prStateStyle returns the style that shows the state of a pull request.

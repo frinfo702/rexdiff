@@ -382,7 +382,7 @@ type azurePR struct {
 
 // azure gets the pull request of the current branch with az.
 func (r *Repo) azure(ctx context.Context) (*PullRequest, error) {
-	branch, err := r.currentBranch(ctx)
+	branch, err := r.Branch(ctx)
 	if err != nil {
 		return nil, err
 	}
