@@ -60,16 +60,13 @@ more detail' >&2; exit 1 ;;
 esac
 `
 	testgit.Script(t, dir, "rex", script)
-	// The client comes from the environment that Rex gives a block.
-	t.Setenv("REX_SESSION", "S")
-	t.Setenv("REX_BLOCK", "block:self")
-	t.Setenv("REX_BIN_DIR", dir)
-	return rex.FromEnv(), dir
+	return rex.NewTestClient(dir), dir
 }
 
 // TestAgents checks that Agents returns only the terminal blocks that send
 // an app name, without the block of the client.
 func TestAgents(t *testing.T) {
+	t.Parallel()
 	c, _ := fakeRex(t)
 	agents, err := c.Agents(t.Context())
 	if err != nil {
@@ -99,6 +96,7 @@ func TestAgents(t *testing.T) {
 // TestCommands checks the rex calls of Resolve, Paste, Focus, Split, and
 // SetLabel.
 func TestCommands(t *testing.T) {
+	t.Parallel()
 	c, dir := fakeRex(t)
 	ctx := t.Context()
 	if id, err := c.Resolve(ctx, "agent"); err != nil || id != "block:pi" {
@@ -151,6 +149,7 @@ func blockEvent(block, name, payload string) string {
 // TestWatch checks that Watch reports only the changes of the status of
 // the program, and closed blocks.
 func TestWatch(t *testing.T) {
+	t.Parallel()
 	c, dir := fakeRex(t)
 	events := strings.Join([]string{
 		blockEvent("block:pi", "program_status_changed", `{"id":"",`+
@@ -198,6 +197,7 @@ func TestWatch(t *testing.T) {
 // TestWatchReconnect checks that Watch reports a reconnect after it starts
 // rex again.
 func TestWatchReconnect(t *testing.T) {
+	t.Parallel()
 	c, dir := fakeRex(t)
 	line := `{"type":"session_event","payload":{"event":{"type":"block_closed",` +
 		`"payload":{"block_id":"block:pi"}}}}`
@@ -270,12 +270,12 @@ func TestReloadConfigOutsideRex(t *testing.T) {
 // TestErrorKeepsCause checks that the error of a failed rex is the message
 // of rex. The error also wraps the exit error of the process.
 func TestErrorKeepsCause(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	testgit.Script(t, dir, "rex", "echo 'Error: no Rex server' >&2\nexit 3\n")
-	t.Setenv("REX_BIN_DIR", dir)
-	_, err := rex.ReloadConfig(t.Context())
+	err := rex.NewTestClient(dir).Focus(t.Context(), "block:pi")
 	ee, ok := errors.AsType[*exec.ExitError](err)
 	if err == nil || err.Error() != "no Rex server" || !ok || ee.ExitCode() != 3 {
-		t.Errorf("ReloadConfig error = %v, exit error %v; want %q wrapping exit 3", err, ok, "no Rex server")
+		t.Errorf("Focus error = %v, exit error %v; want %q wrapping exit 3", err, ok, "no Rex server")
 	}
 }

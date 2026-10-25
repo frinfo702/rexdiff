@@ -348,6 +348,7 @@ func TestBinaryTooLarge(t *testing.T) {
 // TestVersion checks the version from the release build. A test binary has
 // no version, like a build for development.
 func TestVersion(t *testing.T) {
+	t.Parallel()
 	for stamped, want := range map[string]string{"0.2.0": "v0.2.0", "v0.2.0": "v0.2.0", "": ""} {
 		if got := Version(stamped); got != want {
 			t.Errorf("Version(%q) = %q, want %q", stamped, got, want)
@@ -356,6 +357,11 @@ func TestVersion(t *testing.T) {
 	if u := Detect("/bin/rexdiff", ""); u != nil {
 		t.Errorf("Detect of a build for development = %+v, want nil", u)
 	}
+}
+
+// TestDetectTestURL checks that a release build reads the latest release
+// from REXDIFF_LATEST_URL.
+func TestDetectTestURL(t *testing.T) {
 	t.Setenv("REXDIFF_LATEST_URL", "http://127.0.0.1:1/latest")
 	if u := Detect("/bin/rexdiff", "0.2.0"); u == nil || u.latestURL != "http://127.0.0.1:1/latest" || u.method != methodDownload {
 		t.Errorf("Detect of a release build = %+v, "+
