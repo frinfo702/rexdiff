@@ -131,7 +131,7 @@ func status(block, app string, state rex.State) eventMsg {
 // sample returns the first list of the agents: the agent app in block,
 // in dir, at rest.
 func sample(block, app, dir string) agentsMsg {
-	a := rex.Agent{Block: block, Cwd: dir, App: app, State: rex.StateIdle}
+	a := rex.Agent{Block: block, Cwd: dir, Status: rex.Status{App: app, State: rex.StateIdle}}
 	return agentsMsg{agents: []rex.Agent{a}}
 }
 

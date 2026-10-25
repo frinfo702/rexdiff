@@ -25,7 +25,7 @@ func (m *model) listAgents(msg agentsMsg) tea.Cmd {
 	c, ctx := m.rex, m.ctx
 	return func() tea.Msg {
 		agents, err := c.Agents(ctx)
-		isRexdiff := func(a rex.Agent) bool { return a.App == appName }
+		isRexdiff := func(a rex.Agent) bool { return a.Status.App == appName }
 		agents = slices.DeleteFunc(agents, isRexdiff)
 		msg.agents, msg.err = agents, err
 		return msg
@@ -223,7 +223,12 @@ func (m *model) endTurn() {
 // review to the agent, or lets the user pick one.
 func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	for _, a := range msg.agents {
-		*m.agent(a.Block) = agentState{app: a.App, state: a.State, cwd: a.Cwd, hasCwd: true}
+		*m.agent(a.Block) = agentState{
+			app:    a.Status.App,
+			state:  a.Status.State,
+			cwd:    a.Cwd,
+			hasCwd: true,
+		}
 	}
 	switch {
 	case msg.err == nil:

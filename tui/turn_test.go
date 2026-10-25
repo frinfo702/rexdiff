@@ -31,7 +31,7 @@ func TestTurnNeedsSample(t *testing.T) {
 	}
 	// The first list sees pi at work. That is no start.
 	working := sample("p", "pi", dir)
-	working.agents[0].State = rex.StateWorking
+	working.agents[0].Status.State = rex.StateWorking
 	m = step(t, m, working)
 	if m.pending != nil {
 		t.Errorf("pending %+v after a first list at work, want none", m.pending)
@@ -106,8 +106,8 @@ func TestTurnPromotesOnChange(t *testing.T) {
 func TestTurnTwoAgents(t *testing.T) {
 	m, dir := turnModel(t)
 	m = step(t, m, agentsMsg{agents: []rex.Agent{
-		{Block: "p", Cwd: dir, App: "pi", State: rex.StateIdle},
-		{Block: "q", Cwd: dir, App: "cc", State: rex.StateIdle},
+		{Block: "p", Cwd: dir, Status: rex.Status{App: "pi", State: rex.StateIdle}},
+		{Block: "q", Cwd: dir, Status: rex.Status{App: "cc", State: rex.StateIdle}},
 	}})
 	m = step(t, m, status("p", "pi", rex.StateWorking))
 	m = step(t, m, status("q", "cc", rex.StateWorking))

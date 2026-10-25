@@ -311,9 +311,9 @@ func (m *model) openAgentPicker(agents []rex.Agent) {
 	var items []pickItem
 	armed := 0
 	for i, a := range agents {
-		detail := a.App + " · " + string(a.State)
-		if a.State == rex.StateBlocked {
-			detail = a.App + " · at a prompt"
+		detail := a.Status.App + " · " + string(a.Status.State)
+		if a.Status.State == rex.StateBlocked {
+			detail = a.Status.App + " · at a prompt"
 		}
 		if a.Window != "" {
 			detail += " · " + a.Window

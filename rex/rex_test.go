@@ -84,16 +84,14 @@ func TestAgents(t *testing.T) {
 			Name:   "agent",
 			Window: "main",
 			Cwd:    "/repo",
-			App:    "pi",
-			State:  rex.StateBlocked,
+			Status: rex.Status{App: "pi", State: rex.StateBlocked},
 		},
 		{
 			Block:  "block:cc",
 			Name:   "claude-code",
 			Window: "side",
 			Cwd:    "/repo",
-			App:    "claude-code",
-			State:  rex.StateWorking,
+			Status: rex.Status{App: "claude-code", State: rex.StateWorking},
 		},
 	}
 	if !slices.Equal(agents, want) {

@@ -204,7 +204,7 @@ type Agent struct {
 	Name   string // the label of the block, or else the app name
 	Window string // the label of the window of the block, or ""
 	Cwd    string // the working directory of the program
-	Status
+	Status Status
 }
 
 // terminalCreator is the creator that Rex gives to a terminal block.
