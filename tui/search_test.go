@@ -197,3 +197,91 @@ func TestSearchNoMatches(t *testing.T) {
 		t.Errorf("code mode view got:\n%s\nwant \"no matches\"", view(m))
 	}
 }
+
+// longFile writes a file of 100 lines, with "needle" on line 62.
+func longFile(t *testing.T, dir string) {
+	t.Helper()
+	var b strings.Builder
+	for i := range 100 {
+		if i == 61 {
+			b.WriteString("needle here\n")
+			continue
+		}
+		fmt.Fprintf(&b, "line %d\n", i+1)
+	}
+	write(t, dir, "long.go", b.String())
+}
+
+// lineOf returns the index of the first line of the view that has s, or
+// -1.
+func lineOf(m model, s string) int {
+	return slices.IndexFunc(strings.Split(view(m), "\n"), func(l string) bool {
+		return strings.Contains(l, s)
+	})
+}
+
+// TestSearchPreview checks that the preview shows the file of the code
+// match below the results, with the match in the middle, and that the
+// results and the preview share the space, as in herdr-reviewr.
+func TestSearchPreview(t *testing.T) {
+	m, dir := newTestModel(t)
+	longFile(t, dir)
+	m = openQuery(t, m, "needle")
+	m = step(t, m, tabKey)
+	results, rule := lineOf(m, "─ results ─"), lineOf(m, "─ preview · long.go ─")
+	hit, end := lineOf(m, "▶   62  needle here"), lineOf(m, "╰")
+	if results < 0 || rule < 0 || hit < 0 {
+		t.Fatalf("view got:\n%s\nwant the results, the preview of long.go, and line 62 marked", view(m))
+	}
+	if top, bottom := rule-results, end-rule; top-bottom > 1 || bottom-top > 1 {
+		t.Errorf("the results take %d lines and the preview %d, want the same", top, bottom)
+	}
+	if mid := (rule + end) / 2; hit < mid-1 || hit > mid+1 {
+		t.Errorf("the match is on line %d of the view, want the middle of the preview, %d", hit, mid)
+	}
+}
+
+// TestSearchPreviewScroll checks that pgdown and pgup scroll the preview.
+func TestSearchPreviewScroll(t *testing.T) {
+	m, dir := newTestModel(t)
+	longFile(t, dir)
+	m = openQuery(t, m, "needle")
+	m = step(t, m, tabKey)
+	_ = view(m)
+	top := m.overlay.search.preview.top
+	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyPgDown})
+	_ = view(m)
+	if got := m.overlay.search.preview.top; got != top+pickerPage {
+		t.Errorf("after pgdown the preview starts at %d, want %d", got, top+pickerPage)
+	}
+	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	_ = view(m)
+	if got := m.overlay.search.preview.top; got != top-pickerPage {
+		t.Errorf("after 2 pgups the preview starts at %d, want %d", got, top-pickerPage)
+	}
+	if m.overlay.input.Value() != "needle" {
+		t.Errorf("the query is %q after the scroll, want \"needle\"", m.overlay.input.Value())
+	}
+}
+
+// TestSearchPreviewFile checks the preview of a file in the files mode,
+// and the note of a binary file and of no result.
+func TestSearchPreviewFile(t *testing.T) {
+	m, dir := newTestModel(t)
+	write(t, dir, "bin.dat", "a\x00b")
+	m = openQuery(t, m, "a.go")
+	if !shows(m, "─ preview · a.go ─", "1  package a") {
+		t.Errorf("view got:\n%s\nwant the preview of a.go from line 1", view(m))
+	}
+	m = press(t, m, "esc")
+	m = openQuery(t, m, "bin.dat")
+	if !shows(m, noteBinary) {
+		t.Errorf("view got:\n%s\nwant %q", view(m), noteBinary)
+	}
+	m = press(t, m, "esc")
+	m = openQuery(t, m, "qqqq")
+	if !shows(m, "─ preview ─", "no preview") {
+		t.Errorf("view got:\n%s\nwant \"no preview\"", view(m))
+	}
+}

@@ -200,7 +200,7 @@ func (m *model) clickOverlay(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	idx := mouse.Y - y - listY
-	if idx < 0 || idx >= len(m.overlay.shown) || !m.overlay.pickable(idx) {
+	if idx < 0 || idx >= min(len(m.overlay.shown), m.overlay.rowsTo) || !m.overlay.pickable(idx) {
 		return nil
 	}
 	if idx == m.overlay.cur { // a click on the selected row picks it

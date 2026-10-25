@@ -64,6 +64,7 @@ type overlay struct {
 	mark   int // the commit picker: the item at the start of the range, or -1
 	agents []rex.Agent
 	search searchState
+	rowsTo int // the index after the last row that shows
 }
 
 // searchState has the results of the search. As in herdr-reviewr, the
@@ -77,6 +78,7 @@ type searchState struct {
 	hits      []vcs.Match
 	hitsMore  bool   // git finds more matches than hits has
 	err       string // the error of the code search
+	preview   *preview
 }
 
 // newOverlay returns an overlay. If its kind has an input, the input has
@@ -513,9 +515,17 @@ func (m *model) updateOverlay(msg tea.KeyPressMsg) tea.Cmd {
 	case overlayCommits:
 		return m.updateCommitPicker(msg)
 	case overlaySearch:
-		if key.Matches(msg, overlayKeys.Flip) {
+		pv := ov.search.preview
+		switch {
+		case key.Matches(msg, overlayKeys.Flip):
 			ov.search.code = !ov.search.code
 			ov.showSearch()
+			return nil
+		case key.Matches(msg, overlayKeys.PreviewDown) && pv != nil:
+			pv.scroll(pickerPage)
+			return nil
+		case key.Matches(msg, overlayKeys.PreviewUp) && pv != nil:
+			pv.scroll(-pickerPage)
 			return nil
 		}
 	}
@@ -743,20 +753,23 @@ func (m *model) baseRef(it *pickItem) (ref string, ok bool) {
 func (m *model) overlayBox() (box string, x, y, listY int) {
 	ov := m.overlay
 	w := min(max(m.w*2/3, 50), m.w-4)
+	if ov.kind == overlaySearch {
+		w = m.w - 4
+	}
 	inner := w - 4
-	// The title takes one line, for listY. The search has no title. Its
-	// first line has the input and the chips, as in herdr-reviewr.
+	// The title takes one line, for listY.
 	lines := []string{truncate(headerStyle.Render(ov.title), inner)}
-	if ov.kind == overlayQuit {
+	switch ov.kind {
+	case overlayQuit:
 		lines = append(lines, "", dimStyle.Render(m.quitHint()))
-	} else {
-		if ov.kind == overlaySearch {
-			lines[0] = ov.searchBand(inner)
-		} else if ov.hasInput() {
+	case overlaySearch:
+		lines, listY = m.searchLines(inner)
+	default:
+		if ov.hasInput() {
 			ov.input.SetWidth(inner - 2)
 			lines = append(lines, ov.input.View())
 		}
-		rows, start := m.overlayRows(inner)
+		rows, start := m.overlayRows(inner, m.h-10)
 		listY = len(lines) + 1 - start // 1 for the border
 		lines = append(lines, rows...)
 		switch ov.kind {
@@ -775,16 +788,6 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 	x = (m.w - lipgloss.Width(box)) / 2
 	y = max((m.h-lipgloss.Height(box))/3, 1)
 	return box, x, y, listY
-}
-
-// searchBand returns the first line of the search, inner columns wide.
-// It has the input, and the chips at the right end.
-func (o *overlay) searchBand(inner int) string {
-	chips := o.chips()
-	o.input.SetWidth(max(inner-lipgloss.Width(chips)-4, 1))
-	in := o.input.View()
-	pad := max(inner-lipgloss.Width(in)-lipgloss.Width(chips), 1)
-	return truncate(in+strings.Repeat(" ", pad)+chips, inner)
 }
 
 // quitHint returns the keys of the prompt before a quit, as the footer
@@ -811,12 +814,13 @@ func (m *model) listHint() string {
 		k.Delete.Help().Key)
 }
 
-// overlayRows renders the rows of the list of the overlay that fit the
-// screen, inner columns wide. start is the index of the first row.
-func (m *model) overlayRows(inner int) (rows []string, start int) {
+// overlayRows renders at most limit rows of the list of the overlay,
+// inner columns wide. start is the index of the first row.
+func (m *model) overlayRows(inner, limit int) (rows []string, start int) {
 	ov := m.overlay
-	maxRows := min(len(ov.shown), max(m.h-10, 1))
+	maxRows := min(len(ov.shown), max(limit, 1))
 	start = max(0, ov.cur-maxRows+1)
+	ov.rowsTo = start + maxRows
 	for i := start; i < len(ov.shown) && i < start+maxRows; i++ {
 		it := ov.items[ov.shown[i]]
 		if !ov.pickable(i) {

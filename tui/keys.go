@@ -119,20 +119,24 @@ type overlayKeyMap struct {
 
 	// ListDown and ListUp work in the agent picker.
 	ListDown, ListUp key.Binding
-	// Flip switches the mode of the search.
-	Flip key.Binding
+	// Flip switches the mode of the search. PreviewUp and PreviewDown
+	// scroll the preview of the search.
+	Flip, PreviewUp, PreviewDown key.Binding
 }
 
 // overlayKeys has the keys of the overlays. The settings do not change
 // these keys.
 var overlayKeys = overlayKeyMap{
-	Choose:   key.NewBinding(key.WithKeys("enter")),
-	Close:    key.NewBinding(key.WithKeys("esc")),
-	Up:       key.NewBinding(key.WithKeys("up", "ctrl+p", "ctrl+k")),
-	Down:     key.NewBinding(key.WithKeys("down", "ctrl+n", "ctrl+j")),
-	Flip:     key.NewBinding(key.WithKeys("tab")),
-	ListDown: key.NewBinding(key.WithKeys("j")),
-	ListUp:   key.NewBinding(key.WithKeys("k")),
+	Choose: key.NewBinding(key.WithKeys("enter")),
+	Close:  key.NewBinding(key.WithKeys("esc")),
+	Up:     key.NewBinding(key.WithKeys("up", "ctrl+p", "ctrl+k")),
+	Down:   key.NewBinding(key.WithKeys("down", "ctrl+n", "ctrl+j")),
+	Flip:   key.NewBinding(key.WithKeys("tab")),
+	// The keys of the search are the same as in herdr-reviewr.
+	PreviewUp:   key.NewBinding(key.WithKeys("pgup")),
+	PreviewDown: key.NewBinding(key.WithKeys("pgdown")),
+	ListDown:    key.NewBinding(key.WithKeys("j")),
+	ListUp:      key.NewBinding(key.WithKeys("k")),
 }
 
 // binding is an action of the keybindings setting and the key binding that
