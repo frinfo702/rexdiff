@@ -181,9 +181,14 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 		fmt.Fprint(stderr, usage)
 		fs.PrintDefaults()
 	}
-	err := fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return f, err
+	}
+	if fs.NArg() > 1 {
+		return f, fmt.Errorf("unknown argument %s (flags go before the repo)", fs.Arg(1))
+	}
 	f.repo = fs.Arg(0)
-	return f, err
+	return f, nil
 }
 
 // oneOf returns a flag function that sets *p to a value from allowed.

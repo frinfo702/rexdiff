@@ -19,8 +19,14 @@ stderr '^rexdiff: config: invalid value for layout: expected one of unified, spl
 exec rexdiff -check -config '{"layout": "split"}'
 ! stderr .
 
-# rexdiff does not start with bad settings.
+# Flags go before the repo. rexdiff takes one repo.
 exec git init -q repo
+! exec rexdiff repo -wrap=false
+stderr '^rexdiff: unknown argument -wrap=false \(flags go before the repo\)$'
+! exec rexdiff repo other
+stderr '^rexdiff: unknown argument other \(flags go before the repo\)$'
+
+# rexdiff does not start with bad settings.
 ! exec rexdiff -config '{"layuot": "split"}' repo
 stderr '^rexdiff: config: unknown key "layuot"$'
 
