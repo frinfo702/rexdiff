@@ -37,7 +37,8 @@ const (
 // defaultSettings is the top of a new rexdiff.lua.
 const defaultSettings = `-- "rexdiff install" wrote this file. To remove it, run "rexdiff uninstall".
 --
--- These are the settings of rexdiff. The README of rexdiff lists them.
+-- These are the settings of rexdiff. The user guide lists them:
+-- https://github.com/rednafi/rexdiff/blob/master/.doc/user.md#settings
 -- To change a setting, edit it, then run "rex config reload".
 -- Install and upgrades keep this part.
 local settings = {
@@ -328,7 +329,7 @@ func addRequire(path string) error {
 	if err != nil {
 		return err
 	}
-	if slices.ContainsFunc(strings.Split(s, "\n"), isRequire) {
+	if slices.ContainsFunc(slices.Collect(strings.Lines(s)), isRequire) {
 		return nil
 	}
 	if s != "" && !strings.HasSuffix(s, "\n") {
