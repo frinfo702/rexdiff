@@ -307,6 +307,7 @@ type (
 	grepMsg struct {
 		query string
 		hits  []vcs.Match
+		err   error
 	}
 	prMsg struct {
 		pr  *vcs.PullRequest
@@ -447,15 +448,26 @@ func (m *model) reloadIfChanged() {
 // loadFiles reads the list of all files if the model does not have it.
 func (m *model) loadFiles() {
 	if m.allFiles == nil {
-		m.allFiles, _ = m.repo.Files(m.ctx) // an error shows an empty list
+		m.readFiles()
 	}
 }
 
 // reloadFiles reads the list of all files again.
 func (m *model) reloadFiles() {
-	m.allFiles, _ = m.repo.Files(m.ctx) // an error shows an empty list
+	m.readFiles()
 	m.allSel = min(m.allSel, max(len(m.allFiles)-1, 0))
 	m.refreshViewer()
+}
+
+// readFiles reads the list of all files. On an error, it keeps the old
+// list and shows the error.
+func (m *model) readFiles() {
+	files, err := m.repo.Files(m.ctx)
+	if err != nil {
+		m.flash("refresh failed: " + err.Error())
+		return
+	}
+	m.allFiles = files
 }
 
 // Update handles a message. After an install, Update restarts the program
@@ -556,9 +568,16 @@ func (m *model) onKey(msg tea.KeyPressMsg) tea.Cmd {
 // still shows their query.
 func (m *model) onGrep(msg grepMsg) {
 	ov := m.overlay
-	if ov != nil && ov.kind == overlaySearch && ov.input.Value() == msg.query {
-		ov.setSearch(m.allFiles, msg.hits)
+	if ov == nil || ov.kind != overlaySearch || ov.input.Value() != msg.query {
+		return
 	}
+	if msg.err != nil {
+		// Show only the error, and no old results under it.
+		ov.setItems(nil)
+		ov.err = msg.err.Error()
+		return
+	}
+	ov.setSearch(m.allFiles, msg.hits)
 }
 
 // onPR shows the pull request that loadPR reads.

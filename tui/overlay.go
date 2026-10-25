@@ -62,6 +62,7 @@ type overlay struct {
 	cur    int
 	mark   int // the commit picker: the item at the start of the range, or -1
 	agents []rex.Agent
+	err    string // the search: the error of the code search
 }
 
 // newOverlay returns an overlay. If its kind has an input, the input has
@@ -153,7 +154,7 @@ func (o *overlay) setSearch(files []vcs.Entry, hits []vcs.Match) {
 			line:   h.Line,
 		})
 	}
-	o.cur = 0
+	o.cur, o.err = 0, ""
 	o.setItems(items)
 }
 
@@ -226,7 +227,11 @@ func (m *model) openAgentPicker(agents []rex.Agent) {
 // current base has a tag.
 func (m *model) openBasePicker() {
 	ov := newOverlay(overlayBase, "base branch for the branch scope (or type any ref)")
-	branches, _ := m.repo.Branches(m.ctx) // an error shows an empty picker
+	branches, err := m.repo.Branches(m.ctx)
+	if err != nil {
+		m.flash(err.Error())
+		return
+	}
 	var items []pickItem
 	for _, b := range branches {
 		tag := ""
@@ -243,8 +248,11 @@ func (m *model) openBasePicker() {
 // the commits scope. It lists the newest commits first.
 func (m *model) openCommitPicker() {
 	ov := newOverlay(overlayCommits, "pick a commit, or space to start a range")
-	// An error shows an empty picker.
-	commits, _ := m.repo.Commits(m.ctx, maxCommits)
+	commits, err := m.repo.Commits(m.ctx, maxCommits)
+	if err != nil {
+		m.flash(err.Error())
+		return
+	}
 	var items []pickItem
 	for _, c := range commits {
 		items = append(items, pickItem{
@@ -372,8 +380,8 @@ func (m *model) inputChanged() tea.Cmd {
 		}
 		repo, ctx := m.repo, m.ctx
 		return func() tea.Msg {
-			hits, _ := repo.Grep(ctx, q, maxCodeHits)
-			return grepMsg{q, hits}
+			hits, err := repo.Grep(ctx, q, maxCodeHits)
+			return grepMsg{q, hits, err}
 		}
 	case overlayBase, overlayCommits, overlayComments, overlayAgents:
 		ov.filter()
@@ -523,7 +531,10 @@ func (m *model) overlayRows(inner int) (rows []string, start int) {
 		}
 		rows = append(rows, row)
 	}
-	if len(ov.shown) == 0 && ov.kind != overlayGoto && ov.kind != overlayFind {
+	switch {
+	case ov.err != "":
+		rows = append(rows, delStyle.Render("  "+termtext.Quote(ov.err)))
+	case len(ov.shown) == 0 && ov.kind != overlayGoto && ov.kind != overlayFind:
 		rows = append(rows, dimStyle.Render("  nothing matches"))
 	}
 	return rows, start

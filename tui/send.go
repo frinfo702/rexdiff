@@ -89,6 +89,7 @@ func (m *model) startTurn(block, app string) {
 	}
 	tree, err := m.repo.Snapshot(m.ctx)
 	if err != nil {
+		m.log.Warn("turn snapshot failed", "err", err)
 		return
 	}
 	m.turn = &turnState{
