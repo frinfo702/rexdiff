@@ -590,7 +590,7 @@ func TestCommitsLikeHerdr(t *testing.T) {
 		return s
 	}
 
-	since, err := r.ForkPoint(ctx, "main")
+	since, err := r.MergeBaseCommit(ctx, "main")
 	if err != nil {
 		t.Fatal(err)
 	}

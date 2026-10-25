@@ -339,7 +339,7 @@ func TestPullRequestBadJSON(t *testing.T) {
 		want      error // nil for an error of any type
 		ok        bool  // true if PullRequest must not fail
 	}{
-		{name: "empty object", out: `{}`, want: vcs.ErrNotFound},
+		{name: "empty object", out: `{}`, want: vcs.ErrNoPullRequest},
 		{name: "not JSON", out: `warning: no pull request`},
 		{name: "huge number", out: `{"title": "T", "number": 1e30}`},
 		{

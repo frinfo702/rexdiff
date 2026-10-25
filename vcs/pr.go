@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	// ErrNotFound means that the branch has no pull request.
-	ErrNotFound = errors.New("no pull request for this branch")
+	// ErrNoPullRequest means that the branch has no pull request.
+	ErrNoPullRequest = errors.New("no pull request for this branch")
 
 	errNoRemote    = errors.New("no git remote")
 	errUnsupported = errors.New("the remote is not on GitHub, GitLab, or Azure DevOps")
@@ -120,7 +120,7 @@ func (r *Repo) PullRequest(ctx context.Context, h Hosts) (*PullRequest, error) {
 		return nil, err
 	}
 	if pr.Title == "" {
-		return nil, ErrNotFound
+		return nil, ErrNoPullRequest
 	}
 	cleanPR(pr)
 	return pr, nil
@@ -409,7 +409,7 @@ func (r *Repo) azure(ctx context.Context) (*PullRequest, error) {
 		return nil, err
 	}
 	if len(v) == 0 {
-		return nil, ErrNotFound
+		return nil, ErrNoPullRequest
 	}
 	p := v[0]
 	return &PullRequest{

@@ -184,7 +184,7 @@ func TestPullRequestErrors(t *testing.T) {
 			branch: "feat",
 			msg:    "the remote is not on GitHub, GitLab, or Azure DevOps",
 		},
-		{remote: azure, branch: "none", want: vcs.ErrNotFound},
+		{remote: azure, branch: "none", want: vcs.ErrNoPullRequest},
 		{
 			remote: azure,
 			branch: "other",

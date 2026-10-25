@@ -143,7 +143,7 @@ func (m *model) renderPR() {
 		return
 	case pr == nil:
 		if !m.pr.loading {
-			p.note = vcs.ErrNotFound.Error()
+			p.note = vcs.ErrNoPullRequest.Error()
 		}
 		p.set(nil, nil)
 		return

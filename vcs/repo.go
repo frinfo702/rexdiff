@@ -188,17 +188,19 @@ func (r *Repo) Parent(ctx context.Context, rev string) (string, error) {
 	return r.Tree(ctx, first)
 }
 
-// MergeBase returns the tree of the best common ancestor of base and HEAD.
+// MergeBase returns the tree of the commit that [Repo.MergeBaseCommit]
+// returns.
 func (r *Repo) MergeBase(ctx context.Context, base string) (string, error) {
-	c, err := r.ForkPoint(ctx, base)
+	c, err := r.MergeBaseCommit(ctx, base)
 	if err != nil {
 		return "", err
 	}
 	return r.Tree(ctx, c)
 }
 
-// ForkPoint returns the best common ancestor commit of base and HEAD.
-func (r *Repo) ForkPoint(ctx context.Context, base string) (string, error) {
+// MergeBaseCommit returns the best common ancestor commit of base and
+// HEAD, as git merge-base finds it.
+func (r *Repo) MergeBaseCommit(ctx context.Context, base string) (string, error) {
 	out, err := r.run(ctx, nil, "merge-base", "--end-of-options", base, "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("no merge base with %s: %w", base, err)

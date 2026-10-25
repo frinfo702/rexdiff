@@ -374,7 +374,7 @@ func (m *model) openCommitPicker() {
 	if m.tab == tabPR {
 		return
 	}
-	since, err := m.repo.ForkPoint(m.ctx, m.base)
+	since, err := m.repo.MergeBaseCommit(m.ctx, m.base)
 	if head, herr := m.repo.Resolve(m.ctx, "HEAD"); err != nil || herr != nil || since == head {
 		since = ""
 	}
