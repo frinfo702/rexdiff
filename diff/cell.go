@@ -2,6 +2,7 @@ package diff
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -88,20 +89,23 @@ func expand(line string) string {
 	return diffview.Escape(strings.ReplaceAll(line, "\t", strings.Repeat(" ", tabWidth)))
 }
 
-// runeAt returns the index of the rune of line that covers column col.
-// It returns the number of runes if col is past the end.
+// runeAt returns the index of the first rune of the grapheme cluster of
+// line that covers column col. It returns the number of runes if col is
+// past the end.
 func runeAt(line string, col int) int {
 	i, c := 0, 0
-	for _, r := range line {
+	for line != "" {
+		g, _ := ansi.FirstGraphemeCluster(line, ansi.GraphemeWidth)
 		w := tabWidth
-		if r != '\t' {
-			w = ansi.StringWidth(diffview.Escape(string(r)))
+		if g != "\t" {
+			w = ansi.StringWidth(diffview.Escape(g))
 		}
 		if col < c+w {
 			return i
 		}
 		c += w
-		i++
+		i += utf8.RuneCountInString(g)
+		line = line[len(g):]
 	}
 	return i
 }

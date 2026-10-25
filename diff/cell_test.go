@@ -152,3 +152,34 @@ func TestCellMatchesScreen(t *testing.T) {
 		}
 	}
 }
+
+// TestCellGraphemes checks Cell after grapheme clusters of more than one
+// code point, in a cut line and in a wrapped line.
+func TestCellGraphemes(t *testing.T) {
+	for _, g := range []string{"❤️", "👨‍👩‍👧", "🇺🇸"} {
+		line := strings.Repeat(g+"x ", 20)
+		src := []rune(line)
+		for _, o := range []diff.Options{{Width: 200}, {Width: 40, Wrap: true}} {
+			d := diff.RenderFile("x.txt", line+"\n", o)
+			found := 0
+			for i, l := range d.Lines {
+				plain := ansi.Strip(l)
+				for k := range len(plain) {
+					if plain[k] != 'x' {
+						continue
+					}
+					x := ansi.StringWidth(plain[:k])
+					_, _, char, ok := d.Cell(i, x)
+					if !ok || char >= len(src) || src[char] != 'x' {
+						t.Errorf("%q wrap %v: Cell(%d, %d) = %d, %v; want the index of an x",
+							g, o.Wrap, i, x, char, ok)
+					}
+					found++
+				}
+			}
+			if found != 20 {
+				t.Errorf("%q wrap %v: %d x cells, want 20", g, o.Wrap, found)
+			}
+		}
+	}
+}
