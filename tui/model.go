@@ -498,7 +498,7 @@ func (m *model) loadChanges(force bool) {
 	if err == nil && note == "" && same {
 		return
 	}
-	if err != nil && m.shownTrees != "" {
+	if err != nil && len(m.files) > 0 {
 		m.flash("refresh failed: " + err.Error())
 		return
 	}
@@ -585,7 +585,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.phase != phaseInstalled {
 		return m, cmd
 	}
-	// A tick only starts the next tick, so it is no work.
+	// The work of a tick runs again in the new process, so it is not
+	// pending work.
 	pending := cmd
 	if _, ok := msg.(tickMsg); ok {
 		pending = nil
@@ -832,7 +833,7 @@ func (m *model) changed() vcs.Change {
 		m.polled = now
 		return all
 	}
-	m.watch.Show(m.shownIgnored())
+	m.watch.Show(m.shownPaths())
 	ch, err := m.watch.Changed(m.ctx)
 	m.log.Debug("watch", "took", m.now().Sub(now), "files", ch.Files, "refs", ch.Refs)
 	if err != nil {

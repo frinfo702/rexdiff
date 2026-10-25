@@ -21,14 +21,17 @@ var root string
 // Git reads no global or system config, so no hooksPath, signing,
 // fsmonitor, or diff setting applies. A new repository gets no hooks from
 // a template. The variables that point git to another repository, or that
-// add config, are unset. The commits have a fixed author.
+// add config, are unset. HOME and XDG_CONFIG_HOME are a new directory, so
+// no ignore or attributes file of the user applies. The commits have a
+// fixed author.
 func Main(m *testing.M) {
 	dir, err := os.MkdirTemp("", "testgit")
 	if err != nil {
 		panic(err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
-	for _, kv := range Env() {
+	env := append(Env(), "HOME="+dir, "XDG_CONFIG_HOME="+dir)
+	for _, kv := range env {
 		k, v, _ := strings.Cut(kv, "=")
 		if err := os.Setenv(k, v); err != nil {
 			panic(err)

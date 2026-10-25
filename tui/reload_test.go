@@ -44,11 +44,18 @@ func TestReloadErrorKeepsFiles(t *testing.T) {
 	}
 }
 
-// TestReloadErrorNote checks that a failed first load shows the error in
-// place of the files.
+// TestReloadErrorNote checks that a failed load shows the error in place
+// of the files when no files show.
 func TestReloadErrorNote(t *testing.T) {
-	m, _ := newTestModel(t)
+	m, dir := newTestModel(t)
+	testgit.Git(t, dir, "commit", "-qam", "all")
+	if m = press(t, m, "r"); len(m.files) != 0 {
+		t.Fatalf("after a commit of all changes: %d files, want none", len(m.files))
+	}
 	noGit(t)
+	if m = press(t, m, "r"); m.changes.note == "" || m.changes.note == "no changes" {
+		t.Errorf("a failed reload over no changes: note %q, want the error", m.changes.note)
+	}
 	m = press(t, m, "b") // another scope has nothing loaded
 	if m.files != nil || m.changes.note == "" {
 		t.Errorf("a failed first load: %d files, note %q; want none, the error", len(m.files), m.changes.note)

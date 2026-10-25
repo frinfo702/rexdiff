@@ -258,8 +258,16 @@ func readMatches(r *bufio.Reader, limit int) (ms []Match, more bool) {
 		if err != nil {
 			return ms, false
 		}
-		num, _ := r.ReadString(0)
-		text, _ := r.ReadString('\n')
+		// A cut at the deadline can end the output in a record. Such a
+		// record is not a match.
+		num, err := r.ReadString(0)
+		if err != nil {
+			return ms, true
+		}
+		text, err := r.ReadString('\n')
+		if err != nil {
+			return ms, true
+		}
 		n, _ := strconv.Atoi(strings.TrimSuffix(num, "\x00"))
 		ms = append(ms, Match{
 			Path: strings.TrimSuffix(path, "\x00"),

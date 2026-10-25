@@ -11,10 +11,10 @@ on:
 permissions:
   contents: read
 
-# A new run of the same event and ref cancels the run before it.
+# On a pull request, a new run cancels the run before it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Rex runs only on macOS, so rexdiff is tested there.

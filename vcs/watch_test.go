@@ -170,6 +170,15 @@ func TestWatcherShown(t *testing.T) {
 	if got := changed(t, w); !got.Files {
 		t.Errorf("an edit of a shown file: %+v, want Files", got)
 	}
+	if err := os.Symlink("ignored.txt", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	w.Show([]string{"link"})
+	changed(t, w)
+	testgit.WriteFile(t, dir, "ignored.txt", "one more edit\n")
+	if got := changed(t, w); !got.Files {
+		t.Errorf("an edit of the target of a shown link: %+v, want Files", got)
+	}
 }
 
 // TestWatcherNested checks that a commit in a nested repository or in a

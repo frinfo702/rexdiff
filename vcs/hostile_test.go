@@ -387,8 +387,8 @@ func TestPullRequestBadJSON(t *testing.T) {
 func TestGrepDeadline(t *testing.T) {
 	r, _ := newRepo(t)
 	bin := t.TempDir()
-	// The fake git prints one match, then hangs.
-	testgit.Script(t, bin, "git", "printf 'a.go\\0001\\000hit\\n'\nexec /bin/sleep 10\n")
+	// The fake git prints one match and a cut record, then hangs.
+	testgit.Script(t, bin, "git", "printf 'a.go\\0001\\000hit\\nb.go\\00012'\nexec /bin/sleep 10\n")
 	t.Setenv("PATH", bin)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)

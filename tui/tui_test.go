@@ -482,7 +482,7 @@ func TestMissingHead(t *testing.T) {
 		!strings.Contains(m.status, "unknown revision HEAD") {
 		t.Errorf("files %v, status %q; want [a.go] and the error", got, m.status)
 	}
-	m.shownTrees = "" // nothing shows
+	m.files = nil // nothing shows
 	m.reload()
 	if v := view(m); len(m.files) > 0 || !strings.Contains(v, "unknown revision HEAD") {
 		t.Errorf("files %v, want none and the error:\n%s", paths(m), v)

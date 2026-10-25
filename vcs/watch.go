@@ -2,6 +2,7 @@ package vcs
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -63,11 +64,11 @@ func (r *Repo) Watch(ctx context.Context) (*Watcher, error) {
 // A clock that does not move turns off the pause.
 func (w *Watcher) SetClock(now func() time.Time) { w.now = now }
 
-// Show sets the ignored paths that show: the directories that the user
-// expands and the open file. paths are relative to the root. Git does not
-// list ignored paths, thus Changed also reports an edit of a shown file,
-// and a file that a shown directory gets or loses. A new set reports no
-// change.
+// Show sets the paths that show and that git does not list: the ignored
+// directories that the user expands, and the open file, which can be
+// ignored or a link. paths are relative to the root. Changed also reports
+// an edit of a shown file or of the target of a shown link, and a file that
+// a shown directory gets or loses. A new set reports no change.
 func (w *Watcher) Show(paths []string) {
 	abs := make([]string, len(paths))
 	for i, p := range paths {
@@ -256,12 +257,12 @@ func (w *Watcher) sumIndex() uint64 {
 }
 
 // sumPaths returns the sum of the path, the size, the modification time,
-// the mode, and the inode of each file. It does not follow a symbolic
-// link.
+// the mode, and the inode of each file. It follows a symbolic link, so an
+// edit of the target changes the sum.
 func sumPaths(paths []string) uint64 {
 	s := newSum()
 	for _, p := range paths {
-		s.stat(p)
+		s.stat(p, os.Stat)
 	}
 	return uint64(s)
 }
@@ -272,7 +273,7 @@ func sumPaths(paths []string) uint64 {
 func sumFiles(paths []string) uint64 {
 	s := newSum()
 	for _, p := range paths {
-		if s.stat(p) {
+		if s.stat(p, os.Lstat) {
 			s.nested(p)
 		}
 	}
@@ -307,11 +308,11 @@ func (s *sum) int(v int64) {
 	s.num(uint64(v)) //nolint:gosec // a hash keeps all bits, so a wrap is fine
 }
 
-// stat adds the path and the file status of p. A missing file adds a
-// marker. stat reports whether p is a directory.
-func (s *sum) stat(p string) (isDir bool) {
+// stat adds the path and the file status that stat gives for p. A missing
+// file adds a marker. stat reports whether p is a directory.
+func (s *sum) stat(p string, stat func(string) (fs.FileInfo, error)) (isDir bool) {
 	s.str(p)
-	fi, err := os.Lstat(p)
+	fi, err := stat(p)
 	if err != nil {
 		s.num(0)
 		return false
