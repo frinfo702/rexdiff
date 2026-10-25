@@ -1,6 +1,7 @@
 package vcs_test
 
 import (
+	"cmp"
 	"errors"
 	"os"
 	"os/exec"
@@ -194,22 +195,25 @@ func TestPullRequestErrors(t *testing.T) {
 		{remote: "https://github.com/o/r", branch: "feat", msg: "gh isn't installed"},
 	}
 	for _, tt := range tests {
-		r, dir := newRepo(t)
-		if tt.remote != "" {
-			testgit.Git(t, dir, "remote", "add", "origin", tt.remote)
-		}
-		if tt.branch != "feat" {
-			testgit.Git(t, dir, "checkout", "-qb", tt.branch)
-		}
-		_, err := r.PullRequest(t.Context(), tt.hosts)
-		switch {
-		case err == nil:
-			t.Errorf("PullRequest(%q): no error, want an error", tt.remote)
-		case tt.want != nil && !errors.Is(err, tt.want):
-			t.Errorf("PullRequest(%q): err = %v, want %v", tt.remote, err, tt.want)
-		case tt.msg != "" && err.Error() != tt.msg:
-			t.Errorf("PullRequest(%q): err = %q, want %q", tt.remote, err, tt.msg)
-		}
+		// Two cases have the same remote, so the name has the branch.
+		t.Run(cmp.Or(tt.remote, "no remote")+" on "+tt.branch, func(t *testing.T) {
+			r, dir := newRepo(t)
+			if tt.remote != "" {
+				testgit.Git(t, dir, "remote", "add", "origin", tt.remote)
+			}
+			if tt.branch != "feat" {
+				testgit.Git(t, dir, "checkout", "-qb", tt.branch)
+			}
+			_, err := r.PullRequest(t.Context(), tt.hosts)
+			switch {
+			case err == nil:
+				t.Error("PullRequest: no error, want an error")
+			case tt.want != nil && !errors.Is(err, tt.want):
+				t.Errorf("PullRequest: err = %v, want %v", err, tt.want)
+			case tt.msg != "" && err.Error() != tt.msg:
+				t.Errorf("PullRequest: err = %q, want %q", err, tt.msg)
+			}
+		})
 	}
 }
 

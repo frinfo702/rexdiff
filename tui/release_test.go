@@ -352,17 +352,21 @@ func TestRunChecksOptions(t *testing.T) {
 	t.Parallel()
 	m, _ := newTestModel(t)
 	tests := []struct {
+		name string
 		o    Options
 		want string
 	}{
-		{Options{}, "no repository"},
-		{Options{Repo: m.repo, Layout: "sideways"}, `invalid value for layout: expected one of unified, split, not "sideways"`},
-		{Options{Repo: m.repo, Scope: "commits"}, `invalid value for scope: expected one of uncommitted, branch, last-turn, not "commits"`},
+		{"no repository", Options{}, "no repository"},
+		{"layout", Options{Repo: m.repo, Layout: "sideways"}, `invalid value for layout: expected one of unified, split, not "sideways"`},
+		{"scope", Options{Repo: m.repo, Scope: "commits"}, `invalid value for scope: expected one of uncommitted, branch, last-turn, not "commits"`},
 	}
 	for _, tc := range tests {
-		if _, err := Run(t.Context(), tc.o); err == nil || err.Error() != tc.want {
-			t.Errorf("Run(%+v) error = %v, want %s", tc.o, err, tc.want)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := Run(t.Context(), tc.o); err == nil || err.Error() != tc.want {
+				t.Errorf("Run error = %v, want %s", err, tc.want)
+			}
+		})
 	}
 }
 
