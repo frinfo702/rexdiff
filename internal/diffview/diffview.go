@@ -74,15 +74,22 @@ type View struct {
 	// The View keeps the lexer, because to match a file name is slow.
 	cachedLexer chroma.Lexer
 
-	cache *Cache // the highlighted lines
+	cache *Cache
 }
 
 // Cache keeps highlighted lines, so that chroma highlights each line once.
-// Views that share a Cache share the work. The zero value is an empty
-// Cache. A Cache is not safe for concurrent use.
+// Views that share a Cache reuse its lines and its last lexer. The zero
+// value is an empty Cache. A Cache is not safe for concurrent use.
 type Cache struct {
 	lines map[syntaxKey]string
 	size  int // the bytes of the lines and their sources
+
+	// lexer is the last lexer, because to select a lexer from the content
+	// is slow.
+	lexer struct {
+		path, content string
+		l             chroma.Lexer
+	}
 }
 
 // maxCacheSize limits the memory of a Cache, in bytes. A full Cache
@@ -91,7 +98,7 @@ const maxCacheSize = 32 << 20
 
 // put keeps the highlighted line s for key k.
 func (c *Cache) put(k syntaxKey, s string) {
-	// A source is part of the whole file. A copy lets the file go.
+	// The source is part of the file. A copy does not keep the file.
 	k.source = strings.Clone(k.source)
 	n := len(k.source) + len(s)
 	if c.lines == nil || c.size+n > maxCacheSize {
@@ -110,8 +117,8 @@ func New() *View {
 	}
 }
 
-// Cache sets the cache of the highlighted lines. A nil c gives the View a
-// new Cache.
+// Cache makes v keep its highlighted lines in c. A nil c gives v a new
+// Cache.
 func (v *View) Cache(c *Cache) *View {
 	if c == nil {
 		c = &Cache{}
@@ -590,8 +597,8 @@ type syntaxKey struct {
 	r, g, b, a    uint32
 }
 
-// newSyntaxKey returns the cache key of source, highlighted with the lexer
-// of that name on the background bgColor.
+// newSyntaxKey returns the key of source for the lexer named lexer, on
+// bgColor.
 func newSyntaxKey(lexer, source string, bgColor color.Color) syntaxKey {
 	k := syntaxKey{lexer: lexer, source: source}
 	if _, none := bgColor.(lipgloss.NoColor); bgColor == nil || none {
@@ -605,7 +612,12 @@ func newSyntaxKey(lexer, source string, bgColor color.Color) syntaxKey {
 // chromaLexer returns the lexer of the old file, and keeps it.
 func (v *View) chromaLexer() chroma.Lexer {
 	if v.cachedLexer == nil {
-		v.cachedLexer = Lexer(v.before.path, v.before.content)
+		lx := &v.cache.lexer
+		if lx.l == nil || lx.path != v.before.path || lx.content != v.before.content {
+			lx.path, lx.content = v.before.path, v.before.content
+			lx.l = Lexer(lx.path, lx.content)
+		}
+		v.cachedLexer = lx.l
 	}
 	return v.cachedLexer
 }

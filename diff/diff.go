@@ -83,14 +83,13 @@ type Options struct {
 	Signs bool
 	// Theme sets the colours.
 	Theme Theme
-	// Cache keeps the syntax colours between renders. If Cache is nil, the
-	// render keeps nothing.
+	// Cache makes a new render of the same lines fast. Nil turns it off.
 	Cache *Cache
 }
 
-// Cache keeps the syntax colours of the lines, so that a new render of the
-// same lines is fast, for example after a sideways scroll. The zero value
-// is an empty Cache. A Cache is not safe for concurrent use.
+// Cache keeps the syntax colours of the lines between renders, for example
+// for a sideways scroll. The zero value is an empty Cache. A Cache is not
+// safe for concurrent use.
 type Cache struct {
 	lines diffview.Cache                  // the lines of Render
 	file  struct{ path, src, out string } // the last file of RenderFile

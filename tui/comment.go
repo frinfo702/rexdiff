@@ -150,9 +150,9 @@ func (m *model) closeComment() {
 	m.editor.Blur()
 }
 
-// newLineNear returns the new line of row i. A row with no new line, for
-// example a deleted line, gives the first new line below it, else the last
-// new line above it, else 1.
+// newLineNear returns the new line of row i. A row with no new line, such
+// as a deleted line, gives the next new line below it. If there is none, it
+// gives the last new line above it. If there is none, it gives 1.
 func newLineNear(rows []diff.Row, i int) int {
 	for _, r := range rows[i:] {
 		if r.New > 0 {

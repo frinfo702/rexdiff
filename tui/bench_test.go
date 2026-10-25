@@ -59,8 +59,7 @@ func BenchmarkScroll(b *testing.B) {
 				}
 			case "file":
 				m.setTab(tabFiles)
-				m.allSel = slices.IndexFunc(m.allFiles, func(e vcs.Entry) bool { return e.Path == "big.go" })
-				m.renderViewer()
+				m.pickFile(slices.IndexFunc(m.allFiles, func(e vcs.Entry) bool { return e.Path == "big.go" }))
 			}
 			right := tea.KeyPressMsg{Code: tea.KeyRight}
 			left := tea.KeyPressMsg{Code: tea.KeyLeft}

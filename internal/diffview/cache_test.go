@@ -3,6 +3,8 @@ package diffview
 import (
 	"strings"
 	"testing"
+
+	"github.com/alecthomas/chroma/v2/lexers"
 )
 
 // TestCacheShared checks that a View uses the lines that another View
@@ -49,5 +51,23 @@ func TestCacheLimit(t *testing.T) {
 func TestCacheNil(t *testing.T) {
 	if out, _, _ := New().Cache(nil).Before("a.go", "x\n").After("a.go", "y\n").Render(); out == "" {
 		t.Error("the render is empty")
+	}
+}
+
+// TestCacheLexer checks that a View uses the last lexer of the Cache for
+// the same file, and selects a new lexer for a changed file.
+func TestCacheLexer(t *testing.T) {
+	c := &Cache{}
+	lexer := func(content string) string {
+		v := New().Cache(c).Before("a.zzq", content)
+		return v.chromaLexer().Config().Name
+	}
+	lexer("x\n")
+	c.lexer.l = lexers.Get("python")
+	if got := lexer("x\n"); got != "Python" {
+		t.Errorf("the same file has the lexer %q, want the kept Python", got)
+	}
+	if got := lexer("y\n"); got == "Python" {
+		t.Error("a changed file has the kept lexer")
 	}
 }

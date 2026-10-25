@@ -37,6 +37,7 @@
     long runs of equal lines, as in herdr-reviewr; `Expand` shows a fold, and `Row.Fold` tells
     which lines a hunk header hides
   - the syntax cache key tells "no background" from black, so a black tint does not
-    leak onto equal lines, and it has the lexer name
+    leak onto equal lines
   - the syntax cache is a `Cache` that views can share (`View.Cache`), so that a new
-    render does not highlight the same lines again; a `Cache` of 32 MB empties
+    render does not highlight the same lines again; its key has the lexer name, it keeps
+    the last lexer, and a `Cache` of 32 MB empties
