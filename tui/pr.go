@@ -45,7 +45,7 @@ type prFetch struct {
 // after it, unless the read hangs.
 func (m *model) requestPR(forced bool) tea.Cmd {
 	f := &m.prf
-	f.polled = m.now()
+	f.polled = time.Now()
 	hung := f.inFlight && f.polled.Sub(f.started) >= prHang
 	if !forced && f.inFlight && !hung {
 		f.trailing = true
@@ -63,7 +63,7 @@ func (m *model) loadPR() tea.Cmd {
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
 	f.gen++
-	f.inFlight, f.trailing, f.started, f.cancel = true, false, m.now(), cancel
+	f.inFlight, f.trailing, f.started, f.cancel = true, false, time.Now(), cancel
 	repo, gen := m.repo, f.gen
 	hosts := vcs.Hosts{
 		GitHub: m.cfg.GitHubHost,

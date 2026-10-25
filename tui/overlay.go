@@ -291,7 +291,7 @@ func (m *model) runSearch() tea.Cmd {
 	ov.showSearch()
 	// As in herdr-reviewr, a code search has a time budget. Past it, the
 	// search shows the matches that it finds by then.
-	ctx, cancel := context.WithTimeout(m.ctx, m.grepBudget)
+	ctx, cancel := context.WithTimeout(m.ctx, search.CodeBudget)
 	m.grepCancel = cancel
 	repo := m.repo
 	return func() tea.Msg {

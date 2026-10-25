@@ -17,7 +17,6 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/rednafi/rexdiff/diff"
-	"github.com/rednafi/rexdiff/internal/search"
 	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/internal/turn"
 	"github.com/rednafi/rexdiff/rex"
@@ -178,7 +177,6 @@ type model struct {
 	repo *vcs.Repo
 	rex  *rex.Client // nil outside Rex
 	log  *slog.Logger
-	now  func() time.Time // the clock, which a test can set
 
 	cfg    config
 	keys   keyMap
@@ -279,9 +277,6 @@ type model struct {
 	// session, the last pick first.
 	recent     []string
 	grepCancel context.CancelFunc // stops the code search that runs
-	// grepBudget is the time of a code search, search.CodeBudget. A test
-	// can set a longer time.
-	grepBudget time.Duration
 	find       findState
 	findLines  splitLines // the lines that find searches
 	md         mdRenderer // the last markdown renderer
@@ -308,22 +303,20 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	ta.KeyMap.InsertNewline.SetKeys(defaultKeys().Newline.Keys()...)
 
 	m := model{
-		ctx:        ctx,
-		repo:       o.Repo,
-		rex:        o.Rex,
-		log:        o.Log,
-		now:        time.Now,
-		notice:     o.Notice,
-		updater:    o.Updater,
-		w:          120,
-		h:          40,
-		base:       o.Base,
-		baseFlag:   o.Base != "",
-		wrap:       o.Wrap,
-		editor:     ta,
-		help:       newHelp(),
-		agents:     map[string]*agentState{},
-		grepBudget: search.CodeBudget,
+		ctx:      ctx,
+		repo:     o.Repo,
+		rex:      o.Rex,
+		log:      o.Log,
+		notice:   o.Notice,
+		updater:  o.Updater,
+		w:        120,
+		h:        40,
+		base:     o.Base,
+		baseFlag: o.Base != "",
+		wrap:     o.Wrap,
+		editor:   ta,
+		help:     newHelp(),
+		agents:   map[string]*agentState{},
 	}
 	if m.log == nil {
 		m.log = slog.New(slog.DiscardHandler)
@@ -433,7 +426,7 @@ const flashTime = 4 * time.Second
 // flash shows s in the footer for a short time. The text can come from Rex
 // or from git, so flash quotes it if it has control characters.
 func (m *model) flash(s string) {
-	m.status, m.statusTill = termtext.Quote(s), m.now().Add(flashTime)
+	m.status, m.statusTill = termtext.Quote(s), time.Now().Add(flashTime)
 }
 
 // treeIDs returns the IDs of the two trees that the Changes tab compares
@@ -809,7 +802,7 @@ func (m *model) retry(err error) {
 		m.reloadRetry = retryTimer{}
 		return
 	}
-	m.reloadRetry.fail(m.now())
+	m.reloadRetry.fail(time.Now())
 	m.reloadOwed = true
 }
 
@@ -818,17 +811,15 @@ func (m *model) retry(err error) {
 func (m *model) dropWatch(err error) {
 	m.log.Warn("watch failed", "err", err)
 	m.watch = nil
-	m.watchRetry.fail(m.now())
+	m.watchRetry.fail(time.Now())
 }
 
-// startWatch starts the watcher of the repository. The watcher uses the
-// clock of the model.
+// startWatch starts the watcher of the repository.
 func (m *model) startWatch() error {
 	w, err := m.repo.Watch(m.ctx)
 	if err != nil {
 		return err
 	}
-	w.SetClock(m.now)
 	m.watch, m.watchRetry.at = w, time.Time{}
 	return nil
 }
@@ -838,7 +829,7 @@ func (m *model) startWatch() error {
 // and tells that both change.
 func (m *model) watchChanges() vcs.Change {
 	all := vcs.Change{Files: true, Refs: true}
-	now := m.now()
+	now := time.Now()
 	if m.watch == nil && m.watchRetry.due(now) {
 		if err := m.startWatch(); err != nil {
 			m.dropWatch(err)
@@ -853,7 +844,7 @@ func (m *model) watchChanges() vcs.Change {
 	}
 	m.watch.Show(m.shownPaths())
 	ch, err := m.watch.Changed(m.ctx)
-	m.log.Debug("watch", "took", m.now().Sub(now), "files", ch.Files, "refs", ch.Refs)
+	m.log.Debug("watch", "took", time.Since(now), "files", ch.Files, "refs", ch.Refs)
 	if err != nil {
 		m.dropWatch(err)
 		m.polled = now
@@ -873,9 +864,9 @@ func (m *model) onTick() tea.Cmd {
 	}
 	m.reloadOwed = m.reloadOwed || ch.Files || ch.Refs
 	m.filesOwed = m.filesOwed || ch.Files
-	now := m.now()
+	now := time.Now()
 	m.reloadDue()
-	if m.status != "" && m.now().After(m.statusTill) {
+	if m.status != "" && time.Now().After(m.statusTill) {
 		m.status = ""
 	}
 	var cmds []tea.Cmd
@@ -888,7 +879,7 @@ func (m *model) onTick() tea.Cmd {
 		m.sampleRetry.at = time.Time{} // one list at a time
 		cmds = append(cmds, m.listAgents(agentsMsg{}))
 	}
-	if m.tab == tabPR && m.now().Sub(m.prf.polled) >= prPoll {
+	if m.tab == tabPR && time.Since(m.prf.polled) >= prPoll {
 		cmds = append(cmds, m.requestPR(false))
 	}
 	if m.ticks%colorTicks == 0 { // follow the changes of the terminal theme
@@ -905,11 +896,11 @@ func (m *model) reloadDue() {
 	if m.mode == modeComment {
 		return
 	}
-	now := m.now()
+	now := time.Now()
 	switch {
 	case m.tab == tabChanges && m.reloadOwed && !now.Before(m.reloadAt) && !now.Before(m.reloadRetry.at):
 		m.reloadIfChanged()
-		end := m.now()
+		end := time.Now()
 		m.reloadAt = end.Add(budgetFactor * end.Sub(now))
 	case m.tab == tabFiles && m.filesOwed:
 		m.reloadFiles() // reloadFiles renders the file too

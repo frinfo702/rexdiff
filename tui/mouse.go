@@ -147,7 +147,7 @@ type clickChain struct {
 // countClick adds a press to the chain and returns the count. A press on
 // another cell, or after [clickWindow], starts a new chain.
 func (m *model) countClick(mouse tea.Mouse) int {
-	c, now := m.click, m.now()
+	c, now := m.click, time.Now()
 	n := 1
 	if c.n > 0 && c.x == mouse.X && c.y == mouse.Y && now.Sub(c.at) < clickWindow {
 		n = min(c.n+1, 3)

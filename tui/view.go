@@ -161,7 +161,7 @@ func (m *model) turnLabel() string {
 	if m.turn == nil || m.turn.at.IsZero() {
 		return ""
 	}
-	ago := m.now().Sub(m.turn.at).Round(time.Second)
+	ago := time.Since(m.turn.at).Round(time.Second)
 	app := termtext.Quote(m.turn.app) // the app name comes from the agent
 	if m.turn.running {
 		return noteStyle.Render("● ") + app + dimStyle.Render(" working · "+ago.String())

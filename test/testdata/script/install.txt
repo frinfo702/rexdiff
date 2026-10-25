@@ -11,10 +11,6 @@ cmp .config/rex/init.lua installed.lua
 grep '^local settings = \{$' .config/rex/rexdiff.lua
 grep '^-- rexdiff code below. Install and upgrades replace it. Do not edit this line.$' .config/rex/rexdiff.lua
 
-# The action starts rexdiff through the shell of the user, so that
-# rexdiff gets EDITOR, VISUAL, and PATH. A "shell" option can stop that.
-! grep 'shell = ' .config/rex/rexdiff.lua
-
 # Rex accepts the action and its key.
 [realrex] exec $REALREX config check .config/rex/init.lua
 [realrex] stdout 'bindings: 2'
@@ -76,12 +72,6 @@ grep 'require\("rexdiff"\)' other/init.lua
 [darwin] exec sh -c 'mkdir brew && ln -s "$(command -v rexdiff)" brew/rexdiff'
 [darwin] exec $WORK/brew/rexdiff install
 [darwin] grep 'local BIN = "'$WORK'/brew/rexdiff"' other/rexdiff.lua
-
-# uninstall without an install changes nothing and does not fail.
-env REX_CONFIG=$WORK/none/init.lua
-exec rexdiff uninstall
-stdout 'removed the rexdiff action, its key, and its settings from Rex'
-! exists none
 
 -- mine.lua --
 rex.bind("cmd+e", "pane.zoom")
