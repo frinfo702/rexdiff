@@ -15,7 +15,7 @@ import (
 // side. The index can be past the end of the line, for a cell after the
 // code. ok is false if the cell is not on code, for example on a line
 // number, a mark, or a hunk header.
-func (d *Diff) Cell(row, x int) (s Side, line, char int, ok bool) {
+func (d *Diff) Cell(row, x int) (s Side, line, index int, ok bool) {
 	if row < 0 || row >= len(d.Rows) || d.Rows[row].Kind == KindHunk {
 		return 0, 0, 0, false
 	}

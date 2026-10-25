@@ -95,7 +95,7 @@ func (m *model) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.setScope(ScopeUncommitted)
 	case key.Matches(msg, k.ScopeBranch):
 		m.setScope(ScopeBranch)
-	case key.Matches(msg, k.ScopeTurn):
+	case key.Matches(msg, k.ScopeLastTurn):
 		m.setScope(ScopeLastTurn)
 	case key.Matches(msg, k.ScopeCommits) && m.to == "":
 		m.openCommitPicker()
@@ -165,7 +165,7 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// The wrap key works only on a diff, because rendered markdown
 		// has its own wrap. The sideways scroll works only without wrap.
 		m.wrap = !m.wrap
-		m.changes.xoff, m.viewer.xoff = 0, 0
+		m.changes.xoff, m.filesPane.xoff = 0, 0
 		m.rerender()
 	default:
 		return nil, false
@@ -245,13 +245,13 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		case m.splitAllowed():
 			m.flash("too narrow for split")
 		}
-	case key.Matches(msg, k.NavPosition):
+	case key.Matches(msg, k.FileListPosition):
 		m.moveList()
-	case key.Matches(msg, k.NavHide):
+	case key.Matches(msg, k.FileListHide):
 		m.hideList()
-	case key.Matches(msg, k.NavGrow):
+	case key.Matches(msg, k.FileListGrow):
 		m.resizeList(listStep)
-	case key.Matches(msg, k.NavShrink):
+	case key.Matches(msg, k.FileListShrink):
 		m.resizeList(-listStep)
 	case key.Matches(msg, k.OpenPR):
 		m.openPR()
@@ -409,7 +409,7 @@ func (m *model) expanded(path string, comments []*diff.Comment, f diff.Fold) boo
 // cursor to the first of them. The selection stays on its lines.
 func (m *model) expandFold(f diff.Fold) {
 	p := &m.changes
-	file := m.changedFile()
+	file := m.selectedChange()
 	if file == nil {
 		return
 	}
@@ -457,7 +457,7 @@ func (m *model) pickFile(i int) {
 			return
 		}
 		m.allSel = i
-		m.viewer.toStart()
+		m.filesPane.toStart()
 		m.renderViewer()
 	}
 	m.drag = dragState{}
@@ -487,7 +487,7 @@ func (m *model) stepChange(d int) {
 		return
 	}
 	// A reload can drop the armed file.
-	isArmed := func(f changed) bool { return f.Path == m.armedPath }
+	isArmed := func(f changedFile) bool { return f.Path == m.armedPath }
 	if i := slices.IndexFunc(m.files, isArmed); i >= 0 {
 		target = i
 	}
@@ -577,7 +577,7 @@ func (m *model) jumpToComment(c *diff.Comment) {
 // jumpTo shows path with the cursor on line. It uses the Changes tab if
 // the file has changes, else the Files tab.
 func (m *model) jumpTo(path string, s diff.Side, line int) {
-	inChanges := func(f changed) bool { return f.Path == path }
+	inChanges := func(f changedFile) bool { return f.Path == path }
 	if i := slices.IndexFunc(m.files, inChanges); i >= 0 {
 		m.tab = tabChanges
 		m.revealFile(path)
@@ -603,7 +603,7 @@ func (m *model) jumpToFile(path string, s diff.Side, line int) {
 		m.flash("the removed line is not in the file now")
 		return
 	}
-	cursorToLine(&m.viewer, diff.SideNew, line)
+	cursorToLine(&m.filesPane, diff.SideNew, line)
 }
 
 // cursorToLine puts the cursor of p on the row that shows line on side s.

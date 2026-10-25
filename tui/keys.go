@@ -20,17 +20,17 @@ type keyMap struct {
 	NextHunk, PrevHunk, NextFile, PrevFile, Focus             key.Binding
 
 	// Scopes and tabs.
-	ScopeUncommitted, ScopeBranch, ScopeTurn, ScopeCommits key.Binding
-	BasePick, CommitPick, TabChanges, TabFiles, TabPR      key.Binding
+	ScopeUncommitted, ScopeBranch, ScopeLastTurn, ScopeCommits key.Binding
+	BasePick, CommitPick, TabChanges, TabFiles, TabPR          key.Binding
 
 	// Comments.
 	Select, Comment, Edit, Delete, NextComment, PrevComment key.Binding
 	Comments, Send, Copy                                    key.Binding
 
 	// View and other actions.
-	Search, Find, GotoLine, Rendered, Split, Wrap key.Binding
-	NavPosition, NavHide, NavGrow, NavShrink      key.Binding
-	OpenPR, Refresh, Keys, Quit, QuitDiscard      key.Binding
+	Search, Find, GotoLine, Rendered, Split, Wrap                key.Binding
+	FileListPosition, FileListHide, FileListGrow, FileListShrink key.Binding
+	OpenPR, Refresh, Keys, Quit, QuitDiscard                     key.Binding
 	// Upgrade installs a newer release. It works only while the footer
 	// tells about a newer release.
 	Upgrade key.Binding
@@ -69,7 +69,7 @@ func defaultKeys() keyMap {
 
 		ScopeUncommitted: bind([]string{"u"}, "u", "uncommitted"),
 		ScopeBranch:      bind([]string{"b"}, "b", "branch"),
-		ScopeTurn:        bind([]string{"t"}, "t", "last turn"),
+		ScopeLastTurn:    bind([]string{"t"}, "t", "last turn"),
 		ScopeCommits:     bind([]string{"g"}, "g", "commits"),
 		BasePick:         bind([]string{"B"}, "B", "pick base branch"),
 		CommitPick:       bind([]string{"G"}, "G", "pick commits"),
@@ -87,22 +87,22 @@ func defaultKeys() keyMap {
 		Send:        bind([]string{"s", "S"}, "s", "send to agent"),
 		Copy:        bind([]string{"y", "Y"}, "y", "copy comments"),
 
-		Search:      bind([]string{"/"}, "/", "search files & code"),
-		Find:        bind([]string{"ctrl+f"}, "ctrl+f", "find in file"),
-		GotoLine:    bind([]string{":"}, ":", "go to line"),
-		Rendered:    bind([]string{"m"}, "m", "rendered markdown"),
-		Split:       bind([]string{"|"}, "|", "side by side"),
-		Wrap:        bind([]string{"w"}, "w", "wrap lines"),
-		NavPosition: bind([]string{"p"}, "p", "move file list"),
-		NavHide:     bind([]string{"z"}, "z", "hide file list"),
-		NavGrow:     bind([]string{"<"}, "</>", "widen/narrow list"),
-		NavShrink:   bind([]string{">"}, ">", "narrow list"),
-		OpenPR:      bind([]string{"o"}, "o", "open PR in browser"),
-		Refresh:     bind([]string{"r"}, "r", "refresh"),
-		Upgrade:     bind([]string{"U"}, "U", "update rexdiff"),
-		Keys:        bind([]string{"?"}, "?", "all keys"),
-		Quit:        bind([]string{"q"}, "q", "quit"),
-		QuitDiscard: bind([]string{"Q"}, "Q", "quit, drop comments"),
+		Search:           bind([]string{"/"}, "/", "search files & code"),
+		Find:             bind([]string{"ctrl+f"}, "ctrl+f", "find in file"),
+		GotoLine:         bind([]string{":"}, ":", "go to line"),
+		Rendered:         bind([]string{"m"}, "m", "rendered markdown"),
+		Split:            bind([]string{"|"}, "|", "side by side"),
+		Wrap:             bind([]string{"w"}, "w", "wrap lines"),
+		FileListPosition: bind([]string{"p"}, "p", "move file list"),
+		FileListHide:     bind([]string{"z"}, "z", "hide file list"),
+		FileListGrow:     bind([]string{"<"}, "</>", "widen/narrow list"),
+		FileListShrink:   bind([]string{">"}, ">", "narrow list"),
+		OpenPR:           bind([]string{"o"}, "o", "open PR in browser"),
+		Refresh:          bind([]string{"r"}, "r", "refresh"),
+		Upgrade:          bind([]string{"U"}, "U", "update rexdiff"),
+		Keys:             bind([]string{"?"}, "?", "all keys"),
+		Quit:             bind([]string{"q"}, "q", "quit"),
+		QuitDiscard:      bind([]string{"Q"}, "Q", "quit, drop comments"),
 
 		Save: bind([]string{"enter"}, "enter", "save"),
 		Newline: bind(
@@ -169,7 +169,7 @@ func (k *keyMap) bindings(c keybindings) []binding {
 		{"focus", c.Focus, &k.Focus},
 		{"scope-uncommitted", c.ScopeUncommitted, &k.ScopeUncommitted},
 		{"scope-branch", c.ScopeBranch, &k.ScopeBranch},
-		{"scope-last-turn", c.ScopeLastTurn, &k.ScopeTurn},
+		{"scope-last-turn", c.ScopeLastTurn, &k.ScopeLastTurn},
 		{"scope-commits", c.ScopeCommits, &k.ScopeCommits},
 		{"base-pick", c.BasePick, &k.BasePick},
 		{"commit-pick", c.CommitPick, &k.CommitPick},
@@ -179,10 +179,10 @@ func (k *keyMap) bindings(c keybindings) []binding {
 		{"wrap", c.Wrap, &k.Wrap},
 		{"rendered", c.Rendered, &k.Rendered},
 		{"split", c.Split, &k.Split},
-		{"navigator-position", c.NavigatorPosition, &k.NavPosition},
-		{"navigator-hide", c.NavigatorHide, &k.NavHide},
-		{"navigator-grow", c.NavigatorGrow, &k.NavGrow},
-		{"navigator-shrink", c.NavigatorShrink, &k.NavShrink},
+		{"navigator-position", c.NavigatorPosition, &k.FileListPosition},
+		{"navigator-hide", c.NavigatorHide, &k.FileListHide},
+		{"navigator-grow", c.NavigatorGrow, &k.FileListGrow},
+		{"navigator-shrink", c.NavigatorShrink, &k.FileListShrink},
 		{"select", c.Select, &k.Select},
 		{"comment", c.Comment, &k.Comment},
 		{"edit", c.Edit, &k.Edit},
@@ -337,14 +337,14 @@ func (h helpKeys) FullHelp() [][]key.Binding {
 		k.Down, k.HalfDown, k.NextHunk, k.NextFile, k.Focus, k.Left, k.GotoLine,
 	}
 	scopes := []key.Binding{
-		k.TabChanges, k.ScopeUncommitted, k.ScopeBranch, k.ScopeTurn, k.ScopeCommits,
+		k.TabChanges, k.ScopeUncommitted, k.ScopeBranch, k.ScopeLastTurn, k.ScopeCommits,
 		k.BasePick, k.CommitPick,
 	}
 	comments := []key.Binding{
 		k.Select, k.Comment, k.Edit, k.Delete, k.NextComment, k.Comments, k.Send, k.Copy,
 	}
 	view := []key.Binding{
-		k.Search, k.Find, k.Rendered, k.Split, k.Wrap, k.NavPosition, k.NavHide, k.NavGrow,
+		k.Search, k.Find, k.Rendered, k.Split, k.Wrap, k.FileListPosition, k.FileListHide, k.FileListGrow,
 	}
 	other := []key.Binding{k.OpenPR, k.Refresh, k.Keys, k.Quit}
 	return [][]key.Binding{move, scopes, comments, view, other}

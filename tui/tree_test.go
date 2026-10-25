@@ -68,7 +68,7 @@ func shownPath(m model) string {
 	if m.tab == tabFiles {
 		return m.allFiles[m.allSel].Path
 	}
-	return m.changedFile().Path
+	return m.selectedChange().Path
 }
 
 // TestTreeKeys checks the cursor, the expand and collapse keys, and the

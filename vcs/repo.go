@@ -154,9 +154,9 @@ func (r *Repo) Tree(ctx context.Context, rev string) (string, error) {
 	return r.Resolve(ctx, rev+"^{tree}")
 }
 
-// Head returns the tree of HEAD. If HEAD is a branch with no commits yet,
+// HeadTree returns the tree of HEAD. If HEAD is a branch with no commits yet,
 // as in a new repository, it returns the empty tree.
-func (r *Repo) Head(ctx context.Context) (string, error) {
+func (r *Repo) HeadTree(ctx context.Context) (string, error) {
 	t, err := r.Tree(ctx, "HEAD")
 	if err == nil {
 		return t, nil
@@ -170,9 +170,9 @@ func (r *Repo) Head(ctx context.Context) (string, error) {
 	return "", err
 }
 
-// Parent returns the tree of the first parent of the commit rev. If rev has
+// ParentTree returns the tree of the first parent of the commit rev. If rev has
 // no parent, it returns the empty tree.
-func (r *Repo) Parent(ctx context.Context, rev string) (string, error) {
+func (r *Repo) ParentTree(ctx context.Context, rev string) (string, error) {
 	c, err := r.Resolve(ctx, rev+"^{commit}")
 	if err != nil {
 		return "", err
@@ -189,9 +189,9 @@ func (r *Repo) Parent(ctx context.Context, rev string) (string, error) {
 	return r.Tree(ctx, first)
 }
 
-// MergeBase returns the tree of the commit that [Repo.MergeBaseCommit]
+// MergeBaseTree returns the tree of the commit that [Repo.MergeBaseCommit]
 // returns.
-func (r *Repo) MergeBase(ctx context.Context, base string) (string, error) {
+func (r *Repo) MergeBaseTree(ctx context.Context, base string) (string, error) {
 	c, err := r.MergeBaseCommit(ctx, base)
 	if err != nil {
 		return "", err
@@ -263,20 +263,20 @@ func (r *Repo) copyIndex(dst string) error {
 	return os.Chtimes(dst, time.Time{}, st.ModTime())
 }
 
-// Status is the type of change to a file. Its value is the letter that git
+// FileStatus is the type of change to a file. Its value is the letter that git
 // uses, for example 'A'.
-type Status byte
+type FileStatus byte
 
 // The values of Status that [Repo.Diff] returns.
 const (
-	StatusAdded    Status = 'A'
-	StatusModified Status = 'M'
-	StatusDeleted  Status = 'D'
-	StatusRenamed  Status = 'R'
+	StatusAdded    FileStatus = 'A'
+	StatusModified FileStatus = 'M'
+	StatusDeleted  FileStatus = 'D'
+	StatusRenamed  FileStatus = 'R'
 
 	// statusTypeChange is a change of type, for example from a file to a
 	// symbolic link. [Repo.Diff] shows it as [StatusModified].
-	statusTypeChange Status = 'T'
+	statusTypeChange FileStatus = 'T'
 )
 
 // File is a file that is different between two trees. Old and New are the
@@ -286,7 +286,7 @@ const (
 type File struct {
 	Path     string
 	From     string // for a rename, the old path
-	Status   Status
+	Status   FileStatus
 	Old, New string
 	// Binary is true if a version of the file has a NUL byte.
 	Binary bool
@@ -318,7 +318,7 @@ func (r *Repo) Diff(ctx context.Context, from, to string) ([]File, error) {
 		if len(meta) != 5 {
 			return nil, fmt.Errorf("git diff: bad output %q", fields[0])
 		}
-		f := File{Status: Status(meta[4][0]), Path: fields[1]}
+		f := File{Status: FileStatus(meta[4][0]), Path: fields[1]}
 		if f.Status == statusTypeChange {
 			f.Status = StatusModified
 		}

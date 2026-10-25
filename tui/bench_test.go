@@ -94,6 +94,6 @@ func bigChange(b *testing.B) model {
 	testgit.Git(b, dir, "commit", "-qm", "big")
 	testgit.WriteFile(b, dir, "big.go", "package a\nfunc f() {\n"+cur.String()+"}\n")
 	m.reload()
-	m.pickFile(slices.IndexFunc(m.files, func(f changed) bool { return f.Path == "big.go" }))
+	m.pickFile(slices.IndexFunc(m.files, func(f changedFile) bool { return f.Path == "big.go" }))
 	return m
 }

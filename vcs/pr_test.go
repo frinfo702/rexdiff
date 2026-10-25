@@ -110,7 +110,7 @@ func TestPullRequest(t *testing.T) {
 				{Name: "docs", Result: vcs.ResultSkip},
 				{Name: "e2e", Result: vcs.ResultPending},
 			},
-			Comments: []vcs.Comment{
+			Comments: []vcs.PRComment{
 				{Author: "bob", When: "2026-01-02T03:04:05Z", Body: "LGTM"},
 			},
 		}},
@@ -124,7 +124,7 @@ func TestPullRequest(t *testing.T) {
 			Head:   "fix",
 			Base:   "main",
 			Body:   "D",
-			Comments: []vcs.Comment{
+			Comments: []vcs.PRComment{
 				{Author: "eve", When: "2026-01-02T03:04:05Z", Body: "Why?"},
 				{Author: "cy", When: "2026-01-03T03:04:05Z", Body: "Speed."},
 			},

@@ -80,7 +80,7 @@ func (m *model) saveState() (string, error) {
 	s := savedState{
 		Tab: m.tab, Scope: m.scope, Base: m.base, From: m.from, To: m.to,
 		Changes: m.changes.place(),
-		Viewer:  m.viewer.place(),
+		Viewer:  m.filesPane.place(),
 		PR:      m.prPane.place(),
 		Split:   m.split, Wrap: m.wrap, Rendered: m.rendered,
 		ListPos: m.listPos, ListHidden: m.listHidden, FocusList: m.focusList,
@@ -92,7 +92,7 @@ func (m *model) saveState() (string, error) {
 	if m.prPlace != nil { // the PR has not loaded since the last restart
 		s.PR = *m.prPlace
 	}
-	if f := m.changedFile(); f != nil {
+	if f := m.selectedChange(); f != nil {
 		s.ChangePath = f.Path
 	}
 	if m.allSel < len(m.allFiles) {
@@ -159,7 +159,7 @@ func (m *model) restoreSettings(s *savedState) {
 // restorePlaces selects the files of s and moves the cursors to the places
 // in s. Call it after the first reload.
 func (m *model) restorePlaces(s *savedState) {
-	if i := slices.IndexFunc(m.files, func(f changed) bool { return f.Path == s.ChangePath }); i >= 0 {
+	if i := slices.IndexFunc(m.files, func(f changedFile) bool { return f.Path == s.ChangePath }); i >= 0 {
 		m.changeSel = i
 	}
 	m.allFiles, _ = m.repo.Files(m.ctx) // an error shows an empty list
@@ -175,7 +175,7 @@ func (m *model) restorePlaces(s *savedState) {
 	m.renderChanges()
 	m.refreshViewer()
 	m.changes.restore(s.Changes)
-	m.viewer.restore(s.Viewer)
+	m.filesPane.restore(s.Viewer)
 	m.prPlace = &s.PR // the PR loads later, and onPR restores the place
 	m.rerender()
 }

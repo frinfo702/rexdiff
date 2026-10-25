@@ -101,7 +101,7 @@ func (m *model) refsChanged() tea.Cmd {
 }
 
 // prStateStyle returns the style that shows the state of a pull request.
-func prStateStyle(s vcs.State) lipgloss.Style {
+func prStateStyle(s vcs.PRState) lipgloss.Style {
 	switch s {
 	case vcs.StateOpen:
 		return addStyle

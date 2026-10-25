@@ -38,10 +38,10 @@ func TestRevIsNotAnOption(t *testing.T) {
 		if id, err := r.Tree(ctx, rev); err == nil {
 			t.Errorf("Tree(%q) = %s, want an error", rev, id)
 		}
-		if id, err := r.MergeBase(ctx, rev); err == nil {
+		if id, err := r.MergeBaseTree(ctx, rev); err == nil {
 			t.Errorf("MergeBase(%q) = %s, want an error", rev, id)
 		}
-		if id, err := r.Parent(ctx, rev); err == nil {
+		if id, err := r.ParentTree(ctx, rev); err == nil {
 			t.Errorf("Parent(%q) = %s, want an error", rev, id)
 		}
 		if _, err := r.Diff(ctx, rev, head(t, r)); err == nil {

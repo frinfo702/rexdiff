@@ -34,7 +34,7 @@ type PullRequest struct {
 	Forge  Forge
 	Number int
 	Title  string
-	State  State
+	State  PRState
 	URL    string
 	Author string
 	Head   string // the source branch
@@ -42,7 +42,7 @@ type PullRequest struct {
 	Body   string // Markdown
 	Checks []Check
 	// Comments are the most recent comments, the oldest first.
-	Comments []Comment
+	Comments []PRComment
 }
 
 // Check is a CI check.
@@ -62,15 +62,15 @@ const (
 	ForgeAzure  Forge = "Azure DevOps"
 )
 
-// State is the state of a pull request. It is the same for each forge.
-type State string
+// PRState is the state of a pull request. It is the same for each forge.
+type PRState string
 
 // The values of State.
 const (
-	StateOpen   State = "open"
-	StateDraft  State = "draft" // open, but not ready for review
-	StateMerged State = "merged"
-	StateClosed State = "closed" // closed without a merge
+	StateOpen   PRState = "open"
+	StateDraft  PRState = "draft" // open, but not ready for review
+	StateMerged PRState = "merged"
+	StateClosed PRState = "closed" // closed without a merge
 )
 
 // Result is the result of a CI check. It is the same for each forge.
@@ -84,8 +84,8 @@ const (
 	ResultSkip    Result = "skip"    // skipped, or neutral
 )
 
-// Comment is a comment on a pull request.
-type Comment struct {
+// PRComment is a comment on a pull request.
+type PRComment struct {
 	Author string
 	When   string // the time, as the forge gives it
 	Body   string // Markdown
@@ -241,7 +241,7 @@ func (r *Repo) gitHub(ctx context.Context, host string) (*PullRequest, error) {
 		})
 	}
 	for _, c := range lastN(v.Comments, maxComments) {
-		pr.Comments = append(pr.Comments, Comment{
+		pr.Comments = append(pr.Comments, PRComment{
 			Author: c.Author.Login,
 			When:   c.CreatedAt,
 			Body:   c.Body,
@@ -252,7 +252,7 @@ func (r *Repo) gitHub(ctx context.Context, host string) (*PullRequest, error) {
 
 // gitHubState returns the state of a GitHub pull request from its state
 // and its draft flag.
-func gitHubState(s string, draft bool) State {
+func gitHubState(s string, draft bool) PRState {
 	switch {
 	case s == "MERGED":
 		return StateMerged
@@ -266,7 +266,7 @@ func gitHubState(s string, draft bool) State {
 
 // gitLabState returns the state of a GitLab merge request. A locked merge
 // request is closed.
-func gitLabState(s string) State {
+func gitLabState(s string) PRState {
 	switch s {
 	case "opened":
 		return StateOpen
@@ -278,7 +278,7 @@ func gitLabState(s string) State {
 
 // azureState returns the state of an Azure DevOps pull request from its
 // status. An abandoned pull request is closed.
-func azureState(s string) State {
+func azureState(s string) PRState {
 	switch s {
 	case "active":
 		return StateOpen
@@ -362,14 +362,14 @@ func (r *Repo) gitLab(ctx context.Context) (*PullRequest, error) {
 // gitLabComments returns the most recent notes of the discussions, the
 // oldest first. It skips the notes that GitLab writes, for example "added
 // 1 commit".
-func gitLabComments(ds []gitLabDiscussion) []Comment {
-	var cs []Comment
+func gitLabComments(ds []gitLabDiscussion) []PRComment {
+	var cs []PRComment
 	for _, d := range ds {
 		for _, n := range d.Notes {
 			if n.System {
 				continue
 			}
-			cs = append(cs, Comment{
+			cs = append(cs, PRComment{
 				Author: n.Author.Username,
 				When:   n.CreatedAt,
 				Body:   n.Body,

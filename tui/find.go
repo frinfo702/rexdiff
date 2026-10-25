@@ -98,7 +98,7 @@ func (m *model) updateFind(msg tea.KeyPressMsg) tea.Cmd {
 func (m *model) paneSource() (old, new []string) {
 	switch m.tab {
 	case tabChanges:
-		if f := m.changedFile(); f != nil {
+		if f := m.selectedChange(); f != nil {
 			return m.findLines.of(f.Old, f.New)
 		}
 	case tabFiles:

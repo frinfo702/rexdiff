@@ -66,7 +66,7 @@ func snapshot(t *testing.T, r *vcs.Repo) string {
 // head returns the tree of HEAD.
 func head(t *testing.T, r *vcs.Repo) string {
 	t.Helper()
-	tree, err := r.Head(t.Context())
+	tree, err := r.HeadTree(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func head(t *testing.T, r *vcs.Repo) string {
 // parent returns the tree of the parent of rev.
 func parent(t *testing.T, r *vcs.Repo, rev string) string {
 	t.Helper()
-	tree, err := r.Parent(t.Context(), rev)
+	tree, err := r.ParentTree(t.Context(), rev)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,14 +119,14 @@ func TestScopes(t *testing.T) {
 			unc[1].Old, unc[1].New, "one\n", "one\ntwo\n")
 	}
 
-	mb, err := r.MergeBase(ctx, "main")
+	mb, err := r.MergeBaseTree(ctx, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := names(changes(t, r, mb, now)); got != "A.gitignore Ma.txt Ab.txt Anew.txt" {
 		t.Errorf("branch: %s, want A.gitignore Ma.txt Ab.txt Anew.txt", got)
 	}
-	_, err = r.MergeBase(ctx, "nosuchbranch")
+	_, err = r.MergeBaseTree(ctx, "nosuchbranch")
 	if _, ok := errors.AsType[*exec.ExitError](err); !ok {
 		t.Errorf("MergeBase(nosuchbranch) = %v, want the error of git", err)
 	}
@@ -181,14 +181,14 @@ func TestMissingCommit(t *testing.T) {
 		}
 	}
 	remove(cs[1].SHA)
-	if id, err := r.Parent(ctx, "HEAD"); err == nil {
+	if id, err := r.ParentTree(ctx, "HEAD"); err == nil {
 		t.Errorf("Parent(HEAD) = %s with no parent commit, want an error", id)
 	}
-	if id, err := r.Parent(ctx, "nope"); err == nil {
+	if id, err := r.ParentTree(ctx, "nope"); err == nil {
 		t.Errorf("Parent(nope) = %s, want an error", id)
 	}
 	remove(cs[0].SHA)
-	if id, err := r.Head(ctx); err == nil {
+	if id, err := r.HeadTree(ctx); err == nil {
 		t.Errorf("Head = %s with no HEAD commit, want an error", id)
 	}
 }

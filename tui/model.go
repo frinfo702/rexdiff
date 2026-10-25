@@ -119,9 +119,9 @@ func (p *pane) side(x int) (s diff.Side, onNumber bool) {
 	return p.diff.SideAt(x)
 }
 
-// changed is a changed file with its line counts and the hash of its old
-// content, which names its folds.
-type changed struct {
+// changedFile is a changed file with its line counts and the hash of its
+// old content, which names its folds.
+type changedFile struct {
 	vcs.File
 	adds, dels int
 	oldHash    uint64
@@ -237,22 +237,22 @@ type model struct {
 	agentsHere *bool
 	memberDirs map[string]bool // the working directories of the members
 
-	files      []changed // the Changes tab
-	changeSel  int       // the file that shows in the Changes tab
-	shownTrees string    // the two trees of files, to notice a change
-	changeTree navTree
+	files      []changedFile // the Changes tab
+	changeSel  int           // the file that shows in the Changes tab
+	shownTrees string        // the two trees of files, to notice a change
+	changeTree fileListTree
 	allFiles   []vcs.Entry // the Files tab
 	allSel     int
-	fileTree   navTree
+	fileTree   fileListTree
 	// viewed and viewedPath are the content and the path in the Files
 	// tab, to notice edits. The path of the pane is "" for Markdown.
 	viewed     string
 	viewedPath string
 
-	changes, viewer, prPane pane
-	pr                      prState
-	prf                     prFetch
-	prPlace                 *savedPane // the place of prPane after a restart
+	changes, filesPane, prPane pane
+	pr                         prState
+	prf                        prFetch
+	prPlace                    *savedPane // the place of prPane after a restart
 
 	split      bool // show the diff side by side
 	wrap       bool
@@ -348,7 +348,7 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 		// first. The picker still lists all the agents.
 		m.beside, _ = o.Rex.Resolve(ctx, o.Agent)
 	}
-	m.changes.anchor, m.viewer.anchor, m.prPane.anchor = -1, -1, -1
+	m.changes.anchor, m.filesPane.anchor, m.prPane.anchor = -1, -1, -1
 	m.cfg = cfg
 	m.keys = defaultKeys()
 	m.keys.applyConfig(cfg.Keybindings)
@@ -436,16 +436,16 @@ func (m *model) flash(s string) {
 	m.status, m.statusTill = termtext.Quote(s), m.now().Add(flashTime)
 }
 
-// trees returns the two trees that the Changes tab compares in the scope.
-// If there is nothing to compare, note tells why.
-func (m *model) trees() (from, to, note string, err error) {
+// treeIDs returns the IDs of the two trees that the Changes tab compares
+// in the scope. If there is nothing to compare, note tells why.
+func (m *model) treeIDs() (from, to, note string, err error) {
 	ctx := m.ctx
 	switch m.scope {
 	case scopeCommits:
 		if m.to == "" {
 			return "", "", "no commits picked: press G to pick one or a range", nil
 		}
-		if from, err = m.repo.Parent(ctx, m.from); err != nil {
+		if from, err = m.repo.ParentTree(ctx, m.from); err != nil {
 			return "", "", "", err
 		}
 		to, err = m.repo.Tree(ctx, m.to)
@@ -456,11 +456,11 @@ func (m *model) trees() (from, to, note string, err error) {
 		}
 		from = m.turn.tree
 	case ScopeBranch:
-		if from, err = m.repo.MergeBase(ctx, m.base); err != nil {
+		if from, err = m.repo.MergeBaseTree(ctx, m.base); err != nil {
 			return "", "", "", err
 		}
 	default:
-		if from, err = m.repo.Head(ctx); err != nil {
+		if from, err = m.repo.HeadTree(ctx); err != nil {
 			return "", "", "", err
 		}
 	}
@@ -488,7 +488,7 @@ func (m *model) loadChanges(force bool) {
 		return
 	}
 	m.reloadOwed = false
-	from, to, note, err := m.trees()
+	from, to, note, err := m.treeIDs()
 	trees := from + ".." + to
 	same := trees == m.shownTrees && !force
 	var files []vcs.File
@@ -513,14 +513,14 @@ func (m *model) loadChanges(force bool) {
 		return
 	}
 	var selPath string
-	if f := m.changedFile(); f != nil {
+	if f := m.selectedChange(); f != nil {
 		selPath = f.Path
 	}
-	prev := make(map[string]changed, len(m.files))
+	prev := make(map[string]changedFile, len(m.files))
 	for _, c := range m.files {
 		prev[c.Path] = c
 	}
-	m.files = make([]changed, len(files))
+	m.files = make([]changedFile, len(files))
 	m.shownTrees, m.changeSel, m.changes.note = trees, -1, ""
 	for i, f := range files {
 		c := &m.files[i]
@@ -536,7 +536,7 @@ func (m *model) loadChanges(force bool) {
 		}
 	}
 	m.buildTrees()
-	if f := m.changedFile(); f == nil || f.Path != selPath {
+	if f := m.selectedChange(); f == nil || f.Path != selPath {
 		// Another file shows, so the cursor and the selection do not apply.
 		m.changes.cur, m.changes.top, m.changes.anchor = 0, 0, -1
 	}
@@ -670,7 +670,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 // followCursor makes the panes keep the cursor on the screen again. A key
 // or a click can move the cursor.
 func (m *model) followCursor() {
-	m.changes.free, m.viewer.free, m.prPane.free = false, false, false
+	m.changes.free, m.filesPane.free, m.prPane.free = false, false, false
 }
 
 // onKey gives a key to the part of the screen that takes the keys.
@@ -833,10 +833,10 @@ func (m *model) startWatch() error {
 	return nil
 }
 
-// changed tells what the watcher sees. Without a watcher, it tells that
-// both change every pollEvery. After an error, it drops the watcher and
-// tells that both change.
-func (m *model) changed() vcs.Change {
+// watchChanges tells what the watcher sees. Without a watcher, it tells
+// that both change every pollEvery. After an error, it drops the watcher
+// and tells that both change.
+func (m *model) watchChanges() vcs.Change {
 	all := vcs.Change{Files: true, Refs: true}
 	now := m.now()
 	if m.watch == nil && m.watchRetry.due(now) {
@@ -867,7 +867,7 @@ func (m *model) changed() vcs.Change {
 // returns the work of the tick. Update adds the next tick.
 func (m *model) onTick() tea.Cmd {
 	m.ticks++
-	ch := m.changed()
+	ch := m.watchChanges()
 	if ch.Files && m.pending != nil {
 		m.checkTurn()
 	}
@@ -922,7 +922,7 @@ func (m *model) reloadDue() {
 func (m *model) cur() *pane {
 	switch m.tab {
 	case tabFiles:
-		return &m.viewer
+		return &m.filesPane
 	case tabPR:
 		return &m.prPane
 	}

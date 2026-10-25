@@ -188,7 +188,7 @@ func (m *model) agentLabel() string {
 }
 
 // statusMark returns the mark of a changed file in the file list.
-func statusMark(s vcs.Status) string {
+func statusMark(s vcs.FileStatus) string {
 	switch s {
 	case vcs.StatusAdded:
 		return addStyle.Render("A")
@@ -264,7 +264,7 @@ func (m *model) dirRow(r tree.Row, indent string, w int) string {
 
 // changedRow renders changed file f in the file list, w columns wide. The
 // row shows the name in the tree, after indent.
-func (m *model) changedRow(f changed, indent, name string, w int) string {
+func (m *model) changedRow(f changedFile, indent, name string, w int) string {
 	adds := addStyle.Render(fmt.Sprintf("+%d", f.adds))
 	stat := adds + " " + delStyle.Render(fmt.Sprintf("-%d", f.dels))
 	if c := m.comments.Count(m.anchorOf(tabChanges), f.Path); c > 0 {

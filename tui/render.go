@@ -143,7 +143,7 @@ func (m *model) splitAllowed() bool {
 	if m.tab != tabChanges {
 		return false
 	}
-	f := m.changedFile()
+	f := m.selectedChange()
 	return f != nil && !f.Binary && !f.TooBig && !m.showsMarkdown(f) &&
 		f.Old != "" && f.New != "" && f.Old != f.New
 }
@@ -157,7 +157,7 @@ func (m *model) splitShown() bool {
 
 // showsMarkdown reports whether the Changes tab shows f as rendered
 // markdown.
-func (m *model) showsMarkdown(f *changed) bool {
+func (m *model) showsMarkdown(f *changedFile) bool {
 	return m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted
 }
 
@@ -208,7 +208,7 @@ func fileNote(err error) (string, bool) {
 // renderChanges shows the selected file in the Changes tab.
 func (m *model) renderChanges() {
 	p := &m.changes
-	f := m.changedFile()
+	f := m.selectedChange()
 	if f == nil {
 		p.path = ""
 		p.set(nil, nil)
@@ -259,7 +259,7 @@ func (m *model) renderViewer() {
 // refreshViewer shows the selected file in the Files tab if the file
 // changes.
 func (m *model) refreshViewer() {
-	p := &m.viewer
+	p := &m.filesPane
 	if m.allSel >= len(m.allFiles) {
 		p.path, m.viewedPath = "", ""
 		p.set(nil, nil)
@@ -334,7 +334,7 @@ func renderMarkdown(r *glamour.TermRenderer, src string) []string {
 func (m *model) markdownSource() (src string, ok bool) {
 	switch m.tab {
 	case tabChanges:
-		f := m.changedFile()
+		f := m.selectedChange()
 		if f == nil || !isMarkdown(f.Path) || f.Status == vcs.StatusDeleted {
 			return "", false
 		}

@@ -39,8 +39,8 @@ func (m *model) target(i int, pref diff.Side) *targetLine {
 	return nil
 }
 
-// changedFile returns the selected file of the Changes tab, or nil.
-func (m *model) changedFile() *changed {
+// selectedChange returns the selected file of the Changes tab, or nil.
+func (m *model) selectedChange() *changedFile {
 	if m.changeSel >= len(m.files) {
 		return nil
 	}
@@ -49,7 +49,7 @@ func (m *model) changedFile() *changed {
 
 // contentFor returns the text of side s of the file at path.
 func (m *model) contentFor(path string, s diff.Side) string {
-	if f := m.changedFile(); m.tab == tabChanges && f != nil && f.Path == path {
+	if f := m.selectedChange(); m.tab == tabChanges && f != nil && f.Path == path {
 		if s == diff.SideOld {
 			return f.Old
 		}
@@ -92,7 +92,7 @@ func (m *model) revCurrent(c *diff.Comment) bool {
 // stale if its file is gone.
 func (m *model) stale(c *diff.Comment) bool {
 	if c.Anchor.InDiff {
-		return !slices.ContainsFunc(m.files, func(f changed) bool { return f.Path == c.Path })
+		return !slices.ContainsFunc(m.files, func(f changedFile) bool { return f.Path == c.Path })
 	}
 	_, err := os.Lstat(filepath.Join(m.repo.Root(), c.Path))
 	return err != nil

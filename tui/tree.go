@@ -12,8 +12,8 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// navTree is the file list of a tab.
-type navTree struct {
+// fileListTree is the file list of a tab.
+type fileListTree struct {
 	entries []tree.Entry
 	rows    []tree.Row
 	cur     int // the row of the cursor
@@ -26,7 +26,7 @@ type navTree struct {
 // rebuild makes the rows of entries. The cursor stays on its directory or
 // its file. If the row is gone, or the cursor is -1, the cursor goes to
 // the file with index open, else to the first file.
-func (t *navTree) rebuild(entries []tree.Entry, expanded bool, open int) {
+func (t *fileListTree) rebuild(entries []tree.Entry, expanded bool, open int) {
 	var dir, path string
 	if t.cur >= 0 && t.cur < len(t.rows) {
 		if r := t.rows[t.cur]; r.File < 0 {
@@ -53,7 +53,7 @@ func (t *navTree) rebuild(entries []tree.Entry, expanded bool, open int) {
 }
 
 // file returns the index of the file at the cursor, or -1 on a directory.
-func (t *navTree) file() int {
+func (t *fileListTree) file() int {
 	if t.cur >= len(t.rows) {
 		return -1
 	}
@@ -61,7 +61,7 @@ func (t *navTree) file() int {
 }
 
 // dir returns the row at the cursor if it is a directory.
-func (t *navTree) dir() (tree.Row, bool) {
+func (t *fileListTree) dir() (tree.Row, bool) {
 	if t.cur >= len(t.rows) || t.rows[t.cur].File >= 0 {
 		return tree.Row{}, false
 	}
@@ -70,7 +70,7 @@ func (t *navTree) dir() (tree.Row, bool) {
 
 // rowOf returns the row of the file with index i, or -1 if no row shows
 // it.
-func (t *navTree) rowOf(i int) int {
+func (t *fileListTree) rowOf(i int) int {
 	if i < 0 {
 		return -1
 	}
@@ -79,7 +79,7 @@ func (t *navTree) rowOf(i int) int {
 
 // nextFile returns the first file row after row from in direction d (1 or
 // -1), or -1.
-func (t *navTree) nextFile(from, d int) int {
+func (t *fileListTree) nextFile(from, d int) int {
 	for r := from + d; r >= 0 && r < len(t.rows); r += d {
 		if t.rows[r].File >= 0 {
 			return r
@@ -90,7 +90,7 @@ func (t *navTree) nextFile(from, d int) int {
 
 // setExpanded expands or collapses the directory dir. It reports whether
 // the state changes.
-func (t *navTree) setExpanded(dir string, want bool) bool {
+func (t *fileListTree) setExpanded(dir string, want bool) bool {
 	if (t.expanded != t.toggled[dir]) == want {
 		return false
 	}
@@ -107,7 +107,7 @@ func (t *navTree) setExpanded(dir string, want bool) bool {
 
 // reveal expands each directory above path. It reports whether one
 // changes.
-func (t *navTree) reveal(path string) bool {
+func (t *fileListTree) reveal(path string) bool {
 	changed := false
 	for dir := path; ; {
 		i := strings.LastIndexByte(dir, '/')
@@ -120,7 +120,7 @@ func (t *navTree) reveal(path string) bool {
 }
 
 // list returns the file list of the current tab, or nil on the PR tab.
-func (m *model) list() *navTree {
+func (m *model) list() *fileListTree {
 	switch m.tab {
 	case tabChanges:
 		return &m.changeTree
