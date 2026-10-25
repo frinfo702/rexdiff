@@ -7,6 +7,13 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// Signs marks an inserted line with + and a deleted line with -, in place
+// of a bar.
+func (v *View) Signs() *View {
+	v.signs = true
+	return v
+}
+
 // Wrap makes long lines continue on the next screen lines, instead of
 // cutting them. The x offset does not apply.
 func (v *View) Wrap() *View {

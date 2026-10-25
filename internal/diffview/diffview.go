@@ -23,9 +23,12 @@ const (
 	ellipsis           = "…" // shows where a line is cut
 )
 
-// The symbols before the code of a line.
+// The symbols before the code of a line. By default, a bar in the colour
+// of the line marks an inserted or a deleted line. [View.Signs] changes the
+// bar to a sign.
 const (
 	symNone   = "  " // an equal line, a missing line, or a continued line
+	symBar    = "▌ "
 	symInsert = "+ "
 	symDelete = "- "
 )
@@ -52,6 +55,7 @@ type View struct {
 	style    Style
 	tabWidth int
 	wrap     bool // wrap long lines instead of cutting them
+	signs    bool // mark a changed line with + or -, not with a bar
 
 	isComputed bool
 	err        error
@@ -424,9 +428,15 @@ func fillTo(lines []string, n int, fill func() string) []string {
 func (v *View) kindStyle(k udiff.OpKind) (lineStyle, string) {
 	switch k {
 	case udiff.Insert:
-		return v.style.insertLine, symInsert
+		if v.signs {
+			return v.style.insertLine, symInsert
+		}
+		return v.style.insertLine, symBar
 	case udiff.Delete:
-		return v.style.deleteLine, symDelete
+		if v.signs {
+			return v.style.deleteLine, symDelete
+		}
+		return v.style.deleteLine, symBar
 	}
 	return v.style.equalLine, symNone
 }
@@ -467,7 +477,8 @@ func (v *View) codeLines(
 		code = ansi.GraphemeWidth.Cut(code, v.xOffset, len(code))
 		parts[0] = ansi.Truncate(code, width, ellipsis)
 		if v.xOffset > 0 && strings.TrimSpace(parts[0]) != "" {
-			sym = sym[:1] + ellipsis
+			sym, _ = strings.CutSuffix(sym, " ")
+			sym += ellipsis
 		}
 	}
 	full := lipgloss.NewStyle().MaxWidth(width + leadingSymbolsSize)

@@ -108,7 +108,7 @@ func TestRenderSameContentIsEmpty(t *testing.T) {
 
 func TestRenderTabsAndOffset(t *testing.T) {
 	d := diff.Render("x.go", "", "\tx := 1\n", diff.Options{Width: 80})
-	if got := ansi.Strip(d.Lines[1]); !strings.Contains(got, "+     x := 1") {
+	if got := ansi.Strip(d.Lines[1]); !strings.Contains(got, "▌     x := 1") {
 		t.Errorf("tab: line = %q", got)
 	}
 	d = diff.Render("x.go", "", "\tx := 1\n", diff.Options{Width: 80, Offset: 6})
@@ -116,6 +116,93 @@ func TestRenderTabsAndOffset(t *testing.T) {
 	if strings.Contains(got, "x :=") || !strings.Contains(got, "= 1") {
 		t.Errorf("offset 6: line = %q", got)
 	}
+}
+
+// TestMarks checks the mark before the code of each line, in the two
+// layouts. By default a bar marks a changed line, as in herdr-reviewr.
+// [diff.Options.Signs] gives + and -. The mark takes two cells in both
+// cases, so the columns do not move.
+func TestMarks(t *testing.T) {
+	const old, new = "a\nb\nc\n", "a\nB\nc\n"
+	theme := diff.Theme{
+		Background: color.Black,
+		Green:      color.RGBA{0, 0xff, 0, 0xff},
+		Red:        color.RGBA{0xff, 0, 0, 0xff},
+	}
+	tests := []struct {
+		name  string
+		o     diff.Options
+		lines []string // the screen lines under the hunk header, without colours
+	}{
+		{"unified bar", diff.Options{Width: 40}, []string{
+			" 1  1   a", " 2    ▌ b", "    2 ▌ B", " 3  3   c",
+		}},
+		{"unified signs", diff.Options{Width: 40, Signs: true}, []string{
+			" 1  1   a", " 2    - b", "    2 + B", " 3  3   c",
+		}},
+		{"split bar", diff.Options{Width: 40, Split: true}, []string{
+			" 1   a               1   a",
+			" 2 ▌ b               2 ▌ B",
+			" 3   c               3   c",
+		}},
+		{"split signs", diff.Options{Width: 40, Split: true, Signs: true}, []string{
+			" 1   a               1   a",
+			" 2 - b               2 + B",
+			" 3   c               3   c",
+		}},
+	}
+	for _, tt := range tests {
+		tt.o.Theme = theme
+		d := diff.Render("x.txt", old, new, tt.o)
+		if len(d.Lines) != 1+len(tt.lines) {
+			t.Fatalf("%s: %d lines, want %d", tt.name, len(d.Lines), 1+len(tt.lines))
+		}
+		for i, want := range tt.lines {
+			got := strings.TrimRight(ansi.Strip(d.Lines[i+1]), " ")
+			if got != want {
+				t.Errorf("%s: line %d = %q, want %q", tt.name, i+1, got, want)
+			}
+		}
+		// The mark has the colour of the line: ANSI red for a delete, and
+		// ANSI green for an insert.
+		for _, c := range []struct {
+			line int
+			fg   string
+		}{{2, "31"}, {3, "32"}} {
+			if tt.o.Split && c.line == 3 {
+				continue // the split layout has the insert on the same row
+			}
+			if got := markColour(d.Lines[c.line]); got != c.fg {
+				t.Errorf("%s: the mark of line %d has colour %q, want %q", tt.name, c.line, got, c.fg)
+			}
+		}
+	}
+	// With a scroll to the right, the bar keeps its colour and shows an
+	// ellipsis after it.
+	d := diff.Render("x.txt", "", "abcdefgh\n", diff.Options{Width: 40, Offset: 2})
+	if got := ansi.Strip(d.Lines[1]); !strings.Contains(got, "▌…cdefgh") {
+		t.Errorf("offset: line = %q, want ▌…cdefgh", got)
+	}
+	// The review text of a comment uses + and - for both kinds of mark.
+	for _, signs := range []bool{false, true} {
+		d := diff.Render("x.txt", old, new, diff.Options{Width: 40, Signs: signs})
+		got := snippet(d.Rows[2:5], old, new)
+		if want := []string{"-b", "+B", " c"}; !slices.Equal(got, want) {
+			t.Errorf("signs %v: snippet = %q, want %q", signs, got, want)
+		}
+	}
+}
+
+// markColour returns the foreground of the SGR sequence just before the
+// first bar, + or - in line, for example "31".
+func markColour(line string) string {
+	i := strings.IndexAny(line, "▌+-")
+	if i < 0 {
+		return ""
+	}
+	sgr := line[strings.LastIndex(line[:i], "\x1b[")+2 : i]
+	fg, _, _ := strings.Cut(strings.TrimSuffix(sgr, "m"), ";")
+	return fg
 }
 
 func TestSideAt(t *testing.T) {

@@ -72,6 +72,8 @@ type config struct {
 	FileList position `json:"file_list"`
 	// FileListWidth is in columns, minListWidth or more.
 	FileListWidth int `json:"file_list_width"`
+	// DiffSigns marks a changed line with + or -, in place of a bar.
+	DiffSigns bool `json:"diff_signs"`
 	// FocusAgent tells if the focus moves to the agent after a send. Nil
 	// means true.
 	FocusAgent *bool `json:"focus_agent_after_send"`
