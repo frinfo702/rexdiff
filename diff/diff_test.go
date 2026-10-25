@@ -126,14 +126,14 @@ func TestRenderTabsAndOffset(t *testing.T) {
 // TestMarks checks the mark at the start of the code of each line, in the two
 // layouts.
 func TestMarks(t *testing.T) {
-	const old, new = "a\nb\nc\n", "a\nB\nc\n"
+	const before, after = "a\nb\nc\n", "a\nB\nc\n"
 	// By default a bar marks a changed line, as in herdr-reviewr. Signs gives
 	// + and -. The mark takes two cells in both cases, so the columns do not
 	// move.
 	theme := diff.Theme{
 		Background: color.Black,
-		Green:      color.RGBA{0, 0xff, 0, 0xff},
-		Red:        color.RGBA{0xff, 0, 0, 0xff},
+		Green:      color.RGBA{G: 0xff, A: 0xff},
+		Red:        color.RGBA{R: 0xff, A: 0xff},
 	}
 	tests := []struct {
 		name  string
@@ -159,7 +159,7 @@ func TestMarks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		tt.o.Theme = theme
-		d := diff.Render("x.txt", old, new, tt.o)
+		d := diff.Render("x.txt", before, after, tt.o)
 		if len(d.Lines) != 1+len(tt.lines) {
 			t.Fatalf("%s: %d lines, want %d", tt.name, len(d.Lines), 1+len(tt.lines))
 		}
@@ -182,8 +182,8 @@ func TestMarks(t *testing.T) {
 	}
 	// The review text of a comment uses + and - for both kinds of mark.
 	for _, signs := range []bool{false, true} {
-		d := diff.Render("x.txt", old, new, diff.Options{Width: 40, Signs: signs})
-		got := snippet(d.Rows[2:5], old, new)
+		d := diff.Render("x.txt", before, after, diff.Options{Width: 40, Signs: signs})
+		got := snippet(d.Rows[2:5], before, after)
 		if want := []string{"-b", "+B", " c"}; !slices.Equal(got, want) {
 			t.Errorf("signs %v: snippet = %q, want %q", signs, got, want)
 		}

@@ -27,7 +27,7 @@ func mix(a, b color.Color, t float64) color.Color {
 	br, bg, bb, _ := b.RGBA()
 	// RGBA has 16 bits for each channel. Divide by 257 to get 8 bits.
 	f := func(x, y uint32) uint8 { return uint8((float64(x)*(1-t) + float64(y)*t) / 257) }
-	return color.RGBA{f(ar, br), f(ag, bg), f(ab, bb), 255}
+	return color.RGBA{R: f(ar, br), G: f(ag, bg), B: f(ab, bb), A: 255}
 }
 
 // The amounts that TerminalStyle mixes into the background.

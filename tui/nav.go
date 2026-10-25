@@ -318,12 +318,10 @@ func hash(s string) uint64 {
 func (m *model) expanded(path string, comments []*diff.Comment, f diff.Fold) bool {
 	// A fold that overlaps a range shows. An undo of a change next to a
 	// range makes a larger fold, which shows as a whole.
-	if o := m.folds[path]; o != nil {
-		for _, r := range o.Ranges {
-			if f.Old <= r[1] && f.Old+f.Lines-1 >= r[0] {
-				return true
-			}
-		}
+	if o := m.folds[path]; o != nil && slices.ContainsFunc(o.Ranges, func(r [2]int) bool {
+		return f.Old <= r[1] && f.Old+f.Lines-1 >= r[0]
+	}) {
+		return true
 	}
 	for _, c := range comments {
 		lo := f.New
