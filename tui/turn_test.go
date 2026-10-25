@@ -104,7 +104,8 @@ func TestTurnPromotesOnChange(t *testing.T) {
 		t.Fatal("a tick with no change promotes the turn")
 	}
 	write(t, dir, "c.go", "package a\n")
-	m = step(t, m, tickMsg{}) // without a watcher, each tick sees a change
+	m.polled = time.Time{} // without a watcher, the poll sees the change
+	m = step(t, m, tickMsg{})
 	if m.turn == nil || !m.turn.running || m.pending != nil {
 		t.Fatalf("turn %+v, pending %+v, want a running turn", m.turn, m.pending)
 	}

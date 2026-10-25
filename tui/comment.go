@@ -192,13 +192,15 @@ func (m *model) updateComment(msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-// closeComment closes the comment box and clears the selection. After an
-// edit from the comment list, it opens the list again.
+// closeComment closes the comment box and clears the selection. Then it
+// does the reload that waits for the box. After an edit from the comment
+// list, it opens the list again.
 func (m *model) closeComment() {
 	row := m.draft.listRow
 	m.mode, m.draft = modeNormal, nil
 	m.cur().anchor = -1
 	m.editor.Blur()
+	m.reloadDue()
 	if row >= 0 && m.comments.Len() > 0 {
 		m.openCommentList()
 		m.overlay.cur = min(row, len(m.overlay.shown)-1)

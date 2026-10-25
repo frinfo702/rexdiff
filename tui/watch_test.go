@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -60,22 +61,22 @@ func TestRefreshForces(t *testing.T) {
 }
 
 // TestTickRetries checks that a tick retries a failed reload after the
-// wait, and that the error then clears.
+// wait, and that the wait then clears.
 func TestTickRetries(t *testing.T) {
 	m, _, _ := watched(t)
 	path := os.Getenv("PATH")
 	noGit(t)
-	if m = press(t, m, "r"); !shows(m, "unknown revision") {
-		t.Fatalf("view got:\n%s\nwant the git error", view(m))
+	if m = press(t, m, "r"); m.retryAt.IsZero() || !strings.HasPrefix(m.status, "refresh failed: ") {
+		t.Fatalf("after a failed reload: retry at %v, status %q; want a wait, a flash",
+			m.retryAt, m.status)
 	}
 	t.Setenv("PATH", path)
-	if m = step(t, m, tickMsg{}); !shows(m, "unknown revision") {
-		t.Errorf("view got:\n%s\nwant the error until the wait ends", view(m))
+	retryAt := m.retryAt
+	if m = step(t, m, tickMsg{}); m.retryAt != retryAt {
+		t.Errorf("a tick in the wait: retry at %v, want %v", m.retryAt, retryAt)
 	}
 	m.retryAt, m.reloadAt = time.Now(), time.Now() // the waits end
-	if m = step(t, m, tickMsg{}); shows(m, "unknown revision") {
-		t.Errorf("view got:\n%s\nwant no error after the retry", view(m))
-	}
+	m = step(t, m, tickMsg{})
 	if !m.retryAt.IsZero() || m.retryWait != 0 {
 		t.Errorf("after a good reload, retryAt %v, retryWait %v; want zero", m.retryAt, m.retryWait)
 	}

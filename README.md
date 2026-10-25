@@ -49,11 +49,15 @@ them, run `rexdiff uninstall`.
 
 rexdiff checks the files about once a second without running git, and runs git
 only after a change. In a large repository it checks less often, so its checks
-use at most about 5% of a core. `r` reloads at once.
+use at most about 5% of a core. `r` reloads at once. If the checks fail,
+rexdiff reloads every 5 s and tries the checks again after 1 s, then waits twice
+as long each time, up to a minute. A failed reload keeps the files that show and
+shows "refresh failed" at the bottom. While the comment box is open, the view
+does not change.
 
 The pull request tab reads the pull request again each minute while it shows,
 and after a commit, a push, or a fetch. A switch to another branch clears it
-until the new pull request loads.
+until the new pull request loads. A failed read keeps the last pull request.
 
 Last turn shows the changes since the start of the last agent turn that
 changed a file. A turn starts when an agent in this repository starts to work,

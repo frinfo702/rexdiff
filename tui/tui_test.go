@@ -388,7 +388,8 @@ func TestSendError(t *testing.T) {
 }
 
 // TestMissingHead checks that the Changes tab shows an error, and not each
-// file as added, when the object of the HEAD commit is missing.
+// file as added, when the object of the HEAD commit is missing. The files
+// that show stay, and the error is a flash.
 func TestMissingHead(t *testing.T) {
 	m, dir := newTestModel(t)
 	sha, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
@@ -400,6 +401,12 @@ func TestMissingHead(t *testing.T) {
 	if err := os.Remove(obj); err != nil {
 		t.Fatal(err)
 	}
+	m.reload()
+	if got := paths(m); !slices.Equal(got, []string{"a.go"}) ||
+		!strings.Contains(m.status, "unknown revision HEAD") {
+		t.Errorf("files %v, status %q; want [a.go] and the error", got, m.status)
+	}
+	m.shownTrees = "" // nothing shows
 	m.reload()
 	if v := view(m); len(m.files) > 0 || !strings.Contains(v, "unknown revision HEAD") {
 		t.Errorf("files %v, want none and the error:\n%s", paths(m), v)

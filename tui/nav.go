@@ -349,7 +349,8 @@ func (m *model) setTab(t tab) {
 
 // setScope shows the Changes tab in scope s.
 func (m *model) setScope(s Scope) {
-	m.tab, m.scope, m.folds = tabChanges, s, nil
+	// The files of the last scope do not show while the new one fails.
+	m.tab, m.scope, m.folds, m.shownTrees = tabChanges, s, nil, ""
 	m.reload()
 	m.changes.cur, m.changes.top = 0, 0
 }

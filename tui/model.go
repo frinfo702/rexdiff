@@ -3,6 +3,7 @@ package tui
 import (
 	"cmp"
 	"context"
+	"errors"
 	"image/color"
 	"log/slog"
 	"slices"
@@ -193,8 +194,12 @@ type model struct {
 	ticks   int
 
 	// watch tells when the files or the refs change, or is nil. If it is
-	// nil, each tick reloads the current tab.
-	watch *vcs.Watcher
+	// nil, a tick reloads the current tab every pollEvery, after polled.
+	// After a failure of the watcher, a tick starts it again at watchAt.
+	watch     *vcs.Watcher
+	polled    time.Time
+	watchAt   time.Time
+	watchWait time.Duration // the wait after the next failure, or 0
 	// reloadOwed is true if a change is seen but the Changes tab does not
 	// show it yet. A reload waits until reloadAt, after the pause of the
 	// last one, and until retryAt, after a failure.
@@ -454,24 +459,37 @@ func (m *model) trees() (from, to, note string, err error) {
 
 // reload reads the changes of the scope again, even if the trees do not
 // change.
-func (m *model) reload() {
-	m.shownTrees = "" // no trees are "", so reloadIfChanged reads them
-	m.reloadIfChanged()
-}
+func (m *model) reload() { m.loadChanges(true) }
 
 // reloadIfChanged reads the changes of the scope again if the trees differ
-// from the shown trees. After a failure, the next tick tries again after a
-// wait.
-func (m *model) reloadIfChanged() {
+// from the shown trees.
+func (m *model) reloadIfChanged() { m.loadChanges(false) }
+
+// loadChanges reads the changes of the scope if force is true or if the
+// trees differ from the shown trees. While the comment box is open, the
+// reload waits until the box closes, as in herdr-reviewr. After a
+// failure, the next tick tries again after a wait. As in herdr-reviewr, a
+// failure keeps the files that show, and the error shows in their place
+// only if no files show.
+func (m *model) loadChanges(force bool) {
+	if m.mode == modeComment {
+		m.reloadOwed = true
+		return
+	}
 	m.reloadOwed = false
 	from, to, note, err := m.trees()
 	trees := from + ".." + to
+	same := trees == m.shownTrees && !force
 	var files []vcs.File
-	if err == nil && note == "" && trees != m.shownTrees {
+	if err == nil && note == "" && !same {
 		files, err = m.repo.Diff(m.ctx, from, to)
 	}
 	m.retry(err)
-	if err == nil && note == "" && trees == m.shownTrees {
+	if err == nil && note == "" && same {
+		return
+	}
+	if err != nil && m.shownTrees != "" {
+		m.flash("refresh failed: " + err.Error())
 		return
 	}
 	if err != nil {
@@ -688,6 +706,14 @@ func (m *model) onPR(msg prMsg) tea.Cmd {
 	if f.trailing {
 		next = m.loadPR()
 	}
+	// As in herdr-reviewr, a failed read keeps the last good pull request.
+	// The end of the pull request is not a failure.
+	if msg.err != nil && m.pr.pr != nil && !errors.Is(msg.err, vcs.ErrNoPullRequest) {
+		m.pr.loading = false
+		m.flash("refresh failed: " + msg.err.Error())
+		m.renderPR()
+		return next
+	}
 	m.pr = prState{pr: msg.pr}
 	if msg.err != nil {
 		m.pr.err = msg.err.Error()
@@ -732,6 +758,18 @@ const (
 	retryMax     = time.Minute // the longest wait after a failure
 )
 
+// pollEvery is the time between two reloads without a watcher, as in
+// herdr-reviewr.
+const pollEvery = 5 * time.Second
+
+// backoff returns the wait before the next try after a failure, and
+// doubles *wait. The waits go from retryFirst to retryMax.
+func backoff(wait *time.Duration) time.Duration {
+	w := max(*wait, retryFirst)
+	*wait = min(2*w, retryMax)
+	return w
+}
+
 // retry sets the wait before the next reload after the error err. Each
 // failure doubles the wait, from 1 s to 60 s. A reload with no error
 // clears the wait.
@@ -740,33 +778,52 @@ func (m *model) retry(err error) {
 		m.retryWait, m.retryAt = 0, time.Time{}
 		return
 	}
-	wait := max(m.retryWait, retryFirst)
-	m.retryWait = min(2*wait, retryMax)
-	m.retryAt = time.Now().Add(wait)
+	m.retryAt = time.Now().Add(backoff(&m.retryWait))
 	m.reloadOwed = true
 }
 
-// changed tells what the watcher sees. Without a watcher, or after an
-// error of the watcher, it tells that both change.
+// dropWatch drops the watcher after the error err. A tick starts it again
+// after a wait.
+func (m *model) dropWatch(err error) {
+	m.log.Warn("watch failed", "err", err)
+	m.watch = nil
+	m.watchAt = time.Now().Add(backoff(&m.watchWait))
+}
+
+// changed tells what the watcher sees. Without a watcher, it tells that
+// both change every pollEvery. After an error, it drops the watcher and
+// tells that both change.
 func (m *model) changed() vcs.Change {
 	all := vcs.Change{Files: true, Refs: true}
+	now := time.Now()
+	if m.watch == nil && !m.watchAt.IsZero() && !now.Before(m.watchAt) {
+		w, err := m.repo.Watch(m.ctx)
+		if err != nil {
+			m.dropWatch(err)
+		} else {
+			m.watch, m.watchAt = w, time.Time{}
+		}
+	}
 	if m.watch == nil {
+		if now.Sub(m.polled) < pollEvery {
+			return vcs.Change{}
+		}
+		m.polled = now
 		return all
 	}
 	m.watch.Show(m.shownIgnored())
-	start := time.Now()
 	ch, err := m.watch.Changed(m.ctx)
-	m.log.Debug("watch", "took", time.Since(start), "files", ch.Files, "refs", ch.Refs)
+	m.log.Debug("watch", "took", time.Since(now), "files", ch.Files, "refs", ch.Refs)
 	if err != nil {
-		m.log.Warn("watch failed", "err", err)
+		m.dropWatch(err)
+		m.polled = now
 		return all
 	}
+	m.watchWait = 0
 	return ch
 }
 
-// onTick reloads the current tab if the watcher sees a change. On the
-// Changes tab, a reload waits for the pause after the last one, and for
-// the wait after a failure.
+// onTick reloads the current tab if the watcher sees a change.
 func (m *model) onTick() tea.Cmd {
 	m.ticks++
 	ch := m.changed()
@@ -776,15 +833,7 @@ func (m *model) onTick() tea.Cmd {
 	m.reloadOwed = m.reloadOwed || ch.Files || ch.Refs
 	m.filesOwed = m.filesOwed || ch.Files
 	now := time.Now()
-	switch {
-	case m.tab == tabChanges && m.reloadOwed && !now.Before(m.reloadAt) && !now.Before(m.retryAt):
-		m.reloadIfChanged()
-		m.reloadAt = time.Now().Add(budgetFactor * time.Since(now))
-	case m.tab == tabFiles && m.filesOwed:
-		m.reloadFiles() // reloadFiles renders the file too
-	case m.tab == tabFiles:
-		m.refreshViewer()
-	}
+	m.reloadDue()
 	if m.status != "" && time.Now().After(m.statusTill) {
 		m.status = ""
 	}
@@ -805,6 +854,26 @@ func (m *model) onTick() tea.Cmd {
 		cmds = append(cmds, requestColors...)
 	}
 	return tea.Batch(cmds...)
+}
+
+// reloadDue reloads the current tab if a change waits for it. On the
+// Changes tab, a reload waits for the pause after the last one, and for
+// the wait after a failure. As in herdr-reviewr, the view does not change
+// while the comment box is open.
+func (m *model) reloadDue() {
+	if m.mode == modeComment {
+		return
+	}
+	now := time.Now()
+	switch {
+	case m.tab == tabChanges && m.reloadOwed && !now.Before(m.reloadAt) && !now.Before(m.retryAt):
+		m.reloadIfChanged()
+		m.reloadAt = time.Now().Add(budgetFactor * time.Since(now))
+	case m.tab == tabFiles && m.filesOwed:
+		m.reloadFiles() // reloadFiles renders the file too
+	case m.tab == tabFiles:
+		m.refreshViewer()
+	}
 }
 
 // cur returns the pane of the current tab.

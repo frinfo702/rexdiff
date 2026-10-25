@@ -94,8 +94,7 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 
 	m := newModel(ctx, o, cfg)
 	if m.watch, err = o.Repo.Watch(ctx); err != nil {
-		// Without the watcher, each tick reloads.
-		m.log.Warn("watch failed", "err", err)
+		m.dropWatch(err)
 	}
 	var saved *savedState
 	if o.Resume != "" {
