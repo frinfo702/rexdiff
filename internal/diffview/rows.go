@@ -120,15 +120,18 @@ func splitKind(l *splitLine) RowKind {
 	return RowInsert
 }
 
-// Geometry gives the columns of the line numbers in the output of
-// [View.Render]. Use it to tell a line number from the code.
+// Geometry gives the columns of the line numbers and of the code in the
+// output of [View.Render]. Use it to tell a line number from the code.
 type Geometry struct {
 	BeforeNum     int // the width of the old line-number column, in cells
 	AfterNum      int // the width of the new line-number column, in cells
 	AfterNumStart int // the column where the new line numbers start, from 0
+	BeforeCode    int // the column where the old code starts, from 0
+	AfterCode     int // the column where the new code starts, from 0
 }
 
-// geometry returns the columns of the line numbers. Call it after text.
+// geometry returns the columns of the line numbers and of the code. Call
+// it after text.
 func (v *View) geometry() Geometry {
 	g := Geometry{
 		BeforeNum: v.beforeNumDigits + lineNumPadding*2,
@@ -137,6 +140,11 @@ func (v *View) geometry() Geometry {
 	g.AfterNumStart = g.BeforeNum
 	if v.layout == layoutSplit {
 		g.AfterNumStart = g.BeforeNum + v.fullCodeWidth
+		g.BeforeCode = g.BeforeNum + leadingSymbolsSize
+		g.AfterCode = g.AfterNumStart + g.AfterNum + leadingSymbolsSize
+		return g
 	}
+	g.BeforeCode = g.BeforeNum + g.AfterNum + leadingSymbolsSize
+	g.AfterCode = g.BeforeCode
 	return g
 }

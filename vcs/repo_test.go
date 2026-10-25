@@ -1,7 +1,9 @@
 package vcs_test
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,7 +165,7 @@ func TestScopes(t *testing.T) {
 		t.Errorf("git status after Snapshot = %q, want ?? new.txt", st)
 	}
 
-	cs, err := r.Commits(ctx, 5)
+	cs, err := r.Commits(ctx, "")
 	if err != nil || len(cs) != 2 || cs[0].Subject != "b" || cs[1].Subject != "init" {
 		t.Fatalf("Commits = %+v, %v, want b and init", cs, err)
 	}
@@ -187,7 +189,7 @@ func TestMissingCommit(t *testing.T) {
 	// The empty tree is not a correct result. It shows every file as added.
 	r, dir := newRepo(t)
 	ctx := t.Context()
-	cs, err := r.Commits(ctx, 2)
+	cs, err := r.Commits(ctx, "")
 	if err != nil || len(cs) != 2 {
 		t.Fatalf("Commits = %+v, %v, want two commits", cs, err)
 	}
@@ -212,35 +214,60 @@ func TestMissingCommit(t *testing.T) {
 }
 
 // TestDiffSkipsBinaryAndBigFiles checks that Diff and ReadFile mark binary
-// and big files, and do not read their content.
+// and big files, and do not read their content. The limits are the same as
+// in herdr-reviewr. Diff adds the sizes of the two versions.
 func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 	r, dir := newRepo(t)
+	half := strings.Repeat("x", 1_100_000) + "\n" // two make 2,200,002 bytes
+	lines := strings.Repeat("x\n", 30_000)        // two make 60,000 lines
+	// Two versions with 25,000 lines each are not too big.
+	limit := strings.Repeat("y\n", 25_000)
+	write(t, dir, "bytes", half)
+	write(t, dir, "lines", lines)
+	write(t, dir, "limit", limit)
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-qm", "base")
+	write(t, dir, "bytes", "y"+half)
+	write(t, dir, "lines", "y"+lines)
+	write(t, dir, "limit", "z"+limit)
 	write(t, dir, "bin", "a\x00b")
+	write(t, dir, "late", strings.Repeat("x", 9000)+"\x00") // NUL at byte 9000
 	write(t, dir, "big", strings.Repeat("x\n", 50_001))
-	write(t, dir, "huge", strings.Repeat("x", 2<<20+1)) // over 2 MiB
+	write(t, dir, "huge", strings.Repeat("x", 2_000_001))
 	// Diff reads this file after the skipped content.
 	write(t, dir, "small", "after\n")
 	got := map[string]vcs.File{}
 	for _, f := range changes(t, r, head(t, r), snapshot(t, r)) {
 		got[f.Path] = f
 	}
-	if f := got["bin"]; !f.Binary || f.New != "" {
-		t.Errorf("bin: %+v, want Binary with no New", f)
-	}
-	for _, p := range []string{"big", "huge"} {
-		if f := got[p]; !f.TooBig || f.New != "" {
-			t.Errorf("%s: TooBig = %v, New has %d bytes; want true, 0",
-				p, f.TooBig, len(f.New))
+	for _, p := range []string{"bin", "late"} {
+		if f := got[p]; !f.Binary || f.New != "" {
+			t.Errorf("%s: %+v, want Binary with no New", p, f)
 		}
+	}
+	for _, p := range []string{"bytes", "lines", "big", "huge"} {
+		if f := got[p]; !f.TooBig || f.Old != "" || f.New != "" {
+			t.Errorf("%s: TooBig = %v, Old has %d bytes, New has %d bytes; want true, 0, 0",
+				p, f.TooBig, len(f.Old), len(f.New))
+		}
+	}
+	if f := got["limit"]; f.TooBig || f.New != "z"+limit {
+		t.Errorf("limit: TooBig = %v, New has %d bytes; want false, %d",
+			f.TooBig, len(f.New), len(limit)+1)
 	}
 	if f := got["small"]; f.New != "after\n" {
 		t.Errorf("small: New = %q, want %q", f.New, "after\n")
 	}
-	if _, err := r.ReadFile("bin"); !errors.Is(err, vcs.ErrBinary) {
-		t.Errorf("ReadFile(bin): err = %v, want ErrBinary", err)
-	}
-	if _, err := r.ReadFile("huge"); !errors.Is(err, vcs.ErrTooBig) {
-		t.Errorf("ReadFile(huge): err = %v, want ErrTooBig", err)
+	for p, want := range map[string]error{
+		"bin":   vcs.ErrBinary,
+		"late":  vcs.ErrBinary,
+		"big":   vcs.ErrTooBig,
+		"huge":  vcs.ErrTooBig,
+		"bytes": nil,
+	} {
+		if _, err := r.ReadFile(p); !errors.Is(err, want) {
+			t.Errorf("ReadFile(%s): err = %v, want %v", p, err, want)
+		}
 	}
 }
 
@@ -304,18 +331,30 @@ func TestWorktree(t *testing.T) {
 		t.Errorf("Files = %s, want %s", got, want)
 	}
 
-	ms, err := r.Grep(ctx, "TWO", 10)
+	write(t, dir, "build/sub/x", "x\n")
+	var ignored []string
+	for _, e := range r.IgnoredDir("build") {
+		ignored = append(ignored, e.Path)
+	}
+	if want := []string{"build/out", "build/sub/"}; !slices.Equal(ignored, want) {
+		t.Errorf("IgnoredDir(build) = %q, want %q", ignored, want)
+	}
+	if es := r.IgnoredDir("no such dir"); len(es) != 0 {
+		t.Errorf("IgnoredDir(no such dir) = %v, want none", es)
+	}
+
+	ms, _, err := r.Grep(ctx, "TWO", 10)
 	match := vcs.Match{Path: "a.txt", Line: 2, Text: "two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
 		t.Errorf("Grep(TWO) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
 	write(t, dir, "a:é\n.txt", "x: two\n") // git quotes this name unless -z
-	ms, err = r.Grep(ctx, "x: two", 10)
+	ms, _, err = r.Grep(ctx, "x: two", 10)
 	match = vcs.Match{Path: "a:é\n.txt", Line: 1, Text: "x: two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
 		t.Errorf("Grep(x: two) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
-	if ms, err := r.Grep(ctx, "nothing has this", 10); err != nil || len(ms) != 0 {
+	if ms, _, err := r.Grep(ctx, "nothing has this", 10); err != nil || len(ms) != 0 {
 		t.Errorf("Grep with no match = %+v, %v, want none, nil", ms, err)
 	}
 
@@ -335,6 +374,43 @@ func TestWorktree(t *testing.T) {
 		if got := r.Contains(tt.path); got != tt.want {
 			t.Errorf("Contains(%q) = %v, want %v", tt.path, got, tt.want)
 		}
+	}
+}
+
+// TestOwns checks which directories are in the working tree, as in
+// herdr-reviewr: a subdirectory is, a nested repository and a relative or
+// outside path are not, and without git the answer is an error.
+func TestOwns(t *testing.T) {
+	r, dir := newRepo(t)
+	nested := filepath.Join(dir, "build", "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(t, nested, "init", "-q")
+	tests := []struct {
+		dir  string
+		want bool
+	}{
+		{dir, true},
+		{filepath.Join(dir, "build"), true},
+		{nested, false},
+		{"build", false}, // relative
+		{"", false},
+		{filepath.Dir(dir), false},
+		{filepath.Join(dir, "gone"), false},
+	}
+	for _, tt := range tests {
+		if got, err := r.Owns(t.Context(), tt.dir); got != tt.want || err != nil {
+			t.Errorf("Owns(%q) = %v, %v, want %v, nil", tt.dir, got, err, tt.want)
+		}
+	}
+	t.Setenv("PATH", t.TempDir())
+	if _, err := r.Owns(t.Context(), dir); err == nil {
+		t.Error("Owns without git gives no error")
+	}
+	// No git runs for a path outside the root.
+	if got, err := r.Owns(t.Context(), filepath.Dir(dir)); got || err != nil {
+		t.Errorf("Owns(outside) without git = %v, %v, want false, nil", got, err)
 	}
 }
 
@@ -463,5 +539,94 @@ func TestSnapshotRacyEdit(t *testing.T) {
 
 	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Mb.txt" {
 		t.Errorf("Diff(HEAD, Snapshot) = %s, want Mb.txt", got)
+	}
+}
+
+// TestCommitsLikeHerdr checks the commits of the commit picker. They are
+// the first-parent commits after since, else the last 50.
+func TestCommitsLikeHerdr(t *testing.T) {
+	r, dir := newRepo(t)
+	ctx := t.Context()
+	run := func(args ...string) { git(t, dir, args...) }
+	run("checkout", "-qb", "side", "main")
+	run("commit", "-q", "--allow-empty", "-m", "side")
+	run("checkout", "-q", "feat")
+	run("merge", "-q", "--no-ff", "-m", "merge side", "side")
+	for i := range 60 {
+		run("commit", "-q", "--allow-empty", "-m", fmt.Sprint("c", i))
+	}
+	subjects := func(cs []vcs.Commit) []string {
+		var s []string
+		for _, c := range cs {
+			s = append(s, c.Subject)
+		}
+		return s
+	}
+
+	since, err := r.ForkPoint(ctx, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs, err := r.Commits(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := subjects(cs)
+	if len(got) != 62 || got[0] != "c59" || got[60] != "merge side" || got[61] != "b" {
+		t.Errorf("Commits(fork point) = %d commits %q…, want c59 to b, no side", len(got), got[:3])
+	}
+
+	cs, err = r.Commits(ctx, "")
+	if err != nil || len(cs) != vcs.LastCommits || cs[0].Subject != "c59" {
+		t.Errorf("Commits(\"\") = %d commits, %v; want the last %d", len(cs), err, vcs.LastCommits)
+	}
+
+	empty := t.TempDir()
+	git(t, empty, "init", "-q")
+	er, err := vcs.Open(ctx, empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cs, err := er.Commits(ctx, ""); err != nil || len(cs) != 0 {
+		t.Errorf("Commits with no commit = %v, %v; want none, no error", cs, err)
+	}
+}
+
+// TestGrepLimit checks that Grep stops at the limit and tells that there
+// are more matches.
+func TestGrepLimit(t *testing.T) {
+	r, dir := newRepo(t)
+	ctx := t.Context()
+	write(t, dir, "many.txt", strings.Repeat("hit\n", 5000))
+	tests := []struct {
+		limit    int
+		wantN    int
+		wantMore bool
+	}{
+		{10, 10, true},
+		{4999, 4999, true},
+		{5000, 5000, false},
+		{6000, 5000, false},
+	}
+	for _, tt := range tests {
+		ms, more, err := r.Grep(ctx, "hit", tt.limit)
+		if err != nil || len(ms) != tt.wantN || more != tt.wantMore {
+			t.Errorf("Grep(hit, %d) = %d matches, more %t, %v; want %d, %t, nil",
+				tt.limit, len(ms), more, err, tt.wantN, tt.wantMore)
+		}
+	}
+	if ms, _, _ := r.Grep(ctx, "hit", 2); ms[1] != (vcs.Match{Path: "many.txt", Line: 2, Text: "hit"}) {
+		t.Errorf("Grep(hit, 2)[1] = %+v, want many.txt:2", ms[1])
+	}
+}
+
+// TestGrepCanceled checks that Grep returns the error of a canceled
+// context.
+func TestGrepCanceled(t *testing.T) {
+	r, _ := newRepo(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err := r.Grep(ctx, "one", 10); !errors.Is(err, context.Canceled) {
+		t.Errorf("Grep with a canceled context = %v, want %v", err, context.Canceled)
 	}
 }

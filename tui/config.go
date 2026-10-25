@@ -38,20 +38,40 @@ const (
 	markdownViewRendered markdownView = "rendered"
 )
 
-// position is a side of the screen.
+// position is the place of the file list around the main pane.
 type position string
 
 const (
-	positionRight position = "right"
-	positionLeft  position = "left"
+	positionRight  position = "right"
+	positionBottom position = "bottom"
+	positionLeft   position = "left"
+	positionTop    position = "top"
 )
+
+// next returns the position after p, clockwise around the main pane, as
+// the key p of herdr-reviewr moves it.
+func (p position) next() position {
+	switch p {
+	case positionRight:
+		return positionBottom
+	case positionBottom:
+		return positionLeft
+	case positionLeft:
+		return positionTop
+	}
+	return positionRight
+}
+
+// stacked reports whether the file list is above or below the main pane.
+// Then the list splits the rows of the body, not the columns.
+func (p position) stacked() bool { return p == positionTop || p == positionBottom }
 
 // The values that the settings accept, in the order of the error messages.
 var (
 	layouts       = []Layout{LayoutUnified, LayoutSplit}
 	configScopes  = []Scope{ScopeUncommitted, ScopeBranch, ScopeLastTurn}
 	markdownViews = []markdownView{markdownViewSource, markdownViewRendered}
-	positions     = []position{positionRight, positionLeft}
+	positions     = []position{positionRight, positionBottom, positionLeft, positionTop}
 )
 
 // config holds the settings of rexdiff. The settings are at the top of
@@ -68,10 +88,11 @@ type config struct {
 	// URLOpener is a command, for example "open {url}".
 	URLOpener    string       `json:"url_opener"`
 	MarkdownView markdownView `json:"markdown_view"`
-	// FileList is the side of the screen that shows the list of files.
+	// FileList is the place of the list of files: right, bottom, left, or
+	// top.
 	FileList position `json:"file_list"`
-	// FileListWidth is the width of the file list in columns. It is
-	// minListWidth or more.
+	// FileListWidth is the width of the file list at a side, in columns.
+	// It is minListWidth or more.
 	FileListWidth int `json:"file_list_width"`
 	// DiffSigns marks a changed line with + or -, in place of a bar.
 	DiffSigns bool `json:"diff_signs"`
@@ -308,12 +329,41 @@ func (c config) checkHosts(set map[string]jsontext.Value) error {
 	return nil
 }
 
-// checkKeybindings checks the keys of the actions. The decoder rejects an
-// unknown action. A list that is set must have keys.
+// checkKeybindings checks the keys of the actions, as herdr-reviewr does.
+// The decoder rejects an unknown action. A list that is set must have
+// keys, and each key must have a valid name. Then no key can have two
+// actions, after the setting changes the default keys.
 func (c config) checkKeybindings() error {
-	for _, b := range new(keyMap).bindings(c.Keybindings) {
-		if b.keys != nil && (len(b.keys) == 0 || slices.Contains(b.keys, "")) {
-			return invalid("keybindings."+b.name, "a list of keys", fmt.Sprint(b.keys))
+	k := defaultKeys()
+	bs := k.bindings(c.Keybindings)
+	for _, b := range bs {
+		if b.keys == nil {
+			continue
+		}
+		want := "a list of keys, each a character or a named key (" + keyNames() +
+			"), alone or after ctrl+ or alt+"
+		if len(b.keys) == 0 {
+			return invalid("keybindings."+b.name, want, "[]")
+		}
+		for _, s := range b.keys {
+			if _, ok := keyName(s); !ok {
+				return invalid("keybindings."+b.name, want, s)
+			}
+		}
+	}
+	k.applyConfig(c.Keybindings)
+	first := map[string]string{} // the first action of each key
+	for _, b := range bs {
+		for _, key := range b.key.Keys() {
+			switch a, ok := first[key]; {
+			case ok && a == b.name:
+				return fmt.Errorf("invalid value for keybindings: `%s` is bound twice to `%s`",
+					herdrKeyName(key), b.name)
+			case ok:
+				return fmt.Errorf("invalid value for keybindings: `%s` is bound to both `%s` and `%s`",
+					herdrKeyName(key), a, b.name)
+			}
+			first[key] = b.name
 		}
 	}
 	return nil

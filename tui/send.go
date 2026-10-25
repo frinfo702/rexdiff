@@ -1,12 +1,16 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/rednafi/rexdiff/internal/clipboard"
+	"github.com/rednafi/rexdiff/internal/turn"
 	"github.com/rednafi/rexdiff/rex"
 )
 
@@ -43,60 +47,172 @@ func (m *model) agent(block string) *agentState {
 	return a
 }
 
-// onEvent follows the turns of the agents. When an agent in this
-// repository starts to work, onEvent takes a snapshot of the working tree.
-// The "last turn" scope compares with this snapshot.
+// onEvent keeps the state of the agent in the block of e, and follows the
+// turns.
 func (m *model) onEvent(e rex.Event) {
 	if e.Closed {
-		if a := m.agents[e.Block]; a != nil {
-			a.state = ""
+		delete(m.agents, e.Block)
+	} else {
+		app, state := e.Status.App, e.Status.State
+		m.log.Debug("status", "block", e.Block, "app", app, "state", state)
+		a := m.agent(e.Block)
+		a.app, a.state = app, state
+	}
+	m.observeTurn()
+}
+
+// member is an agent that works in the repository.
+type member struct {
+	block, app string
+	state      rex.State
+}
+
+// members returns the agents that work in the repository, in the order
+// of their blocks. As in herdr-reviewr, an agent is a member if its
+// working directory is absolute and in this working tree. If the place of
+// an agent is not known, members returns false.
+func (m *model) members() ([]member, bool) {
+	var out []member
+	for _, block := range slices.Sorted(maps.Keys(m.agents)) {
+		a := m.agents[block]
+		if a.state == "" || a.app == appName || (m.rex != nil && block == m.rex.Block) {
+			continue
 		}
-		return
-	}
-	app, state := e.Status.App, e.Status.State
-	m.log.Debug("status", "block", e.Block, "app", app, "state", state)
-	a := m.agent(e.Block)
-	prev := a.state
-	a.state = state
-	if app == appName || (m.rex != nil && e.Block == m.rex.Block) {
-		return
-	}
-	if state == rex.StateWorking && prev != rex.StateWorking {
-		m.startTurn(e.Block, app)
-		return
-	}
-	done := state == rex.StateIdle || state == rex.StateDone || state == ""
-	ended := m.turn != nil && m.turn.block == e.Block && prev == rex.StateWorking
-	if ended && done {
-		m.turn.running = false
-		if m.scope == ScopeLastTurn {
-			m.reload()
+		if !a.hasCwd {
+			if m.rex == nil {
+				return nil, false
+			}
+			cwd, err := m.rex.Cwd(m.ctx, block)
+			if err != nil {
+				m.log.Debug("agent cwd failed", "block", block, "err", err)
+				return nil, false // ask again with the next state
+			}
+			a.cwd, a.hasCwd = cwd, true
 		}
+		in, err := m.owns(a.cwd)
+		if err != nil {
+			m.log.Warn("agent membership failed", "err", err)
+			return nil, false
+		}
+		if in {
+			out = append(out, member{block, a.app, a.state})
+		}
+	}
+	return out, true
+}
+
+// owns tells if dir is in this working tree. It keeps the directories
+// that are, because their top directory does not move.
+func (m *model) owns(dir string) (bool, error) {
+	if m.memberDirs[dir] {
+		return true, nil
+	}
+	in, err := m.repo.Owns(m.ctx, dir)
+	if in {
+		if m.memberDirs == nil {
+			m.memberDirs = map[string]bool{}
+		}
+		m.memberDirs[dir] = true
+	}
+	return in, err
+}
+
+// observeTurn gives the state of the repository to the tracker, and
+// follows the start and the end of a turn.
+//
+// herdr-reviewr also drops a turn whose first write can be in its start
+// snapshot. That needs the time of each write, and the watcher has no
+// such times. Thus a write just before the snapshot does not show in the
+// turn.
+func (m *model) observeTurn() {
+	if !m.sampled {
+		return
+	}
+	ms, ok := m.members()
+	if !ok {
+		return // keep the last state, as herdr-reviewr does
+	}
+	here := len(ms) > 0
+	if m.agentsHere == nil || *m.agentsHere != here {
+		m.agentsHere = &here
+		if m.scope == ScopeLastTurn && m.turn == nil {
+			m.reload() // show the new wait message
+		}
+	}
+	states := make([]rex.State, len(ms))
+	for i, a := range ms {
+		states[i] = a.state
+	}
+	started, ended := m.tracker.Observe(turn.Fold(states...))
+	if started {
+		m.startTurn(ms)
+	}
+	if ended {
+		m.endTurn()
 	}
 }
 
-// startTurn takes a snapshot of the working tree when the agent app in
-// block starts a turn in this repository.
-func (m *model) startTurn(block, app string) {
-	a := m.agent(block)
-	if !a.hasCwd && m.rex != nil {
-		// An error gives "", and inRepo counts "" as in the repository.
-		a.cwd, _ = m.rex.Cwd(m.ctx, block)
-		a.hasCwd = true
+// turnWaitMessage tells why the last-turn scope has no turn. The messages
+// come from herdr-reviewr.
+func (m *model) turnWaitMessage() string {
+	if m.agentsHere != nil && !*m.agentsHere {
+		return "no agent works here"
 	}
-	if !m.inRepo(a.cwd) {
-		return
-	}
+	return "waiting for the first turn"
+}
+
+// startTurn takes a snapshot of the working tree at the start of a turn
+// of the members ms. The turn stays pending until it changes a file.
+func (m *model) startTurn(ms []member) {
+	m.pending = nil
 	tree, err := m.repo.Snapshot(m.ctx)
 	if err != nil {
+		m.log.Warn("turn snapshot failed", "err", err)
 		return
 	}
-	m.turn = &turnState{
-		block:   block,
-		app:     app,
+	i := slices.IndexFunc(ms, func(a member) bool { return a.state == rex.StateWorking })
+	m.pending = &turnState{
+		block:   ms[i].block,
+		app:     ms[i].app,
 		tree:    tree,
 		running: true,
 		at:      time.Now(),
+	}
+}
+
+// checkTurn makes the pending turn the last turn if the working tree
+// differs from its start. Else the last turn stays.
+func (m *model) checkTurn() {
+	tree, err := m.repo.Snapshot(m.ctx)
+	if err != nil {
+		m.log.Warn("turn change check failed", "err", err)
+		return
+	}
+	if tree != m.pending.tree {
+		m.promote()
+	}
+}
+
+// promote makes the pending turn the last turn, and saves its tree.
+func (m *model) promote() {
+	m.turn, m.pending = m.pending, nil
+	if err := m.repo.SaveTurn(m.ctx, m.turn.tree); err != nil {
+		m.log.Warn("turn baseline ref write failed", "err", err)
+	}
+	if m.scope == ScopeLastTurn {
+		m.reload()
+	}
+}
+
+// endTurn ends the turn. A pending turn that changes the working tree
+// becomes the last turn. After the end, a change is not from the turn.
+func (m *model) endTurn() {
+	if m.pending != nil {
+		m.checkTurn()
+		m.pending = nil
+	}
+	if m.turn != nil {
+		m.turn.running = false
 	}
 	if m.scope == ScopeLastTurn {
 		m.reload()
@@ -107,8 +223,19 @@ func (m *model) startTurn(block, app string) {
 // review to the agent, or lets the user pick one.
 func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	for _, a := range msg.agents {
-		*m.agent(a.Block) = agentState{state: a.State, cwd: a.Cwd, hasCwd: true}
+		*m.agent(a.Block) = agentState{app: a.App, state: a.State, cwd: a.Cwd, hasCwd: true}
 	}
+	switch {
+	case msg.err == nil:
+		m.sampled = true
+	case !m.sampled && !msg.send:
+		// Without a list, the turns do not start. Thus list again later.
+		m.log.Warn("agent list failed", "err", msg.err)
+		wait := max(m.sampleWait, retryFirst)
+		m.sampleWait = min(2*wait, retryMax)
+		m.sampleAt = time.Now().Add(wait)
+	}
+	m.observeTurn()
 	if !msg.send {
 		return nil
 	}
@@ -134,9 +261,11 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 		return nil
 	case len(here) == 1:
 		return m.deliver(here[0])
-	case m.mode != modeNormal:
+	case m.mode != modeNormal && !m.inCommentList():
 		// The user can open the comment box or an overlay while the agents
-		// load. A picker on top can hide the box and lose the comment.
+		// load. A picker on top can hide the box and lose the comment. The
+		// picker can take the place of the comment list, as in
+		// herdr-reviewr.
 		m.flash("several agents: close the box, then press s to pick one")
 		return nil
 	}
@@ -193,9 +322,7 @@ func (m *model) onSent(msg sentMsg) {
 		m.flashCopy(msg.err.Error())
 		return
 	}
-	for _, id := range msg.ids {
-		m.comments.Remove(id)
-	}
+	m.clearComments(msg.ids)
 	m.lastSent = msg.agent.Block
 	sent := plural(len(msg.ids), "comment")
 	m.flash(fmt.Sprintf("sent %s to %s", sent, msg.agent.Name))
@@ -219,14 +346,68 @@ func (m *model) startSend() tea.Cmd {
 	return m.listAgents(agentsMsg{send: true})
 }
 
-// copyComments copies the review to the clipboard.
+// copyComments copies the review to the clipboard. A good copy clears
+// the comments, as a send does.
 func (m *model) copyComments() tea.Cmd {
 	if m.comments.Len() == 0 {
 		m.flash("no comments yet")
 		return nil
 	}
-	m.flash("copied " + plural(m.comments.Len(), "comment"))
-	return tea.SetClipboard(m.reviewText())
+	var ids []int
+	for _, c := range m.comments.All() {
+		ids = append(ids, c.ID)
+	}
+	m.sends++
+	return m.copyText(m.reviewText(), "copied "+plural(len(ids), "comment"), ids)
+}
+
+// copyText returns a command that writes text to the clipboard. If the
+// copy works, onCopied removes the comments ids and shows done.
+func (m *model) copyText(text, done string, ids []int) tea.Cmd {
+	ctx := m.ctx
+	return func() tea.Msg {
+		err := clipboard.Write(ctx, text)
+		return copiedMsg{ids: ids, done: done, err: err}
+	}
+}
+
+// onCopied shows the result of a copy. A good copy of the comments
+// removes them. The comments that the user adds or changes during the
+// copy stay.
+func (m *model) onCopied(msg copiedMsg) {
+	if msg.ids != nil {
+		m.sends--
+	}
+	switch {
+	case errors.Is(msg.err, clipboard.ErrNoTool):
+		m.flash("copy failed: install wl-clipboard, xclip, or xsel")
+	case msg.err != nil:
+		m.log.Warn("copy failed", "err", msg.err)
+		m.flash("copy failed")
+	default:
+		m.clearComments(msg.ids)
+		m.flash(msg.done)
+	}
+}
+
+// inCommentList tells if the comment list is open.
+func (m *model) inCommentList() bool {
+	return m.mode == modeOverlay && m.overlay != nil && m.overlay.kind == overlayComments
+}
+
+// clearComments removes the comments ids after a send or a copy. An open
+// comment list shows the rest, or closes if no comment stays.
+func (m *model) clearComments(ids []int) {
+	for _, id := range ids {
+		m.comments.Remove(id)
+	}
+	if m.inCommentList() {
+		if m.comments.Len() == 0 {
+			m.closeOverlay()
+			return
+		}
+		m.fillCommentList(m.overlay)
+	}
 }
 
 // flashCopy shows why the review cannot go to an agent, and tells the

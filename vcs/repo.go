@@ -26,22 +26,19 @@ import (
 // emptyTree is the ID of the tree that has no files.
 const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
-// maxFileSize is the largest file, in bytes, that [Repo.Diff] and
-// [Repo.ReadFile] read.
-const maxFileSize = 2 << 20
-
-// maxLines is the largest number of lines in a file that [Repo.Diff] reads.
-const maxLines = 50_000
-
-// binaryCheckLen is the number of bytes at the start of a file that git
-// checks for a NUL byte.
-const binaryCheckLen = 8000
+// The size limits are the same as in herdr-reviewr. [Repo.Diff] applies
+// them to the sum of the two versions of a file. [Repo.ReadFile] applies
+// them to one file.
+const (
+	maxFileSize = 2_000_000 // bytes
+	maxLines    = 50_000
+)
 
 var (
 	// ErrBinary means that a file is binary.
 	ErrBinary = errors.New("binary file")
-	// ErrTooBig means that a file is larger than 2 MiB or has more than 50,000
-	// lines.
+	// ErrTooBig means that a file is larger than 2,000,000 bytes or has
+	// more than 50,000 lines.
 	ErrTooBig = errors.New("file too big")
 )
 
@@ -77,7 +74,17 @@ func (r *Repo) Root() string { return r.root }
 // run runs git in the root directory and returns its standard output. env
 // adds to the environment of the process.
 func (r *Repo) run(ctx context.Context, env []string, args ...string) (string, error) {
-	out, err := command(ctx, r.root, env, "git", args...)
+	return r.runInput(ctx, env, nil, args...)
+}
+
+// runInput is like run. git reads its standard input from in.
+func (r *Repo) runInput(
+	ctx context.Context,
+	env []string,
+	in io.Reader,
+	args ...string,
+) (string, error) {
+	out, err := command(ctx, r.root, env, in, "git", args...)
 	if err != nil {
 		return out, fmt.Errorf("git %s: %w", args[0], err)
 	}
@@ -85,18 +92,20 @@ func (r *Repo) run(ctx context.Context, env []string, args ...string) (string, e
 }
 
 // command runs the program name in dir and returns its standard output.
-// env adds to the environment of the process. The error has the first line
+// env adds to the environment of the process, and stdin is its standard
+// input, or nil for none. The error has the first line
 // of the standard error. It wraps the error of the process, so callers can
 // check its exit code.
 func command(
 	ctx context.Context,
 	dir string,
 	env []string,
+	stdin io.Reader,
 	name string,
 	args ...string,
 ) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
+	cmd.Dir, cmd.Stdin = dir, stdin
 	if env != nil {
 		cmd.Env = append(os.Environ(), env...)
 	}
@@ -180,11 +189,20 @@ func (r *Repo) Parent(ctx context.Context, rev string) (string, error) {
 
 // MergeBase returns the tree of the best common ancestor of base and HEAD.
 func (r *Repo) MergeBase(ctx context.Context, base string) (string, error) {
+	c, err := r.ForkPoint(ctx, base)
+	if err != nil {
+		return "", err
+	}
+	return r.Tree(ctx, c)
+}
+
+// ForkPoint returns the best common ancestor commit of base and HEAD.
+func (r *Repo) ForkPoint(ctx context.Context, base string) (string, error) {
 	out, err := r.run(ctx, nil, "merge-base", "--end-of-options", base, "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("no merge base with %s", base)
 	}
-	return r.Tree(ctx, strings.TrimSpace(out))
+	return strings.TrimSpace(out), nil
 }
 
 // Snapshot writes the working tree as a tree object and returns its ID.
@@ -263,10 +281,10 @@ type File struct {
 	From     string // for a rename, the old path
 	Status   Status
 	Old, New string
-	// Binary is true if a version of the file is binary.
+	// Binary is true if a version of the file has a NUL byte.
 	Binary bool
-	// TooBig is true if a version of the file is larger than 2 MiB or has
-	// more than 50,000 lines.
+	// TooBig is true if the two versions together are larger than
+	// 2,000,000 bytes or have more than 50,000 lines.
 	TooBig bool
 }
 
@@ -314,6 +332,10 @@ func (r *Repo) Diff(ctx context.Context, from, to string) ([]File, error) {
 	for i := range files {
 		f := &files[i]
 		f.Old, f.New = f.use(blobs[2*i]), f.use(blobs[2*i+1])
+		f.TooBig = f.TooBig || tooBig(f.Old, f.New)
+		if f.Binary || f.TooBig {
+			f.Old, f.New = "", ""
+		}
 	}
 	slices.SortFunc(files, func(a, b File) int { return strings.Compare(a.Path, b.Path) })
 	return files, nil
@@ -416,26 +438,31 @@ func readBatch(r *bufio.Reader, batch []int, blobs []blob) error {
 		if _, err := io.ReadFull(r, b); err != nil {
 			return errShort
 		}
-		blobs[i].data, blobs[i].err = checkBlob(string(b[:n]))
+		if s := string(b[:n]); isBinary(s) {
+			blobs[i].err = ErrBinary
+		} else {
+			blobs[i].data = s
+		}
 	}
 	return nil
 }
 
-// checkBlob returns s, or an error if s is binary or has too many lines.
-// The caller checks the size.
-func checkBlob(s string) (string, error) {
-	switch {
-	case isBinary(s):
-		return "", ErrBinary
-	case strings.Count(s, "\n") > maxLines:
-		return "", ErrTooBig
-	}
-	return s, nil
-}
+// isBinary reports whether s has a NUL byte.
+func isBinary(s string) bool { return strings.Contains(s, "\x00") }
 
-// isBinary reports whether s has a NUL byte near its start, as git does.
-func isBinary(s string) bool {
-	return strings.Contains(s[:min(len(s), binaryCheckLen)], "\x00")
+// tooBig reports whether the versions together are larger than
+// maxFileSize bytes or have more than maxLines lines. A last line without
+// a newline counts as a line, as in diff.Lines.
+func tooBig(versions ...string) bool {
+	size, lines := 0, 0
+	for _, s := range versions {
+		size += len(s)
+		lines += strings.Count(s, "\n")
+		if s != "" && !strings.HasSuffix(s, "\n") {
+			lines++
+		}
+	}
+	return size > maxFileSize || lines > maxLines
 }
 
 // ReadFile reads the file at path in the working tree. The path is relative
@@ -463,10 +490,14 @@ func (r *Repo) ReadFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if isBinary(string(b)) {
+	switch s := string(b); {
+	case isBinary(s):
 		return "", ErrBinary
+	case tooBig(s):
+		return "", ErrTooBig
+	default:
+		return s, nil
 	}
-	return string(b), nil
 }
 
 // Contains reports whether dir is the root or a directory below it. It
@@ -475,6 +506,25 @@ func (r *Repo) Contains(dir string) bool {
 	root := evalSymlinks(r.root)
 	dir = evalSymlinks(dir)
 	return dir == root || strings.HasPrefix(dir, root+string(filepath.Separator))
+}
+
+// Owns reports whether dir is in the working tree of r, and not in another
+// repository or worktree below the root. As in herdr-reviewr, only an
+// absolute dir can be in it. Owns runs git only for a dir below the root.
+// An error tells that git cannot run, so the answer is not known.
+func (r *Repo) Owns(ctx context.Context, dir string) (bool, error) {
+	if !filepath.IsAbs(dir) || !r.Contains(dir) {
+		return false, nil
+	}
+	out, err := command(ctx, r.root, nil, nil, "git", "-C", dir, "rev-parse", "--show-toplevel")
+	if _, ok := errors.AsType[*exec.ExitError](err); ok {
+		return false, nil // dir is in no working tree
+	}
+	if err != nil {
+		return false, err
+	}
+	top := strings.TrimSuffix(out, "\n")
+	return top != "" && evalSymlinks(top) == evalSymlinks(r.root), nil
 }
 
 // evalSymlinks returns p with its symbolic links resolved, or p if that

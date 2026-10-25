@@ -171,7 +171,7 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 	fs.Func("scope", "start scope: uncommitted, branch, or last-turn",
 		oneOf(&f.scope, tui.ScopeUncommitted, tui.ScopeBranch, tui.ScopeLastTurn))
 	fs.BoolVar(&f.wrap, "wrap", true, "wrap long lines; w toggles it")
-	fs.StringVar(&f.base, "base", "", "base for the branch scope (default: the repo's default branch)")
+	fs.StringVar(&f.base, "base", "", "base for the branch scope (default: the picked base, else the repo's default branch)")
 	fs.StringVar(&f.agent, "agent", os.Getenv("REX_AGENT_BLOCK"), "the agent's Rex block (id or label) this pane was opened beside")
 	fs.StringVar(&f.logPath, "log", os.Getenv("REXDIFF_LOG"), "append a debug log to this file")
 	fs.StringVar(&f.config, "config", "", "the settings as JSON; the Rex action passes them from rexdiff.lua")

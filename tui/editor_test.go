@@ -2,6 +2,7 @@ package tui
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,10 +57,13 @@ func pressE(t *testing.T, m model) (model, tea.Cmd) {
 // TestTerminalEditorInRex checks that a terminal editor opens at the line
 // in a new Rex block, and that e returns no command.
 func TestTerminalEditorInRex(t *testing.T) {
+	bin := t.TempDir()
+	nvim := writeScript(t, bin, "nvim", "")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	tests := []struct {
 		name, editor, env, want string
 	}{
-		{"settings", "/opt/homebrew/bin/nvim +{line} {file}", "", "/opt/homebrew/bin/nvim +4 "},
+		{"settings", nvim + " +{line} {file}", "", nvim + " +4 "},
 		{"environment", "", "nvim", "nvim +4 "},
 	}
 	for _, tt := range tests {
@@ -69,8 +73,12 @@ func TestTerminalEditorInRex(t *testing.T) {
 			t.Setenv("VISUAL", "")
 			t.Setenv("EDITOR", tt.env)
 			log := logRex(t, &m)
-			if _, cmd := pressE(t, m); cmd != nil {
+			m, cmd := pressE(t, m)
+			if cmd != nil {
 				t.Errorf("e returns a command %T, want none", cmd)
+			}
+			if !shows(m, "opened a.go") {
+				t.Errorf("view got:\n%s\nwant \"opened a.go\"", view(m))
 			}
 			b, err := os.ReadFile(log)
 			if err != nil {
@@ -122,8 +130,9 @@ func TestEditorError(t *testing.T) {
 	tests := []struct {
 		name, editor, path, want string
 	}{
-		{"fails", code + " -g {file}", os.Getenv("PATH"), "editor: exit status 3: code: no such file"},
-		{"cannot start", "code -g {file}", "", "editor: "}, // sh is not in PATH
+		{"fails", code + " -g {file}", os.Getenv("PATH"), "editor failed: exit status 3: code: no such file"},
+		// sh is not in PATH.
+		{"cannot start", code + " -g {file}", "", "editor failed: "},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -131,13 +140,69 @@ func TestEditorError(t *testing.T) {
 			m.cfg.Editor = tt.editor
 			t.Setenv("PATH", tt.path)
 			m, cmd := pressE(t, m)
-			if cmd == nil {
-				t.Fatal("e returns no command, want a command")
+			if cmd != nil {
+				m = step(t, m, cmd())
 			}
-			if m = step(t, m, cmd()); !strings.Contains(view(m), tt.want) {
+			if !shows(m, tt.want) {
 				t.Errorf("view got:\n%s\nwant %q in the footer", view(m), tt.want)
 			}
 		})
+	}
+}
+
+// TestEditorNotOpened checks the messages when rexdiff opens no editor.
+func TestEditorNotOpened(t *testing.T) {
+	tests := []struct {
+		name, editor, env string
+		remove            bool
+		want              string
+	}{
+		{"unset", "", "", false, "no editor: set `editor` in rexdiff.lua, $EDITOR, or git's core.editor"},
+		{"no program", "'' {file}", "", false, "the editor command names no program"},
+		{"no program env", "", `""`, false, "the editor command names no program"},
+		{"file gone", "", "nvim", true, "a.go is gone"},
+		{"not found", "", "no-such-editor-x", false, "editor not found: no-such-editor-x"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, _ := newTestModel(t)
+			m.cfg.Editor = tt.editor
+			t.Setenv("VISUAL", "")
+			t.Setenv("EDITOR", tt.env)
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			log := logRex(t, &m)
+			if tt.remove {
+				if err := os.Remove(filepath.Join(m.repo.Root(), "a.go")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			m, cmd := pressE(t, m)
+			if cmd != nil {
+				t.Errorf("e returns a command %T, want none", cmd)
+			}
+			if !shows(m, tt.want) {
+				t.Errorf("view got:\n%s\nwant %q in the footer", view(m), tt.want)
+			}
+			if _, err := os.Stat(log); err == nil {
+				t.Errorf("rex log %s exists, want no Rex block", log)
+			}
+		})
+	}
+}
+
+// TestTerminalEditorDone checks the message after a terminal editor stops
+// outside Rex.
+func TestTerminalEditorDone(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = step(t, m, editorDoneMsg{path: "a.go"})
+	if !shows(m, "edited a.go") {
+		t.Errorf("view got:\n%s\nwant \"edited a.go\"", view(m))
+	}
+	err := exec.Command("sh", "-c", "exit 2").Run()
+	m = step(t, m, editorDoneMsg{path: "a.go", err: err})
+	if !shows(m, "editor exited with exit status 2") {
+		t.Errorf("view got:\n%s\nwant \"editor exited with exit status 2\"", view(m))
 	}
 }
 

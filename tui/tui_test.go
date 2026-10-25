@@ -102,6 +102,13 @@ func press(t *testing.T, m model, keys ...string) model {
 	return m
 }
 
+// toTop moves the cursor of the current pane to the first row.
+func toTop(m model) model {
+	m.cur().cur = 0
+	m.ensureVisible()
+	return m
+}
+
 // view returns the screen of m without escape sequences.
 func view(m model) string { return ansi.Strip(m.View().Content) }
 
@@ -119,6 +126,13 @@ func shows(m model, texts ...string) bool {
 // status returns the event that the agent app in block is in state.
 func status(block, app string, state rex.State) eventMsg {
 	return eventMsg{Block: block, Status: rex.Status{App: app, State: state}}
+}
+
+// sample returns the first list of the agents: the agent app in block,
+// in dir, at rest.
+func sample(block, app, dir string) agentsMsg {
+	a := rex.Agent{Block: block, Cwd: dir, App: app, State: rex.StateIdle}
+	return agentsMsg{agents: []rex.Agent{a}}
 }
 
 // paths returns the paths of the files in the Changes tab.
@@ -162,9 +176,10 @@ func TestScopes(t *testing.T) {
 
 	// The turn scope shows only the changes of the turn of an agent.
 	m = press(t, m, "t")
-	if !strings.Contains(m.changes.note, "no agent turn") {
+	if m.changes.note != "waiting for the first turn" {
 		t.Errorf("turn scope before a turn: note %q, want a note that no turn ran", m.changes.note)
 	}
+	m = step(t, m, sample("block:agent", "pi", dir))
 	m = step(t, m, status("block:agent", "pi", rex.StateWorking))
 	write(t, dir, "c.go", "package a\n")
 	m = step(t, m, status("block:agent", "pi", rex.StateIdle))
@@ -176,8 +191,8 @@ func TestScopes(t *testing.T) {
 	}
 }
 
-// TestComment checks comments in the two layouts, and the send, copy, and
-// quit keys with unsent comments.
+// TestComment checks comments in the two layouts, and the send and quit
+// keys with unsent comments.
 func TestComment(t *testing.T) {
 	m, _ := newTestModel(t)
 
@@ -187,8 +202,10 @@ func TestComment(t *testing.T) {
 		t.Fatalf("after c: mode %v, want the comment box", m.mode)
 	}
 	m = press(t, m, "h", "i", "enter")
-	// The split layout uses two rows for the same change.
-	m = press(t, m, "|", "home", "]", "v", "j", "c", "o", "k", "enter")
+	// The split layout uses two rows for the same change. It needs a wide
+	// pane.
+	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
+	m = press(t, toTop(press(t, m, "|")), "]", "v", "j", "c", "o", "k", "enter")
 
 	cs := m.comments.All()
 	if len(cs) != 2 {
@@ -198,6 +215,10 @@ func TestComment(t *testing.T) {
 	if got, want := m.comments.Review(""), rows+"hi\n\n"+rows+"ok"; got != want {
 		t.Errorf("Review got:\n%s\nwant:\n%s", got, want)
 	}
+	if m.status != "comment added" {
+		t.Errorf("after a save: status %q, want \"comment added\"", m.status)
+	}
+	m.status = "" // the status hides the count
 	if !shows(m, "💬 hi", "2 unsent comments") {
 		t.Errorf("view got:\n%s\nwant the comments", view(m))
 	}
@@ -206,12 +227,6 @@ func TestComment(t *testing.T) {
 	if !strings.Contains(m.status, "not inside Rex") {
 		t.Errorf("send outside Rex: status %q, want \"not inside Rex\"", m.status)
 	}
-	next, cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if m = *next.(*model); cmd == nil || m.status != "copied 2 comments" {
-		t.Errorf("copy: status %q, command %v; want %q, true",
-			m.status, cmd != nil, "copied 2 comments")
-	}
-
 	// Quit asks first, because the comments are not sent.
 	if m = press(t, m, "q"); m.overlay == nil || m.overlay.kind != overlayQuit {
 		t.Error("q with unsent comments: no quit prompt, want a prompt")
@@ -305,12 +320,12 @@ func TestDragAfterReload(t *testing.T) {
 // screenY returns the screen line of row i of the current pane.
 func screenY(t *testing.T, m model, i int) int {
 	t.Helper()
-	_, rowAt := m.mainLines(m.bodyHeight())
+	_, rowAt := m.mainLines(m.mainHeight())
 	y := slices.Index(rowAt, i)
 	if y < 0 {
 		t.Fatalf("row %d is not on the screen, want it on the screen", i)
 	}
-	return bodyY + y
+	return m.mainY() + y
 }
 
 // click presses and releases the left button at x, y.
@@ -342,7 +357,7 @@ func TestClickOldNumber(t *testing.T) {
 func TestClickCommentBox(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "]", "c", "h", "i")
-	_, rowAt := m.mainLines(m.bodyHeight())
+	_, rowAt := m.mainLines(m.mainHeight())
 	box := bodyY + slices.Index(rowAt, m.changes.cur) + 1
 	clicks := []struct {
 		where string
@@ -415,8 +430,8 @@ func TestParseConfig(t *testing.T) {
 		scope-uncommitted search select send split tab-all-files tab-changes tab-pr up
 		wrap`)
 	keys := map[string][]string{}
-	for _, n := range names {
-		keys[n] = []string{"x"}
+	for i, n := range names {
+		keys[n] = []string{string(rune('A' + i))} // a key for each action
 	}
 	all, err := json.Marshal(map[string]any{"keybindings": keys})
 	if err != nil {
@@ -456,7 +471,7 @@ func TestParseConfig(t *testing.T) {
 		{`{"layout": "sideways"}`, `layout: expected one of unified, split, not "sideways"`},
 		{`{"default_scope": "commits"}`, scopes + `, not "commits"`},
 		{`{"markdown_view": "preview"}`, mdView + `, not "preview"`},
-		{`{"file_list": "top"}`, `file_list: expected one of right, left, not "top"`},
+		{`{"file_list": "middle"}`, `file_list: expected one of right, bottom, left, top, not "middle"`},
 		{`{"file_list_width": 3}`, `file_list_width: expected 16 or more, not "3"`},
 		{`{"editor": " "}`, editor + `, not " "`},
 		{`{"editor": "code {fil"}`, editor + `, not "code {fil"`},
@@ -547,15 +562,17 @@ func TestConfigFlags(t *testing.T) {
 	}
 	o := Options{Repo: m.repo, Layout: LayoutSplit}
 	m = newModel(t.Context(), o, cfg)
-	if !m.split || m.scope != ScopeBranch || !m.listLeft || m.listW != 40 {
-		t.Errorf("split %v, scope %q, list left %v, width %d; want true, branch, true, 40",
-			m.split, m.scope, m.listLeft, m.listW)
+	if !m.split || m.scope != ScopeBranch || m.listPos != positionLeft || m.listW != 40 {
+		t.Errorf("split %v, scope %q, list %q, width %d; want true, branch, left, 40",
+			m.split, m.scope, m.listPos, m.listW)
 	}
 	o.Scope = ScopeLastTurn
 	if m := newModel(t.Context(), o, cfg); m.scope != ScopeLastTurn {
 		t.Errorf("scope %q; want the flag, last-turn", m.scope)
 	}
-	m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.reload()
+	// The pane is wide enough for split.
+	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
 	m = press(t, m, "X")
 	if m.split {
 		t.Errorf("after the key X of the configuration: split %v, want false",
@@ -660,7 +677,7 @@ func TestWrap(t *testing.T) {
 	}
 
 	// A comment on wrapped lines gets the same snippet.
-	m = press(t, m, "home", "]", "v", "j", "c", "o", "k", "enter")
+	m = press(t, toTop(m), "]", "v", "j", "c", "o", "k", "enter")
 	cs := m.comments.All()
 	want := "\n-\treturn 1\n+" + long + "\nok"
 	if r := m.comments.Review(""); len(cs) != 1 || !strings.HasSuffix(r, want) {
@@ -694,7 +711,8 @@ func TestWrap(t *testing.T) {
 // on its hunk header.
 func TestWrapKeepsCursor(t *testing.T) {
 	m, dir, long := wrapModel(t)
-	m = press(t, m, "end", "w")
+	m.changes.cur = len(m.changes.rows) - 1
+	m = press(t, m, "w")
 	if got := m.target(m.changes.cur, diff.SideNew).line; got != 5 {
 		t.Errorf("after w: the cursor is on line %d, want 5", got)
 	}
@@ -726,7 +744,7 @@ func TestTallLine(t *testing.T) {
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
 
 	// The wheel scrolls past the line.
-	m = press(t, m, "home")
+	m = toTop(m)
 	wheel := []tea.MouseButton{tea.MouseWheelDown, tea.MouseWheelDown, tea.MouseWheelUp}
 	for _, b := range wheel {
 		top := m.changes.top
@@ -739,9 +757,9 @@ func TestTallLine(t *testing.T) {
 	}
 	// A taller screen shows more rows, not blank space below the view.
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 40})
-	if last := max(len(m.changes.lines)-m.bodyHeight(), 0); m.changes.top > last {
+	if last := max(len(m.changes.lines)-m.mainHeight(), 0); m.changes.top > last {
 		t.Errorf("top %d of %d rows on a screen of %d rows, want %d or less",
-			m.changes.top, len(m.changes.lines), m.bodyHeight(), last)
+			m.changes.top, len(m.changes.lines), m.mainHeight(), last)
 	}
 	if m = press(t, m, "j"); m.changes.top > m.changes.cur {
 		t.Errorf("after j: top %d, cursor %d; want the cursor on the screen",
@@ -749,16 +767,16 @@ func TestTallLine(t *testing.T) {
 	}
 
 	// A cursor on the line shows its first rows. The comment box shows below
-	// the last row. A c on a line with a comment edits the comment.
+	// the last row. An e on a line with a comment edits the comment.
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
-	m = press(t, m, "home")
+	m = toTop(m)
 	for m.changes.rows[m.changes.cur].New != 4 {
 		m = press(t, m, "j")
 	}
 	if v := view(m); !strings.Contains(v, "return x") {
 		t.Errorf("view got:\n%s\nwant the first rows of the line", v)
 	}
-	m = press(t, m, "c", "o", "k", "enter", "c", "z", "z")
+	m = press(t, m, "c", "o", "k", "enter", "e", "z", "z")
 	lines := strings.Split(view(m), "\n")
 	has := func(s string) func(string) bool {
 		return func(l string) bool { return strings.Contains(l, s) }
@@ -801,8 +819,14 @@ func TestHostileText(t *testing.T) {
 	raw("the status after a send", m)
 	m = step(t, m, sentMsg{err: errors.New("Rex" + osc)})
 	raw("the status after an error", m)
+	m = step(t, m, sample("b", "pi"+osc, dir))
 	m = step(t, m, status("b", "pi"+osc, rex.StateWorking))
+	write(t, dir, "turn.go", "x\n")
+	m = step(t, m, status("b", "pi"+osc, rex.StateIdle))
 	m = press(t, m, "t")
+	if m.turn == nil {
+		t.Fatal("no turn after the agent writes a file")
+	}
 	raw("the turn in the header", m)
 }
 
@@ -863,8 +887,8 @@ func TestEmptyRepo(t *testing.T) {
 	}
 }
 
-// TestFooterHints checks that the footer shows the keys of the select and the
-// find modes.
+// TestFooterHints checks that the footer shows the keys of the select mode,
+// and the find band.
 func TestFooterHints(t *testing.T) {
 	m, _ := newTestModel(t)
 	if m = press(t, m, "]", "v"); !strings.Contains(view(m), "extend") {
@@ -872,9 +896,11 @@ func TestFooterHints(t *testing.T) {
 	}
 	m = press(t, m, "esc")
 	m = step(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	if !strings.HasPrefix(lastLine(m), "find Find in file…") {
+		t.Errorf("find band: footer %q, want the empty band", lastLine(m))
+	}
 	m = press(t, m, "r", "e", "t", "u", "r", "n", "enter")
-	if !strings.Contains(view(m), "next/prev match") {
-		t.Errorf("find mode: view got:\n%s\nwant the hint next/prev match",
-			view(m))
+	if l := lastLine(m); !strings.HasPrefix(l, "find return") || !strings.HasSuffix(l, "2/2") {
+		t.Errorf("find band: footer %q, want the query and 2/2", l)
 	}
 }

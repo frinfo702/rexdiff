@@ -1,43 +1,31 @@
 package tui
 
 import (
-	"fmt"
 	"hash/fnv"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// These are the steps of the keys that move or resize, in columns.
+// These are the steps of the keys that move or resize.
 const (
-	scrollStep    = 8 // the sideways scroll
-	listWidthStep = 4 // the width of the file list
+	scrollStep = 8 // the sideways scroll, in columns
+	// listStep resizes the file list. It is in columns at a side, and in
+	// percent of the body rows above or below.
+	listStep = 4
 )
 
 // updateNormal handles a key when no box is open.
 func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 	k := m.keys
-	if m.find.active() {
-		switch {
-		case key.Matches(msg, k.FindNext):
-			m.stepFind(1)
-			return nil
-		case key.Matches(msg, k.FindPrev):
-			m.stepFind(-1)
-			return nil
-		case key.Matches(msg, k.Cancel):
-			m.find = findState{}
-			return nil
-		}
-	}
 	var cmd tea.Cmd
 	switch {
 	case key.Matches(msg, k.QuitDiscard):
@@ -49,8 +37,7 @@ func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return tea.Quit
 	case key.Matches(msg, k.Cancel):
-		m.cur().anchor = -1
-		m.help.ShowAll = false
+		m.escape()
 	case key.Matches(msg, k.Keys):
 		m.help.ShowAll = !m.help.ShowAll
 	default:
@@ -58,6 +45,22 @@ func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	m.ensureVisible()
 	return cmd
+}
+
+// escape drops one layer with each press, as in herdr-reviewr: the
+// selection, then the armed crossing, then the list of all keys.
+func (m *model) escape() {
+	if p := m.cur(); m.tab != tabPR {
+		switch {
+		case p.anchor >= 0:
+			p.anchor = -1
+			return
+		case m.armed != 0:
+			m.armed = 0
+			return
+		}
+	}
+	m.help.ShowAll = false
 }
 
 // actionKey gives a key to the handlers of the actions, by topic. The
@@ -119,33 +122,33 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.Focus):
 		m.focusList = !m.focusList
 	case key.Matches(msg, k.Down) && inList:
-		m.pickFile(m.listSel() + 1)
+		m.stepRow(1)
 	case key.Matches(msg, k.Down):
 		p.cur = min(p.end(p.cur)+1, last)
 	case key.Matches(msg, k.Up) && inList:
-		m.pickFile(m.listSel() - 1)
+		m.stepRow(-1)
 	case key.Matches(msg, k.Up):
 		p.cur = max(p.cur-1, 0)
 	case key.Matches(msg, k.PageDown):
-		p.cur = min(p.cur+m.bodyHeight(), last)
+		p.cur = min(p.cur+m.mainHeight(), last)
 	case key.Matches(msg, k.PageUp):
-		p.cur = max(p.cur-m.bodyHeight(), 0)
+		p.cur = max(p.cur-m.mainHeight(), 0)
 	case key.Matches(msg, k.HalfDown):
-		p.cur = min(p.cur+m.bodyHeight()/2, last)
+		p.cur = min(p.cur+m.mainHeight()/2, last)
 	case key.Matches(msg, k.HalfUp):
-		p.cur = max(p.cur-m.bodyHeight()/2, 0)
-	case key.Matches(msg, k.Top):
-		p.cur = 0
-	case key.Matches(msg, k.Bottom):
-		p.cur = last
+		p.cur = max(p.cur-m.mainHeight()/2, 0)
 	case key.Matches(msg, k.NextHunk):
 		m.stepChange(1)
 	case key.Matches(msg, k.PrevHunk):
 		m.stepChange(-1)
 	case key.Matches(msg, k.NextFile):
-		m.pickFile(m.listSel() + 1)
+		m.stepFile(1)
 	case key.Matches(msg, k.PrevFile):
-		m.pickFile(m.listSel() - 1)
+		m.stepFile(-1)
+	case key.Matches(msg, k.Right) && m.onDir():
+		m.setDir(true)
+	case key.Matches(msg, k.Left) && m.onDir():
+		m.setDir(false)
 	case key.Matches(msg, k.Right) && m.onFold():
 		m.expandFold(p.rows[p.cur].Fold)
 	case key.Matches(msg, k.Right) && !m.wrap:
@@ -177,13 +180,16 @@ func (m *model) commentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if m.target(p.cur, diff.SideNew) != nil {
 			p.anchor = p.cur
 		}
-	case key.Matches(msg, k.Comment):
+	case key.Matches(msg, k.Comment) && !m.focusList:
+		// As in herdr-reviewr, a new comment and a delete need the focus
+		// on the diff.
 		return m.startComment(diff.SideNew), true
 	case key.Matches(msg, k.Edit):
 		return m.editOrOpen(), true
-	case key.Matches(msg, k.Delete):
+	case key.Matches(msg, k.Delete) && !m.focusList:
 		if c := m.commentAtCursor(); c != nil {
 			m.comments.Remove(c.ID)
+			m.flash("comment deleted")
 		}
 	case key.Matches(msg, k.NextComment):
 		m.stepComment(1)
@@ -210,26 +216,39 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.loadFiles()
 		m.openSearch()
 	case key.Matches(msg, k.Find):
-		m.openInput(overlayFind, "find in file", m.find.query)
+		return m.openFind(), true
 	case key.Matches(msg, k.GotoLine):
 		m.openInput(overlayGoto, "go to line (:0 first, :$ last)", "")
 	case key.Matches(msg, k.Rendered):
-		m.rendered = !m.rendered
-		m.rerender()
+		// As in herdr-reviewr, m acts only on a markdown file with text.
+		src, ok := m.markdownSource()
+		switch {
+		case !ok:
+		case m.rendersNothing(src):
+			m.flash("nothing here renders")
+		default:
+			m.rendered = !m.rendered
+			m.rerender()
+		}
 	case key.Matches(msg, k.Split):
-		m.split = !m.split
-		m.rerender()
+		// As in herdr-reviewr, | acts only if the file can show in split
+		// at this width. Only a pane that is too narrow tells why.
+		shown := m.splitShown()
+		switch {
+		case shown || m.codeWidth() >= splitMinWidth && m.splitAllowed():
+			m.split = !shown
+			m.rerender()
+		case m.splitAllowed():
+			m.flash("too narrow for split")
+		}
 	case key.Matches(msg, k.NavPosition):
-		m.listLeft = !m.listLeft
+		m.moveList()
 	case key.Matches(msg, k.NavHide):
-		m.listHidden = !m.listHidden
-		m.rerender()
+		m.hideList()
 	case key.Matches(msg, k.NavGrow):
-		m.listW = min(m.listW+listWidthStep, m.w/2)
-		m.rerender()
+		m.resizeList(listStep)
 	case key.Matches(msg, k.NavShrink):
-		m.listW = max(m.listW-listWidthStep, minListWidth)
-		m.rerender()
+		m.resizeList(-listStep)
 	case key.Matches(msg, k.OpenPR):
 		m.openPR()
 	case key.Matches(msg, k.Refresh):
@@ -240,6 +259,47 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	return nil, true
+}
+
+// listHiddenHere reports whether the user hides the file list on this
+// tab. The PR tab never hides it.
+func (m *model) listHiddenHere() bool { return m.listHidden && m.tab != tabPR }
+
+// moveList moves the file list clockwise around the main pane. A hidden
+// list does not move.
+func (m *model) moveList() {
+	if m.listHiddenHere() {
+		return
+	}
+	m.listPos = m.listPos.next()
+	m.rerender()
+}
+
+// hideList hides the file list and gives the focus to the main pane, or
+// shows the list again. The PR tab does not hide it.
+func (m *model) hideList() {
+	if m.tab == tabPR {
+		return
+	}
+	m.listHidden = !m.listHidden
+	if m.listHidden {
+		m.focusList = false
+	}
+	m.rerender()
+}
+
+// resizeList makes the file list larger by d, or smaller for a negative
+// d. A hidden list keeps its size.
+func (m *model) resizeList(d int) {
+	if m.listHiddenHere() {
+		return
+	}
+	if m.listPos.stacked() {
+		m.listPct = min(max(m.listPct+d, listMinPct), listMaxStackPct)
+	} else {
+		m.listW = m.clampSide(m.sideWidth() + d)
+	}
+	m.rerender()
 }
 
 // openPR opens the pull request in the browser.
@@ -263,16 +323,20 @@ func (m *model) refresh() tea.Cmd {
 	}
 	m.pr.loading = true
 	m.renderPR()
-	return m.loadPR()
+	return m.requestPR(true)
 }
 
 // setTab shows tab t.
 func (m *model) setTab(t tab) {
 	m.tab = t
-	m.find, m.drag = findState{}, dragState{}
+	m.drag = dragState{}
+	// As in herdr-reviewr, the PR tab has no find band.
+	if t == tabPR {
+		m.closeFind()
+	}
 	switch t {
 	case tabFiles:
-		if m.allFiles == nil {
+		if m.allFiles == nil || m.filesOwed {
 			m.reloadFiles()
 		}
 	case tabChanges:
@@ -336,8 +400,7 @@ func (m *model) expanded(path string, comments []*diff.Comment, f diff.Fold) boo
 }
 
 // expandFold shows the lines of fold f in the Changes tab, and moves the
-// cursor to the first of them. The selection and the hits of a find stay
-// on their lines.
+// cursor to the first of them. The selection stays on its lines.
 func (m *model) expandFold(f diff.Fold) {
 	p := &m.changes
 	file := m.changedFile()
@@ -355,11 +418,6 @@ func (m *model) expandFold(f diff.Fold) {
 	o.Ranges = append(o.Ranges, [2]int{f.Old, f.Old + f.Lines - 1})
 	m.rerender()
 	p.cur = max(p.rowOf(diff.SideNew, f.New), 0)
-	if m.find.active() {
-		cur := p.cur
-		m.runFind(m.find.query)
-		p.cur = cur
-	}
 }
 
 // listSel returns the index of the selected file in the file list.
@@ -370,8 +428,14 @@ func (m *model) listSel() int {
 	return m.changeSel
 }
 
-// pickFile selects file i of the file list of the current tab.
+// pickFile selects file i of the file list of the current tab. The
+// cursor of the list goes to the row of the file, if the row shows.
 func (m *model) pickFile(i int) {
+	if t := m.list(); t != nil {
+		if r := t.rowOf(i); r >= 0 {
+			t.cur = r
+		}
+	}
 	switch m.tab {
 	case tabChanges:
 		if i < 0 || i >= len(m.files) {
@@ -388,63 +452,118 @@ func (m *model) pickFile(i int) {
 		m.viewer.toStart()
 		m.renderViewer()
 	}
-	m.find, m.drag = findState{}, dragState{}
+	m.drag = dragState{}
 }
 
 // stepChange moves the cursor to the next (d = 1) or the previous (d = -1)
-// block of changed rows.
+// block of changed rows, as in herdr-reviewr. Past the last block, one
+// press arms a crossing to the next file with a change in that direction.
+// A second press the same way crosses, and lands on the first block in
+// that direction. A selection holds the cursor.
 func (m *model) stepChange(d int) {
+	armed := m.armed == d
+	m.armed = 0
 	p := &m.changes
-	if m.tab != tabChanges || len(p.rows) == 0 {
+	if m.tab != tabChanges || p.anchor >= 0 {
 		return
 	}
+	if i := changeRow(p.rows, p.cur, d); i >= 0 {
+		p.cur = i
+		return
+	}
+	target := m.crossTarget(d)
+	if !armed {
+		if target >= 0 {
+			m.armed, m.armedPath = d, m.files[target].Path
+		}
+		return
+	}
+	// A reload can drop the armed file.
+	isArmed := func(f changed) bool { return f.Path == m.armedPath }
+	if i := slices.IndexFunc(m.files, isArmed); i >= 0 {
+		target = i
+	}
+	if target < 0 {
+		return
+	}
+	m.pickFile(target)
+	from := -1
+	if d < 0 {
+		from = len(p.rows)
+	}
+	p.cur = max(changeRow(p.rows, from, d), 0)
+}
+
+// changeRow returns the first row of the next (d = 1) or the previous
+// (d = -1) block of changed rows from row from, or -1.
+func changeRow(rows []diff.Row, from, d int) int {
 	isChange := func(i int) bool {
-		k := p.rows[i].Kind
+		k := rows[i].Kind
 		return k == diff.KindInsert || k == diff.KindDelete || k == diff.KindChange
 	}
-	for i := p.cur + d; i >= 0 && i < len(p.rows); i += d {
+	for i := from + d; i >= 0 && i < len(rows); i += d {
 		if isChange(i) && (i == 0 || !isChange(i-1)) {
-			p.cur = i
-			return
+			return i
 		}
 	}
-	// After the last change, go to the first change of the next file.
-	if d > 0 && m.changeSel+1 < len(m.files) {
-		m.pickFile(m.changeSel + 1)
-		m.stepChange(1)
+	return -1
+}
+
+// crossTarget returns the index of the nearest file in direction d that
+// has a changed line, or -1. It goes in the order of the rows of the file
+// list, from the row of the file that shows.
+func (m *model) crossTarget(d int) int {
+	t := &m.changeTree
+	from := t.rowOf(m.changeSel)
+	if from < 0 {
+		from = t.cur
 	}
+	for r := t.nextFile(from, d); r >= 0; r = t.nextFile(r, d) {
+		if i := t.rows[r].File; m.files[i].adds+m.files[i].dels > 0 {
+			return i
+		}
+	}
+	return -1
 }
 
 // stepComment moves the cursor to the next (d = 1) or previous (d = -1)
-// comment, by file and line. It wraps around.
+// comment of the open file, by row. It wraps around in the file. As in
+// herdr-reviewr, n and N step only through the comments on the rows that
+// show.
 func (m *model) stepComment(d int) {
-	cs := m.comments.All()
-	if len(cs) == 0 {
+	p := m.cur()
+	a := m.anchor()
+	var stops []int // the first row of each comment
+	for _, c := range m.comments.All() {
+		if c.Anchor != a || c.Path != p.path || p.path == "" {
+			continue
+		}
+		if r := p.rowOf(c.Side, c.Start); r >= 0 {
+			stops = append(stops, r)
+		}
+	}
+	if len(stops) == 0 {
 		return
 	}
-	p := m.cur()
-	curPath, curLine := p.path, 0
-	if t := m.target(p.cur, diff.SideNew); t != nil {
-		curLine = t.line
-	}
-	idx := -1
-	for i, c := range cs {
-		after := c.Path > curPath || (c.Path == curPath && c.Start > curLine)
-		if d > 0 && after {
-			idx = i
-			break
-		}
-		if d < 0 && !after && !(c.Path == curPath && c.Start == curLine) {
-			idx = i
+	slices.Sort(stops)
+	k := max(slices.IndexFunc(stops, func(r int) bool { return r > p.cur }), 0)
+	if d < 0 {
+		k = len(stops) - 1
+		if i := slices.IndexFunc(stops, func(r int) bool { return r >= p.cur }); i > 0 {
+			k = i - 1
 		}
 	}
-	if idx < 0 {
-		idx = len(cs) - 1
-		if d > 0 {
-			idx = 0
-		}
+	m.focusList = false
+	p.cur, p.anchor = stops[k], -1
+}
+
+// jumpToComment shows comment c in the tab of its anchor.
+func (m *model) jumpToComment(c *diff.Comment) {
+	if c.Anchor.InDiff {
+		m.jumpTo(c.Path, c.Side, c.Start)
+		return
 	}
-	m.jumpTo(cs[idx].Path, cs[idx].Side, cs[idx].Start)
+	m.jumpToFile(c.Path, c.Side, c.Start)
 }
 
 // jumpTo shows path with the cursor on line. It uses the Changes tab if
@@ -453,10 +572,16 @@ func (m *model) jumpTo(path string, s diff.Side, line int) {
 	inChanges := func(f changed) bool { return f.Path == path }
 	if i := slices.IndexFunc(m.files, inChanges); i >= 0 {
 		m.tab = tabChanges
+		m.revealFile(path)
 		m.pickFile(i)
 		cursorToLine(&m.changes, s, line)
 		return
 	}
+	m.jumpToFile(path, s, line)
+}
+
+// jumpToFile shows path in the Files tab with the cursor on line.
+func (m *model) jumpToFile(path string, s diff.Side, line int) {
 	m.loadFiles()
 	i := slices.IndexFunc(m.allFiles, func(e vcs.Entry) bool { return e.Path == path })
 	if i < 0 {
@@ -464,6 +589,7 @@ func (m *model) jumpTo(path string, s diff.Side, line int) {
 		return
 	}
 	m.tab = tabFiles
+	m.revealFile(path)
 	m.pickFile(i)
 	if s == diff.SideOld { // the Files tab shows only the new side
 		m.flash("the removed line is not in the file now")
@@ -484,76 +610,110 @@ func (p *pane) rowOf(s diff.Side, line int) int {
 	return slices.IndexFunc(p.rows, func(r diff.Row) bool { return r.Line(s) == line })
 }
 
-// stepFind moves the cursor to the next (d = 1) or the previous (d = -1)
-// hit of the find. It wraps around.
-func (m *model) stepFind(d int) {
-	f, p := &m.find, m.cur()
-	// A reload can make the pane shorter than the rows of the hits.
-	f.hits = slices.DeleteFunc(f.hits, func(h int) bool { return h >= len(p.lines) })
-	if len(f.hits) == 0 {
-		m.find = findState{}
-		return
-	}
-	f.i = (min(f.i, len(f.hits)-1) + d + len(f.hits)) % len(f.hits)
-	p.cur = f.hits[f.i]
-}
-
-// runFind finds q in the lines of the current pane, without case. It moves
-// the cursor to the first hit at or below the cursor.
-func (m *model) runFind(q string) {
-	p := m.cur()
-	m.find = findState{query: q}
-	if q == "" {
-		return
-	}
-	lq := strings.ToLower(q)
-	for i, l := range p.lines {
-		if strings.Contains(strings.ToLower(ansi.Strip(l)), lq) {
-			m.find.hits = append(m.find.hits, p.head(i))
-		}
-	}
-	// The rows of a wrapped line make one hit.
-	m.find.hits = slices.Compact(m.find.hits)
-	if !m.find.active() {
-		m.flash("no match for " + q)
-		return
-	}
-	atCursor := func(h int) bool { return h >= p.cur }
-	m.find.i = max(slices.IndexFunc(m.find.hits, atCursor), 0)
-	p.cur = m.find.hits[m.find.i]
-}
-
-// gotoLine moves the cursor to the line number in s. If s is "0", the
-// cursor goes to the first row. If s is "$", it goes to the last row.
+// gotoLine moves the cursor to the line in s, as herdr-reviewr does. s is
+// digits or "$" for the last line. The line is clamped to the file, so
+// "0" is the first line. The line numbers are of the new side, or of the
+// old side if no row has a new line. gotoLine opens the fold that has the
+// line. Without line numbers, for example in rendered markdown, s is the
+// row on the screen.
 func (m *model) gotoLine(s string) {
 	p := m.cur()
-	switch s = strings.TrimSpace(s); s {
-	case "0":
-		p.cur = 0
-		return
-	case "$":
-		p.cur = max(len(p.lines)-1, 0)
+	n, ok := lineNumber(s)
+	if !ok || len(p.rows) == 0 {
 		return
 	}
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		m.flash("not a line number: " + s)
+	side := diff.SideOld
+	if slices.ContainsFunc(p.rows, func(r diff.Row) bool { return r.New > 0 }) {
+		side = diff.SideNew
+	}
+	last := 0
+	for _, r := range p.rows {
+		last = max(last, r.Line(side), foldEnd(r.Fold, side))
+	}
+	if last == 0 {
+		p.cur = min(max(n, 1), len(p.rows)) - 1
 		return
 	}
+	n = min(max(n, 1), last)
 	if m.tab == tabChanges {
-		// Show the fold that has line n.
 		for _, r := range p.rows {
-			if f := r.Fold; n >= f.New && n < f.New+f.Lines {
+			if f := r.Fold; f.Lines > 0 && n >= foldStart(f, side) && n <= foldEnd(f, side) {
 				m.expandFold(f)
 				break
 			}
 		}
 	}
-	for i, r := range p.rows {
-		if r.New == n || (r.New == 0 && r.Old == n) {
-			p.cur = i
-			return
+	p.cur = lineRow(p.rows, n, side)
+}
+
+// lineRow returns the row of line n on side. If no row has the line, it
+// returns the first row with a larger line, else the last row with a
+// line.
+func lineRow(rows []diff.Row, n int, side diff.Side) int {
+	if i := slices.IndexFunc(rows, func(r diff.Row) bool { return r.Line(side) == n }); i >= 0 {
+		return i
+	}
+	if i := slices.IndexFunc(rows, func(r diff.Row) bool { return r.Line(side) > n }); i >= 0 {
+		return i
+	}
+	for i, r := range slices.Backward(rows) {
+		if r.Line(side) > 0 {
+			return i
 		}
 	}
-	m.flash(fmt.Sprintf("line %d isn't shown", n))
+	return len(rows) - 1
+}
+
+// foldStart and foldEnd return the first and the last line of fold f on
+// side. foldEnd returns 0 for no fold.
+func foldStart(f diff.Fold, side diff.Side) int {
+	if side == diff.SideOld {
+		return f.Old
+	}
+	return f.New
+}
+
+func foldEnd(f diff.Fold, side diff.Side) int {
+	if f.Lines == 0 {
+		return 0
+	}
+	return foldStart(f, side) + f.Lines - 1
+}
+
+// lineNumber returns the line in s, the text of the go-to-line prompt. "$"
+// gives the largest int. ok is false if s is not digits or "$".
+func lineNumber(s string) (n int, ok bool) {
+	if s == "$" {
+		return math.MaxInt, true
+	}
+	if s == "" || strings.Trim(s, "0123456789") != "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		n = math.MaxInt // too many digits
+	}
+	return n, true
+}
+
+// lineKey reports whether the go-to-line prompt takes the key msg. It
+// takes a digit, "$", and the keys that move in the text or delete.
+func lineKey(msg tea.KeyPressMsg) bool {
+	if msg.Mod&^tea.ModShift != 0 {
+		return false
+	}
+	switch msg.Code {
+	case tea.KeyBackspace, tea.KeyDelete, tea.KeyLeft, tea.KeyRight, tea.KeyHome, tea.KeyEnd:
+		return true
+	}
+	return len(msg.Text) == 1 && strings.Contains("0123456789$", msg.Text)
+}
+
+// pastedLine returns the line in pasted text for the go-to-line prompt.
+// It removes the quotes, the brackets, and the punctuation around the
+// text. ok is false if the rest is not digits or "$".
+func pastedLine(text string) (line string, ok bool) {
+	line = strings.Trim(strings.TrimSpace(text), "`'\"“”‘’()[]<>:.,;")
+	_, ok = lineNumber(line)
+	return line, ok
 }

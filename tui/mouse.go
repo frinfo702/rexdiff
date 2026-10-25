@@ -1,11 +1,15 @@
 package tui
 
 // The mouse works as in herdr-reviewr. Click or drag on the line numbers to
-// comment on a line or a range. Drag on the code to copy it. Click a file
-// or a tab to open it.
+// comment on a line or a range. Drag on the code to copy it. Double-click
+// to copy a word, and triple-click to copy a line. Click a file or a tab to
+// open it. Double-click a file to copy its path.
 
 import (
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -35,19 +39,24 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		}
 		return nil
 	}
-	h := m.bodyHeight()
-	y := mouse.Y - bodyY
-	if y > h { // the footer, under the rule at y == h
+	if y := mouse.Y - bodyY; y > m.bodyHeight() { // the footer, under the rule
 		return m.install()
 	}
-	if y < 0 || y >= h {
+	if m.inList(mouse.X, mouse.Y) {
+		if y := mouse.Y - m.listY(); y >= 1 {
+			r := m.listStart(m.listRows()) + y - 1
+			if m.countClick(mouse) >= 2 {
+				if path := m.rowPath(r); path != "" {
+					return m.copyChars(path)
+				}
+			}
+			m.clickRow(r)
+		}
 		return nil
 	}
-	if m.inList(mouse.X) {
-		if y >= 1 {
-			m.focusList = true
-			m.pickFile(m.listStart(h) + y - 1)
-		}
+	h := m.mainHeight()
+	y := mouse.Y - m.mainY()
+	if y < 0 || y >= h || mouse.X < m.mainX() || mouse.X >= m.mainX()+m.mainWidth() {
 		return nil
 	}
 	_, rowAt := m.mainLines(h)
@@ -55,13 +64,19 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	p := m.cur()
+	x := mouse.X - m.mainX() - gutter
+	if n := m.countClick(mouse); n >= 2 {
+		if text := m.clickText(rowAt[y], x, n); text != "" {
+			return m.copyChars(text)
+		}
+	}
 	m.focusList = false
 	p.cur, p.anchor = p.head(rowAt[y]), -1
 	if m.onFold() {
 		m.expandFold(p.rows[p.cur].Fold)
 		return nil
 	}
-	side, onNumber := p.side(mouse.X - m.mainX() - gutter)
+	side, onNumber := p.side(x)
 	m.drag = dragState{
 		active: true,
 		start:  p.cur,
@@ -71,10 +86,11 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	return nil
 }
 
-// inList tells if screen column x is on the file list.
-func (m *model) inList(x int) bool {
-	lw := m.listWidth()
-	return lw > 0 && x >= m.listX() && x < m.listX()+lw
+// inList tells if the screen cell at column x and line y is on the file
+// list.
+func (m *model) inList(x, y int) bool {
+	lw, ly := m.listWidth(), m.listY()
+	return lw > 0 && x >= m.listX() && x < m.listX()+lw && y >= ly && y < ly+m.listRows()
 }
 
 // onDrag moves the cursor with a drag. A drag past the top or the bottom
@@ -84,8 +100,8 @@ func (m *model) onDrag(mouse tea.Mouse) {
 		return
 	}
 	p := m.cur()
-	h := m.bodyHeight()
-	y := mouse.Y - bodyY
+	h := m.mainHeight()
+	y := mouse.Y - m.mainY()
 	switch {
 	case y < 0:
 		p.top = max(p.top-1, 0)
@@ -104,6 +120,106 @@ func (m *model) onDrag(mouse tea.Mouse) {
 	}
 	p.cur = p.head(p.cur) // the drag moves by source lines
 	m.drag.moved = p.cur != m.drag.start
+	if m.drag.moved {
+		m.click = clickChain{} // a drag is not a click
+	}
+}
+
+// clickWindow is the longest time between the clicks of a double or a
+// triple click, as in herdr-reviewr.
+const clickWindow = 400 * time.Millisecond
+
+// clickChain is the last press of the left button on text.
+type clickChain struct {
+	at   time.Time
+	x, y int
+	n    int // the number of presses in the chain, up to 3
+}
+
+// countClick adds a press to the chain and returns the count. A press on
+// another cell, or after [clickWindow], starts a new chain.
+func (m *model) countClick(mouse tea.Mouse) int {
+	c, now := m.click, time.Now()
+	n := 1
+	if c.n > 0 && c.x == mouse.X && c.y == mouse.Y && now.Sub(c.at) < clickWindow {
+		n = min(c.n+1, 3)
+	}
+	m.click = clickChain{at: now, x: mouse.X, y: mouse.Y, n: n}
+	return n
+}
+
+// rowPath returns the path of row r of the file list, or "".
+func (m *model) rowPath(r int) string {
+	t := m.list()
+	if t == nil || r < 0 || r >= len(t.rows) {
+		return ""
+	}
+	if row := t.rows[r]; row.File >= 0 {
+		return t.entries[row.File].Path
+	}
+	return t.rows[r].Dir
+}
+
+// clickText returns the text that a click of count n copies at column x
+// of line i of the main pane. A double click gives the word under x, and
+// a triple click gives the source line. It returns "" off a word or on an
+// empty line.
+func (m *model) clickText(i, x, n int) string {
+	line, char, ok := m.textAt(i, x)
+	if !ok || n >= 3 {
+		return line
+	}
+	runes := []rune(line)
+	isWord := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' }
+	if char >= len(runes) || !isWord(runes[char]) {
+		return ""
+	}
+	s, e := char, char+1
+	for s > 0 && isWord(runes[s-1]) {
+		s--
+	}
+	for e < len(runes) && isWord(runes[e]) {
+		e++
+	}
+	return string(runes[s:e])
+}
+
+// textAt returns the source line that column x of line i of the main pane
+// shows, and the index of the rune under x. A pane with no source shows
+// its text on the screen.
+func (m *model) textAt(i, x int) (line string, char int, ok bool) {
+	p := m.cur()
+	if i < 0 || i >= len(p.lines) {
+		return "", 0, false
+	}
+	if p.diff == nil {
+		line = strings.TrimRight(ansi.Strip(p.lines[i]), " ")
+		c := 0
+		for _, r := range line {
+			if c += ansi.StringWidth(string(r)); x < c {
+				return line, char, true
+			}
+			char++
+		}
+		return line, char, true
+	}
+	s, n, char, ok := p.diff.Cell(i, x)
+	if !ok {
+		return "", 0, false
+	}
+	if lines := diff.Lines(m.contentFor(p.path, s)); n <= len(lines) {
+		return lines[n-1], char, true
+	}
+	return "", 0, false
+}
+
+// copyChars copies text and then shows the count of its characters, as
+// herdr-reviewr does.
+func (m *model) copyChars(text string) tea.Cmd {
+	if text == "" {
+		return nil
+	}
+	return m.copyText(text, "copied "+plural(utf8.RuneCountInString(text), "char"), nil)
 }
 
 // onRelease ends a drag. A drag on the line numbers opens the comment
@@ -124,9 +240,7 @@ func (m *model) onRelease() tea.Cmd {
 		return m.startComment(d.pref)
 	case d.moved: // a drag on the code copies the range
 		lo, hi := p.span(d.start, p.cur)
-		out := m.sourceLines(lo, hi, d.pref)
-		m.flash("copied " + plural(len(out), "line"))
-		return tea.SetClipboard(strings.Join(out, "\n"))
+		return m.copyChars(strings.Join(m.sourceLines(lo, hi, d.pref), "\n"))
 	}
 	return nil
 }
@@ -174,15 +288,15 @@ func (m *model) onWheel(mouse tea.Mouse) {
 		return
 	}
 	if m.mode == modeOverlay && m.overlay != nil {
-		m.overlay.cur = min(max(m.overlay.cur+d, 0), max(len(m.overlay.shown)-1, 0))
+		m.overlay.move(d)
 		return
 	}
-	if m.inList(mouse.X) {
-		m.pickFile(m.listSel() + d)
+	if m.inList(mouse.X, mouse.Y) {
+		m.stepRow(d)
 		return
 	}
 	p := m.cur()
-	h := m.bodyHeight()
+	h := m.mainHeight()
 	p.top = min(max(p.top+wheelStep*d, 0), max(len(p.lines)-h, 0))
 	// The wheel moves the view and not the cursor.
 	p.free = true
@@ -201,7 +315,7 @@ func (m *model) clickOverlay(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	idx := mouse.Y - y - listY
-	if idx < 0 || idx >= len(m.overlay.shown) {
+	if idx < 0 || idx >= min(len(m.overlay.shown), m.overlay.rowsTo) || !m.overlay.pickable(idx) {
 		return nil
 	}
 	if idx == m.overlay.cur { // a click on the selected row picks it

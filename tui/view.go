@@ -14,6 +14,7 @@ import (
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/internal/termtext"
+	"github.com/rednafi/rexdiff/internal/tree"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -24,7 +25,6 @@ var (
 	delStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
 	noteStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	staleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Strikethrough(true)
 	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
 	activeStyle = lipgloss.NewStyle().Bold(true).Underline(true)
 	findStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
@@ -133,7 +133,9 @@ func (m *model) headerScopes(l *headerLine) {
 	case scopeCommits:
 		l.add(m.commitsLabel(), headerCommits)
 	case ScopeLastTurn:
-		l.add(m.turnLabel(), headerNone)
+		if label := m.turnLabel(); label != "" {
+			l.add(label, headerNone)
+		}
 	}
 }
 
@@ -152,11 +154,12 @@ func (m *model) commitsLabel() string {
 // shortSHA returns the first 7 characters of a commit hash.
 func shortSHA(s string) string { return s[:min(len(s), 7)] }
 
-// turnLabel returns the text about the last turn of an agent, for the
-// header.
+// turnLabel returns the text about the last turn, for the header. As in
+// herdr-reviewr, a saved turn from an earlier run has no label. With no
+// turn, the Changes tab tells why, so the header shows nothing.
 func (m *model) turnLabel() string {
-	if m.turn == nil {
-		return dimStyle.Render("waiting for a turn")
+	if m.turn == nil || m.turn.at.IsZero() {
+		return ""
 	}
 	ago := time.Since(m.turn.at).Round(time.Second)
 	app := termtext.Quote(m.turn.app) // the app name comes from the agent
@@ -200,25 +203,27 @@ func statusMark(s vcs.Status) string {
 }
 
 // listLines renders h lines of the file list. The lines are a title and the
-// files.
+// rows of the tree.
 func (m *model) listLines(h int) []string {
+	t := m.list()
+	if t == nil {
+		return nil
+	}
 	w := m.listWidth()
-	var title string
-	var n int
-	var row func(i int) string // the loop makes only the rows on the screen
-	switch m.tab {
-	case tabChanges:
-		title, n = fmt.Sprintf("Changes (%d)", len(m.files)), len(m.files)
-		row = func(i int) string { return m.changedRow(m.files[i], w) }
-	case tabFiles:
-		title, n = fmt.Sprintf("Files (%d)", len(m.allFiles)), len(m.allFiles)
-		row = func(i int) string { return m.entryRow(m.allFiles[i], w) }
+	title := fmt.Sprintf("Changes (%d)", len(m.files))
+	if m.tab == tabFiles {
+		n := 0
+		for _, e := range m.allFiles {
+			if !strings.HasSuffix(e.Path, "/") {
+				n++
+			}
+		}
+		title = fmt.Sprintf("Files (%d)", n)
 	}
 	out := []string{headerStyle.Render(title)}
-	sel := m.listSel()
-	for i := m.listStart(h); i < n && len(out) < h; i++ {
-		r := row(i)
-		if i == sel {
+	for i := m.listStart(h); i < len(t.rows) && len(out) < h; i++ {
+		r := m.treeRow(t.rows[i], w)
+		if i == t.cur {
 			r = m.selectedRow(r, w)
 		}
 		out = append(out, r)
@@ -226,31 +231,62 @@ func (m *model) listLines(h int) []string {
 	return out
 }
 
-// changedRow renders changed file f in the file list, w columns wide.
-func (m *model) changedRow(f changed, w int) string {
+// treeRow renders row r of the file list, w columns wide.
+func (m *model) treeRow(r tree.Row, w int) string {
+	indent := strings.Repeat("  ", r.Depth)
+	switch {
+	case r.File < 0:
+		return m.dirRow(r, indent, w)
+	case m.tab == tabChanges:
+		return m.changedRow(m.files[r.File], indent, r.Name, w)
+	}
+	return m.entryRow(m.allFiles[r.File], indent, r.Name, w)
+}
+
+// dirRow renders directory r of the file list, w columns wide. As in
+// herdr-reviewr, a collapsed directory of the Files tab has a dot if it
+// holds a change.
+func (m *model) dirRow(r tree.Row, indent string, w int) string {
+	arrow, mark := "▸", ""
+	if r.Expanded {
+		arrow = "▾"
+	}
+	if m.tab == tabFiles && !r.Expanded && r.Changed {
+		mark = noteStyle.Render("•")
+	}
+	room := w - ansi.StringWidth(indent) - lipgloss.Width(mark) - 4
+	name := lipgloss.NewStyle().Bold(true).Render(fitName(r.Name+"/", room))
+	if r.Ignored {
+		name = dimStyle.Render(fitName(r.Name+"/", room))
+	}
+	return " " + indent + dimStyle.Render(arrow) + " " + name + " " + mark
+}
+
+// changedRow renders changed file f in the file list, w columns wide. The
+// row shows the name in the tree, after indent.
+func (m *model) changedRow(f changed, indent, name string, w int) string {
 	adds := addStyle.Render(fmt.Sprintf("+%d", f.adds))
 	stat := adds + " " + delStyle.Render(fmt.Sprintf("-%d", f.dels))
-	if c := m.comments.Count(f.Path); c > 0 {
+	if c := m.comments.Count(m.anchorOf(tabChanges), f.Path); c > 0 {
 		stat = cursorStyle.Render(fmt.Sprintf("●%d ", c)) + stat
 	}
-	name := f.Path
 	if f.From != "" {
-		name = f.From + " → " + f.Path
+		name = f.From + " → " + name
 	}
-	return fileRow(statusMark(f.Status), name, stat, w)
+	return fileRow(indent, statusMark(f.Status), name, stat, w)
 }
 
 // entryRow renders file f of the Files tab in the file list, w columns
-// wide.
-func (m *model) entryRow(f vcs.Entry, w int) string {
+// wide. The row shows the name in the tree, after indent.
+func (m *model) entryRow(f vcs.Entry, indent, name string, w int) string {
 	if f.Ignored {
-		return dimStyle.Render(fileRow(" ", f.Path, "", w))
+		return dimStyle.Render(fileRow(indent, " ", name, "", w))
 	}
 	stat := ""
-	if c := m.comments.Count(f.Path); c > 0 {
+	if c := m.comments.Count(m.anchorOf(tabFiles), f.Path); c > 0 {
 		stat = cursorStyle.Render(fmt.Sprintf("●%d", c))
 	}
-	return fileRow(" ", f.Path, stat, w)
+	return fileRow(indent, " ", name, stat, w)
 }
 
 // selectedRow highlights row r of the selected file, w columns wide.
@@ -263,14 +299,26 @@ func (m *model) selectedRow(r string, w int) string {
 	return style.Render(cursorStyle.Render("▌") + ansi.TruncateLeft(r, 1, ""))
 }
 
-// listStart returns the index of the first file that the list shows.
-func (m *model) listStart(h int) int { return max(0, m.listSel()-(h-2)) }
+// listStart returns the first row that the file list shows in h lines.
+func (m *model) listStart(h int) int {
+	t := m.list()
+	if t == nil {
+		return 0
+	}
+	return max(0, t.cur-(h-2))
+}
 
-// fileRow returns " M name/of/file.go  +3 -1". If the path is too long,
-// fileRow removes the directory first, then the start of the name.
-func fileRow(mark, p, stat string, w int) string {
+// fileRow returns " M name/of/file.go  +3 -1", with indent before the
+// mark.
+func fileRow(indent, mark, p, stat string, w int) string {
+	room := w - ansi.StringWidth(indent) - lipgloss.Width(stat) - 4
+	return " " + indent + mark + " " + fitName(p, room) + " " + stat
+}
+
+// fitName returns p in room columns, with spaces after it. If p is too
+// long, fitName removes the directory first, then the start of the name.
+func fitName(p string, room int) string {
 	p = termtext.Quote(p)
-	room := w - lipgloss.Width(stat) - 4
 	if n := ansi.StringWidth(p); n > room {
 		if base := path.Base(p); ansi.StringWidth(base)+2 <= room {
 			p = "…/" + base
@@ -279,8 +327,7 @@ func fileRow(mark, p, stat string, w int) string {
 		}
 	}
 	// Pad by width, not by runes.
-	pad := strings.Repeat(" ", max(room-ansi.StringWidth(p), 0))
-	return " " + mark + " " + p + pad + " " + stat
+	return p + strings.Repeat(" ", max(room-ansi.StringWidth(p), 0))
 }
 
 // mainLines renders the visible part of the main pane. rowAt[y] is the row
@@ -303,11 +350,12 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 			add(l, -1)
 		}
 	}
+	hits := m.findRows()
 	for i := p.top; i < len(p.lines) && len(lines) < h; i++ {
 		// A wrapped line shows its marks on its first row, and its
 		// comments below its last row.
 		t := m.target(i, diff.SideNew)
-		add(m.rowMark(i, t, lo, hi)+p.lines[i], i)
+		add(m.rowMark(i, t, lo, hi, hits[i])+p.lines[i], i)
 		if t != nil && p.end(i) == i {
 			addBelow(m.commentsBelow(t))
 		}
@@ -328,6 +376,10 @@ func (m *model) emptyNote() string {
 		return p.note
 	case m.tab == tabPR && m.pr.loading:
 		return "loading the pull request…"
+	case m.tab == tabFiles && len(m.allFiles) == 0:
+		return "no files"
+	case m.tab == tabFiles && p.path != "":
+		return "empty file"
 	}
 	return ""
 }
@@ -346,11 +398,10 @@ func (m *model) highlighted() (lo, hi int) {
 }
 
 // rowMark returns the gutter mark of row i. t is the line that row i
-// shows, or nil. The mark shows the cursor, the rows lo to hi, a find hit,
-// or a comment.
-func (m *model) rowMark(i int, t *targetLine, lo, hi int) string {
+// shows, or nil. hit is true for a find hit. The mark shows the cursor,
+// the rows lo to hi, a find hit, or a comment.
+func (m *model) rowMark(i int, t *targetLine, lo, hi int, hit bool) string {
 	p := m.cur()
-	_, hit := slices.BinarySearch(m.find.hits, i) // the hits are in order
 	switch {
 	case i == p.cur && m.tab != tabPR:
 		return cursorStyle.Render("▶ ")
@@ -361,14 +412,14 @@ func (m *model) rowMark(i int, t *targetLine, lo, hi int) string {
 	case t == nil || p.cont(i):
 		return commentMark(nil)
 	}
-	return commentMark(m.comments.At(p.path, t.side, t.line))
+	return commentMark(m.comments.At(m.anchor(), p.path, t.side, t.line))
 }
 
 // commentsBelow returns the lines of the comments whose range ends on
 // line t. The comment that the box edits does not show.
 func (m *model) commentsBelow(t *targetLine) []string {
 	var out []string
-	for _, c := range m.comments.EndingAt(m.cur().path, t.side, t.line) {
+	for _, c := range m.comments.EndingAt(m.anchor(), m.cur().path, t.side, t.line) {
 		if m.mode == modeComment && c.ID == m.draft.editID {
 			continue
 		}
@@ -380,11 +431,8 @@ func (m *model) commentsBelow(t *targetLine) []string {
 // commentMark returns the gutter mark of a line with comment c, which can
 // be nil.
 func commentMark(c *diff.Comment) string {
-	switch {
-	case c == nil:
+	if c == nil {
 		return "  "
-	case c.Stale:
-		return dimStyle.Render("● ")
 	}
 	return cursorStyle.Render("● ")
 }
@@ -402,17 +450,11 @@ func (m *model) commentBox() []string {
 func (m *model) commentLines(c *diff.Comment) []string {
 	var out []string
 	for i, l := range strings.Split(c.Text, "\n") {
-		prefix, st := "    💬 ", noteStyle
+		prefix := "    💬 "
 		if i > 0 {
 			prefix = "       "
 		}
-		if c.Stale {
-			st = staleStyle
-			if i == 0 {
-				l = "(stale) " + l
-			}
-		}
-		out = append(out, truncate(prefix+st.Render(l), m.mainWidth()))
+		out = append(out, truncate(prefix+noteStyle.Render(l), m.mainWidth()))
 	}
 	return out
 }
@@ -423,7 +465,7 @@ func (m *model) commentLines(c *diff.Comment) []string {
 // the box is closed, the line shows only its first rows.
 func (m *model) ensureVisible() {
 	p := m.cur()
-	h := m.bodyHeight()
+	h := m.mainHeight()
 	if p.free {
 		p.top = min(p.top, max(len(p.lines)-h, 0))
 		return
@@ -487,8 +529,12 @@ func wrapWords(s string, w int) string {
 	return strings.Join(append(lines, line), "\n")
 }
 
-// footerLine renders the status and the help of the keys.
+// footerLine renders the status and the help of the keys, or the find
+// band.
 func (m *model) footerLine() string {
+	if m.mode == modeFind {
+		return m.findBand()
+	}
 	m.help.SetWidth(m.w)
 	var badge string
 	switch {
@@ -496,22 +542,19 @@ func (m *model) footerLine() string {
 		badge = cursorStyle.Render(m.status)
 	case m.release != nil:
 		badge = cursorStyle.Render(m.releaseBadge())
-	case m.find.active():
-		f := m.find
-		badge = findStyle.Render(fmt.Sprintf("≈ %q %d/%d", f.query, f.i+1, len(f.hits)))
 	case m.mode == modeComment && m.draft != nil:
 		badge = cursorStyle.Render("✎ " + m.draft.Location())
 	case m.comments.Len() > 0:
 		badge = cursorStyle.Render("● " + plural(m.comments.Len(), "unsent comment"))
 	}
 	hk := helpKeys{
-		k:       m.keys,
-		mode:    m.mode,
-		tab:     m.tab,
-		split:   m.split,
-		visual:  m.cur().anchor >= 0,
-		finding: m.find.active(),
-		onFold:  m.onFold(),
+		k:      m.keys,
+		mode:   m.mode,
+		tab:    m.tab,
+		split:  m.splitShown(),
+		visual: m.cur().anchor >= 0,
+		onFold: m.onFold(),
+		armed:  m.armed,
 	}
 	if m.help.ShowAll {
 		h := m.help.View(hk)
@@ -541,19 +584,28 @@ func (m *model) View() tea.View {
 	h := m.heightAbove(footer)
 	hdr, _ := m.header()
 
-	ml, _ := m.mainLines(h)
-	main := box(ml, m.mainWidth(), h)
+	mh := m.mainHeightOf(h)
+	ml, _ := m.mainLines(mh)
+	main := box(ml, m.mainWidth(), mh)
 	body := main
-	if lw := m.listWidth(); lw > 0 {
+	rule := dimStyle.Render(strings.Repeat("─", m.w))
+	switch lw, lh := m.listWidth(), m.listHeight(h); {
+	case lh > 0:
+		list := box(m.listLines(lh-1), lw, lh-1)
+		if m.listPos == positionTop {
+			body = lipgloss.JoinVertical(lipgloss.Left, list, rule, main)
+		} else {
+			body = lipgloss.JoinVertical(lipgloss.Left, main, rule, list)
+		}
+	case lw > 0:
 		list := box(m.listLines(h), lw, h)
 		sep := dimStyle.Render(strings.TrimSuffix(strings.Repeat(" │ \n", h), "\n"))
-		if m.listLeft {
+		if m.listPos == positionLeft {
 			body = lipgloss.JoinHorizontal(lipgloss.Top, list, sep, main)
 		} else {
 			body = lipgloss.JoinHorizontal(lipgloss.Top, main, sep, list)
 		}
 	}
-	rule := dimStyle.Render(strings.Repeat("─", m.w))
 	screen := hdr + "\n" + body + "\n" + rule + "\n" + footer
 
 	if m.mode == modeOverlay && m.overlay != nil {
@@ -598,18 +650,44 @@ func (m *model) programStatus() *tea.ProgramStatus {
 
 // mainX returns the screen column where the main pane starts.
 func (m *model) mainX() int {
-	if lw := m.listWidth(); lw > 0 && m.listLeft {
-		return lw + sepWidth
+	if m.listPos == positionLeft && m.listWidth() > 0 {
+		return m.listWidth() + sepWidth
 	}
 	return 0
 }
 
+// mainY returns the screen line where the main pane starts.
+func (m *model) mainY() int {
+	if m.listPos == positionTop {
+		return bodyY + m.listHeight(m.bodyHeight())
+	}
+	return bodyY
+}
+
 // listX returns the screen column where the file list starts.
 func (m *model) listX() int {
-	if !m.listLeft {
+	if m.listPos == positionRight {
 		return m.mainWidth() + sepWidth
 	}
 	return 0
+}
+
+// listY returns the screen line where the file list starts. Below the
+// main pane, the list starts under the rule.
+func (m *model) listY() int {
+	if m.listPos == positionBottom {
+		return bodyY + m.mainHeight() + 1
+	}
+	return bodyY
+}
+
+// listRows returns the number of lines of the file list, with its title.
+func (m *model) listRows() int {
+	h := m.bodyHeight()
+	if lh := m.listHeight(h); lh > 0 {
+		return lh - 1
+	}
+	return h
 }
 
 // sepWidth is the width of the line " │ " between the panes.

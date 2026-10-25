@@ -150,7 +150,7 @@ func (r *Repo) decode(
 	name string,
 	args ...string,
 ) error {
-	out, err := command(ctx, r.root, env, name, args...)
+	out, err := command(ctx, r.root, env, nil, name, args...)
 	if err != nil {
 		return err
 	}
@@ -382,7 +382,7 @@ type azurePR struct {
 
 // azure gets the pull request of the current branch with az.
 func (r *Repo) azure(ctx context.Context) (*PullRequest, error) {
-	branch, err := r.currentBranch(ctx)
+	branch, err := r.Branch(ctx)
 	if err != nil {
 		return nil, err
 	}

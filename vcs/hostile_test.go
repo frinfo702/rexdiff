@@ -97,7 +97,7 @@ func TestHostilePaths(t *testing.T) {
 			t.Errorf("ReadFile(%q) = %q, %v; want %q", p, got, err, s)
 		}
 		q := strings.TrimSpace(s)
-		if ms, err := r.Grep(ctx, q, 10); err != nil || len(ms) != 1 || ms[0].Path != p {
+		if ms, _, err := r.Grep(ctx, q, 10); err != nil || len(ms) != 1 || ms[0].Path != p {
 			t.Errorf("Grep(%q) = %+v, %v; want one match in %q", q, ms, err, p)
 		}
 	}
@@ -263,7 +263,7 @@ func TestDetachedHead(t *testing.T) {
 		t.Errorf("Diff(Head, Snapshot) = %s, want A.gitignore Ma.txt Anew.txt",
 			got)
 	}
-	if cs, err := r.Commits(ctx, 5); err != nil || len(cs) != 1 || cs[0].Subject != "init" {
+	if cs, err := r.Commits(ctx, ""); err != nil || len(cs) != 1 || cs[0].Subject != "init" {
 		t.Errorf("Commits = %+v, %v; want init", cs, err)
 	}
 }
@@ -291,7 +291,7 @@ func TestGrepIsLiteral(t *testing.T) {
 		{"abc\na.c", nil}, // no line has a newline
 	}
 	for _, tt := range tests {
-		ms, err := r.Grep(ctx, tt.q, 10)
+		ms, _, err := r.Grep(ctx, tt.q, 10)
 		if err != nil {
 			t.Errorf("Grep(%q) = %v, want no error", tt.q, err)
 			continue
@@ -314,7 +314,7 @@ func TestCommitsHostileSubject(t *testing.T) {
 	for _, s := range subjects {
 		git(t, dir, "commit", "-q", "--allow-empty", "-m", s)
 	}
-	cs, err := r.Commits(t.Context(), 3)
+	cs, err := r.Commits(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestCommitsHostileSubject(t *testing.T) {
 			t.Errorf("Author of %q = %q, want t", c.Subject, c.Author)
 		}
 	}
-	want := []string{subjects[2], subjects[1], subjects[0]}
+	want := []string{subjects[2], subjects[1], subjects[0], "b", "init"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Commits subjects = %q, want %q", got, want)
 	}

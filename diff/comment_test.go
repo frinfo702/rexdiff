@@ -49,13 +49,12 @@ func TestReviewMatchesHerdr(t *testing.T) {
 		"x := 1\ny := 2\n",
 		"merge these\n\n  \nplease  ",
 	))
-	cs.Relocate("c.go", "", "other\n") // makes the c.go comment stale
 
 	got := cs.Review("Fix each comment.\r\n")
 	want := "Fix each comment.\n\n" +
 		"a.go:1-2\n+x := 1\n+y := 2\nmerge these\nplease\n\n" +
 		"b.go:1 (removed)\n-gone()\nwhy?\n\n" +
-		"c.go:1-2 (stale: the code has changed since)\n" +
+		"c.go:1-2\n" +
 		" ctx\n-\told[31m\n+\tnew\nfix]7501;state=idle this"
 	if got != want {
 		t.Errorf("Review got:\n%s\nwant:\n%s", got, want)
@@ -88,22 +87,35 @@ func TestReviewContinuedRows(t *testing.T) {
 // TestComments checks Add, Find, At, EndingAt, Count, and Remove.
 func TestComments(t *testing.T) {
 	var cs diff.Comments
-	a := cs.Add(diff.Comment{Path: "a.go", Side: diff.SideNew, Start: 2, End: 4})
-	b := cs.Add(diff.Comment{Path: "a.go", Side: diff.SideOld, Start: 4, End: 4})
-	cs.Add(diff.Comment{Path: "b.go", Side: diff.SideNew, Start: 1, End: 1})
-	if cs.Len() != 3 || cs.Count("a.go") != 2 || a.ID == b.ID {
+	d := diff.Anchor{InDiff: true}
+	a := cs.Add(diff.Comment{Path: "a.go", Side: diff.SideNew, Start: 2, End: 4, Anchor: d})
+	b := cs.Add(diff.Comment{Path: "a.go", Side: diff.SideOld, Start: 4, End: 4, Anchor: d})
+	cs.Add(diff.Comment{Path: "b.go", Side: diff.SideNew, Start: 1, End: 1, Anchor: d})
+	if cs.Len() != 3 || cs.Count(d, "a.go") != 2 || a.ID == b.ID {
 		t.Fatalf("Len = %d, Count(a.go) = %d, IDs %d %d; "+
 			"want 3, 2, two different IDs",
-			cs.Len(), cs.Count("a.go"), a.ID, b.ID)
+			cs.Len(), cs.Count(d, "a.go"), a.ID, b.ID)
 	}
-	if c := cs.At("a.go", diff.SideNew, 3); c != a {
+	if c := cs.At(d, "a.go", diff.SideNew, 3); c != a {
 		t.Errorf("At(a.go, New, 3) = %v, want %v", c, a)
 	}
-	if c := cs.At("a.go", diff.SideNew, 5); c != nil {
+	if c := cs.At(d, "a.go", diff.SideNew, 5); c != nil {
 		t.Errorf("At(a.go, New, 5) = %v, want nil", c)
 	}
-	if got := cs.EndingAt("a.go", diff.SideOld, 4); len(got) != 1 || got[0] != b {
+	if got := cs.EndingAt(d, "a.go", diff.SideOld, 4); len(got) != 1 || got[0] != b {
 		t.Errorf("EndingAt(a.go, Old, 4) = %v, want [%v]", got, b)
+	}
+	// A comment shows only in its kind of view, and at its revision.
+	for _, other := range []diff.Anchor{{}, {InDiff: true, Rev: "a..b"}} {
+		if c := cs.At(other, "a.go", diff.SideNew, 3); c != nil {
+			t.Errorf("At(%+v, a.go, New, 3) = %v, want nil", other, c)
+		}
+		if got := cs.EndingAt(other, "a.go", diff.SideOld, 4); got != nil {
+			t.Errorf("EndingAt(%+v, a.go, Old, 4) = %v, want nil", other, got)
+		}
+		if n := cs.Count(other, "a.go"); n != 0 {
+			t.Errorf("Count(%+v, a.go) = %d, want 0", other, n)
+		}
 	}
 	if cs.Find(b.ID) != b {
 		t.Errorf("Find(%d) = %v, want %v", b.ID, cs.Find(b.ID), b)
@@ -124,7 +136,6 @@ func TestComments(t *testing.T) {
 func TestNewComment(t *testing.T) {
 	old := "a\nb\nc\nd\n"
 	new := "a\nB\nC\nd\n"
-	moved := "x\n" // a line above the comment moves it down by one
 	for _, split := range []bool{false, true} {
 		rows := diff.Render("x.txt", old, new, diff.Options{Split: split}).Rows
 		// The rows from "a" to "d".
@@ -143,14 +154,6 @@ func TestNewComment(t *testing.T) {
 				t.Errorf("split %v, side %d: Review got:\n%s\nwant:\n%s",
 					split, s, got, want)
 			}
-			// The comment follows the lines of its side.
-			var cs diff.Comments
-			got := cs.Add(c)
-			cs.Relocate("x.txt", moved+old, moved+new)
-			if got.Start != 2 || got.End != 5 || got.Stale {
-				t.Errorf("split %v, side %d: after a move %+v, want lines 2-5",
-					split, s, got)
-			}
 		}
 		// A comment on only the inserted lines has its range on the new side.
 		var ins []diff.Row
@@ -159,14 +162,9 @@ func TestNewComment(t *testing.T) {
 				ins = append(ins, r)
 			}
 		}
-		var cs diff.Comments
-		got := cs.Add(diff.NewComment("x.txt", diff.SideNew, ins, old, new))
+		got := diff.NewComment("x.txt", diff.SideNew, ins, old, new)
 		if got.Start != 2 || got.End != 3 {
 			t.Errorf("split %v, the new lines: %+v, want lines 2-3", split, got)
-		}
-		if cs.Relocate("x.txt", "", "B\nC\n"); got.Start != 1 || got.Stale {
-			t.Errorf("split %v, the new lines after a move: %+v, want line 1",
-				split, got)
 		}
 	}
 	// A hunk header has no line.
@@ -175,40 +173,6 @@ func TestNewComment(t *testing.T) {
 	got := diff.NewComment("x.txt", diff.SideNew, hunk, old, new)
 	if len(hunk) == 0 || got.Start != 0 || got.End != 0 {
 		t.Errorf("a hunk header %v: %+v, want no lines", hunk, got)
-	}
-}
-
-// TestRelocateFollowsMovedCode checks that a comment moves to the nearest copy
-// of its lines, or becomes stale.
-func TestRelocateFollowsMovedCode(t *testing.T) {
-	var cs diff.Comments
-	c := cs.Add(commentOn("a.go", diff.SideNew, "a\nb\nc\n", 2, 3))
-	other := cs.Add(commentOn("a.go", diff.SideOld, "a\nb\n", 2, 2))
-
-	// Each comment looks in the version of its side.
-	cs.Relocate("a.go", "x\nx\nx\nb\n", "new\nnew\na\nb\nc\n")
-	if c.Start != 4 || c.End != 5 || c.Stale {
-		t.Errorf("after a move: %+v, want lines 4-5", c)
-	}
-	if other.Start != 4 || other.Stale {
-		t.Errorf("the comment on the old side after a move: %+v, want line 4",
-			other)
-	}
-	cs.Relocate("a.go", "b\n", "a\nB\nc\n")
-	if !c.Stale || c.Start != 4 {
-		t.Errorf("after an edit: %+v, want stale at line 4", c)
-	}
-	cs.Relocate("a.go", "b\n", "b\nc\nx\nx\nx\nb\nc\n")
-	if c.Stale || c.Start != 6 {
-		t.Errorf("with two copies: %+v, want line 6", c)
-	}
-	// The end of a file is not an empty line. CRLF is the same as LF.
-	blank := cs.Add(commentOn("b.go", diff.SideNew, "x\n\n", 2, 2))
-	if cs.Relocate("b.go", "", "x\n"); !blank.Stale {
-		t.Errorf("a comment on a deleted blank line: %+v, want stale", blank)
-	}
-	if cs.Relocate("b.go", "", "x\r\n\r\n"); blank.Stale || blank.Start != 2 {
-		t.Errorf("a comment on a CRLF blank line: %+v, want line 2", blank)
 	}
 }
 
@@ -242,5 +206,40 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 	_, body, _ := strings.Cut(string(out), "@@\n")
 	if strings.TrimSuffix(body, "\n") != want {
 		t.Errorf("git diff got:\n%s\nwant:\n%s", body, want)
+	}
+}
+
+// TestCommentsJSON checks that the JSON keeps the anchor of a comment. It
+// also checks a file of an older rexdiff, which has a stale field and no
+// anchor.
+func TestCommentsJSON(t *testing.T) {
+	var cs diff.Comments
+	anchors := []diff.Anchor{{}, {InDiff: true}, {InDiff: true, Rev: "a..b"}}
+	for _, a := range anchors {
+		cs.Add(diff.Comment{Path: "a.go", Start: 1, End: 1, Anchor: a})
+	}
+	b, err := cs.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back diff.Comments
+	if err := back.UnmarshalJSON(b); err != nil {
+		t.Fatal(err)
+	}
+	for i, c := range back.All() {
+		if c.Anchor != anchors[i] {
+			t.Errorf("comment %d: anchor %+v, want %+v", i, c.Anchor, anchors[i])
+		}
+	}
+
+	old := `{"last":1,"items":[{"id":1,"path":"a.go","side":1,"start":2,` +
+		`"end":3,"text":"x","stale":true,"code":["a","b"],"snippet":null}]}`
+	var cs2 diff.Comments
+	if err := cs2.UnmarshalJSON([]byte(old)); err != nil {
+		t.Fatalf("UnmarshalJSON of an old file: %v", err)
+	}
+	c := cs2.Find(1)
+	if c == nil || c.Anchor != (diff.Anchor{InDiff: true}) || c.Start != 2 {
+		t.Errorf("comment of an old file = %+v, want lines 2-3 on a diff", c)
 	}
 }
