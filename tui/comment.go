@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -149,6 +150,23 @@ func (m *model) closeComment() {
 	m.editor.Blur()
 }
 
+// newLineNear returns the new line of row i. A row with no new line, for
+// example a deleted line, gives the first new line below it, else the last
+// new line above it, else 1.
+func newLineNear(rows []diff.Row, i int) int {
+	for _, r := range rows[i:] {
+		if r.New > 0 {
+			return r.New
+		}
+	}
+	for _, r := range slices.Backward(rows[:i]) {
+		if r.New > 0 {
+			return r.New
+		}
+	}
+	return 1
+}
+
 // editOrOpen edits the comment at the cursor. If there is no comment, it
 // opens the file in an editor at the cursor line.
 func (m *model) editOrOpen() tea.Cmd {
@@ -159,9 +177,5 @@ func (m *model) editOrOpen() tea.Cmd {
 	if p.path == "" {
 		return nil
 	}
-	line := 1
-	if t := m.target(p.cur, diff.SideNew); t != nil && t.side == diff.SideNew {
-		line = t.line
-	}
-	return m.openEditor(p.path, line)
+	return m.openEditor(p.path, newLineNear(p.rows, p.cur))
 }

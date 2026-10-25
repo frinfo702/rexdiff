@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/rex"
 )
 
@@ -182,5 +183,24 @@ func TestEditorError(t *testing.T) {
 				t.Errorf("the footer does not show %q:\n%s", tt.want, view(m))
 			}
 		})
+	}
+}
+
+// TestNewLineNear checks the line that e opens for each kind of row.
+func TestNewLineNear(t *testing.T) {
+	rows := []diff.Row{
+		{Kind: diff.KindHunk},
+		{Kind: diff.KindEqual, Old: 1, New: 1},
+		{Kind: diff.KindDelete, Old: 2},
+		{Kind: diff.KindInsert, New: 2},
+		{Kind: diff.KindDelete, Old: 3},
+	}
+	for i, want := range []int{1, 1, 2, 2, 2} {
+		if got := newLineNear(rows, i); got != want {
+			t.Errorf("newLineNear(row %d) = %d, want %d", i, got, want)
+		}
+	}
+	if got := newLineNear(rows[2:3], 0); got != 1 {
+		t.Errorf("newLineNear(a lone deleted line) = %d, want 1", got)
 	}
 }
