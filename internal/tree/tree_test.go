@@ -169,6 +169,19 @@ func TestBuildIgnored(t *testing.T) {
 		t.Error("the rows under an ignored directory are not ignored, want ignored")
 	}
 
+	// An expanded ignored directory with one child keeps its own row, so
+	// the user can collapse it.
+	es = []Entry{
+		{Path: "a", Ignored: true, Dir: true},
+		{Path: "a/b", Ignored: true, Dir: true},
+		{Path: "a/b/c.o", Ignored: true},
+	}
+	rows = Build(es, set("a", "a/b"), false)
+	want = []string{"0:dir:a", "1:dir:b", "2:file:c.o"}
+	if got := shape(rows); !slices.Equal(got, want) {
+		t.Fatalf("Build = %q, want %q", got, want)
+	}
+
 	rows = Build([]Entry{{Path: "build.log", Ignored: true}}, nil, false)
 	if !rows[0].Ignored || rows[0].File != 0 {
 		t.Errorf("ignored file %+v, want an ignored file row", rows[0])

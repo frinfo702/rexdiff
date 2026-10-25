@@ -40,6 +40,9 @@ type node struct {
 	files   map[string]int // the entry index of each file, by name
 	ignored bool
 	changed bool
+	// listed is true for a directory from an Entry with Dir. Its row
+	// stays, so that the user can collapse it.
+	listed bool
 }
 
 func newNode() *node { return &node{dirs: map[string]*node{}, files: map[string]int{}} }
@@ -66,7 +69,7 @@ func insert(root *node, e Entry, i int) {
 		for _, p := range parts {
 			cur = cur.child(p)
 		}
-		cur.ignored = e.Ignored
+		cur.ignored, cur.listed = e.Ignored, true
 		return
 	}
 	if len(parts) == 0 {
@@ -121,9 +124,10 @@ func flatten(rows *[]Row, dir *node, prefix string, depth int, toggled map[strin
 }
 
 // compress follows the directories with one child and no files from n. It
-// returns the joined name, the path, and the directory where it stops.
+// stops at a listed directory. It returns the joined name, the path, and
+// the directory where it stops.
 func compress(name, path string, n *node) (string, string, *node) {
-	for len(n.files) == 0 && len(n.dirs) == 1 {
+	for !n.listed && len(n.files) == 0 && len(n.dirs) == 1 {
 		for c, sub := range n.dirs {
 			name, path, n = name+"/"+c, path+"/"+c, sub
 		}
@@ -131,10 +135,10 @@ func compress(name, path string, n *node) (string, string, *node) {
 	return name, path, n
 }
 
-// loneFile returns the name and the index of the file of n, if n has one
-// file and no directories.
+// loneFile returns the name and the index of the file of n, if n is not
+// listed and has one file and no directories.
 func loneFile(n *node) (name string, i int, ok bool) {
-	if len(n.dirs) == 0 && len(n.files) == 1 {
+	if !n.listed && len(n.dirs) == 0 && len(n.files) == 1 {
 		for name, i := range n.files {
 			return name, i, true
 		}
