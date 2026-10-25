@@ -75,12 +75,17 @@ func TestPRErrorKeepsPR(t *testing.T) {
 // only every pollEvery.
 func TestPollWithoutWatcher(t *testing.T) {
 	m, dir := newTestModel(t)
+	clk := setClock(&m)
 	m = step(t, m, tickMsg{})
 	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
 	if m = step(t, m, tickMsg{}); shows(m, "return 42") {
 		t.Errorf("a tick before the poll is due, view got:\n%s\nwant no reload", view(m))
 	}
-	m.polled, m.reloadAt = time.Now().Add(-pollEvery), time.Time{}
+	clk.advance(pollEvery - time.Nanosecond)
+	if m = step(t, m, tickMsg{}); shows(m, "return 42") {
+		t.Errorf("a tick just before pollEvery, view got:\n%s\nwant no reload", view(m))
+	}
+	clk.advance(time.Nanosecond)
 	if m = step(t, m, tickMsg{}); !shows(m, "return 42") {
 		t.Errorf("a tick after pollEvery, view got:\n%s\nwant the edit", view(m))
 	}
@@ -90,17 +95,19 @@ func TestPollWithoutWatcher(t *testing.T) {
 // failure, with a wait that doubles.
 func TestWatchRestarts(t *testing.T) {
 	m, _ := newTestModel(t)
+	clk := setClock(&m)
+	m.dropWatch(errors.New("gone"))
+	clk.advance(retryFirst)
 	path := os.Getenv("PATH")
 	noGit(t)
-	m.watchAt = time.Now()
-	if m = step(t, m, tickMsg{}); m.watch != nil || !m.watchAt.After(time.Now()) {
+	if m = step(t, m, tickMsg{}); m.watch != nil || !m.watchAt.After(m.now()) {
 		t.Fatalf("a failed start: watcher %v, next try %v; want none, a wait", m.watch, m.watchAt)
 	}
 	t.Setenv("PATH", path)
 	if m = step(t, m, tickMsg{}); m.watch != nil {
 		t.Fatal("a tick before the wait ends starts the watcher")
 	}
-	m.watchAt = time.Now()
+	clk.advance(2 * retryFirst)
 	if m = step(t, m, tickMsg{}); m.watch == nil {
 		t.Error("a tick after the wait: no watcher, want one")
 	}
@@ -109,10 +116,9 @@ func TestWatchRestarts(t *testing.T) {
 // TestWatchErrorRestarts checks that an error of the watcher drops it, so
 // that a later tick starts it again.
 func TestWatchErrorRestarts(t *testing.T) {
-	m, dir, pause := watched(t)
+	m, dir := watched(t)
 	noGit(t)
 	testgit.WriteFile(t, dir, "new.go", "package a\n") // the watcher lists the files again
-	time.Sleep(pause)
 	if m = step(t, m, tickMsg{}); m.watch != nil || m.watchAt.IsZero() {
 		t.Errorf("after an error of the watcher: watcher %v, next try %v; want none, a try",
 			m.watch, m.watchAt)

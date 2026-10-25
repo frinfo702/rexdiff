@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -84,6 +83,7 @@ func TestMultiClickCopies(t *testing.T) {
 // within the window.
 func TestClickChain(t *testing.T) {
 	m, _ := newTestModel(t)
+	clk := setClock(&m)
 	at := tea.Mouse{X: 40, Y: 10}
 	for i, want := range []int{1, 2, 3, 3} {
 		if n := m.countClick(at); n != want {
@@ -93,7 +93,7 @@ func TestClickChain(t *testing.T) {
 	if n := m.countClick(tea.Mouse{X: 41, Y: 10}); n != 1 {
 		t.Errorf("another cell: count %d, want 1", n)
 	}
-	m.click.at = time.Now().Add(-clickWindow)
+	clk.advance(clickWindow)
 	if n := m.countClick(tea.Mouse{X: 41, Y: 10}); n != 1 {
 		t.Errorf("after the window: count %d, want 1", n)
 	}

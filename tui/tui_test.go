@@ -43,10 +43,25 @@ func newTestModel(tb testing.TB) (model, string) {
 	}
 	m := newModel(tb.Context(), Options{Repo: repo}, defaultConfig())
 	m.grepBudget = time.Minute // a slow test machine does not cut the searches
+	setClock(&m)
 	m.reload()
 	m = step(tb, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	return m, dir
 }
+
+// testClock is a clock that moves only when the test moves it.
+type testClock struct{ t time.Time }
+
+// setClock makes m use a new test clock, and returns the clock. A
+// watcher that m starts after it uses the clock too.
+func setClock(m *model) *testClock {
+	c := &testClock{t: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)}
+	m.now = func() time.Time { return c.t }
+	return c
+}
+
+// advance moves c forward by d.
+func (c *testClock) advance(d time.Duration) { c.t = c.t.Add(d) }
 
 // step gives msg to m and returns the new model.
 func step(tb testing.TB, m model, msg tea.Msg) model {

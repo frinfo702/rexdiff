@@ -19,7 +19,7 @@ func newWatcher(t *testing.T, r *vcs.Repo) *vcs.Watcher {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vcs.SetClock(w, func() time.Time { return time.Time{} })
+	w.SetClock(func() time.Time { return time.Time{} })
 	if ch := changed(t, w); ch != (vcs.Change{Files: true, Refs: true}) {
 		t.Fatalf("first call: %+v, want both", ch)
 	}
@@ -221,7 +221,7 @@ func TestWatcherBudget(t *testing.T) {
 	// Each reading of the clock moves it by 10 ms, so each call takes 10
 	// ms and the next call waits 200 ms.
 	now := time.Now()
-	vcs.SetClock(w, func() time.Time {
+	w.SetClock(func() time.Time {
 		now = now.Add(10 * time.Millisecond)
 		return now
 	})

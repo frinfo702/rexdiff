@@ -176,6 +176,7 @@ type model struct {
 	repo *vcs.Repo
 	rex  *rex.Client // nil outside Rex
 	log  *slog.Logger
+	now  func() time.Time // the clock, which a test can set
 
 	cfg    config
 	keys   keyMap
@@ -310,6 +311,7 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 		repo:       o.Repo,
 		rex:        o.Rex,
 		log:        o.Log,
+		now:        time.Now,
 		notice:     o.Notice,
 		updater:    o.Updater,
 		w:          120,
@@ -430,7 +432,7 @@ const flashTime = 4 * time.Second
 // flash shows s in the footer for a short time. The text can come from Rex
 // or from git, so flash quotes it if it has control characters.
 func (m *model) flash(s string) {
-	m.status, m.statusTill = termtext.Quote(s), time.Now().Add(flashTime)
+	m.status, m.statusTill = termtext.Quote(s), m.now().Add(flashTime)
 }
 
 // trees returns the two trees that the Changes tab compares in the scope.
@@ -605,7 +607,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case tea.FocusMsg:
 		m.reloadIfChanged()
 	case tickMsg:
-		cmd = m.onTick()
+		cmd = tea.Batch(tick(time.Second), m.onTick())
 	case tea.BackgroundColorMsg:
 		if !sameColor(m.bg, msg.Color) {
 			m.bg, m.dark = msg.Color, msg.IsDark()
@@ -788,7 +790,7 @@ func (m *model) retry(err error) {
 		m.retryWait, m.retryAt = 0, time.Time{}
 		return
 	}
-	m.retryAt = time.Now().Add(backoff(&m.retryWait))
+	m.retryAt = m.now().Add(backoff(&m.retryWait))
 	m.reloadOwed = true
 }
 
@@ -797,7 +799,19 @@ func (m *model) retry(err error) {
 func (m *model) dropWatch(err error) {
 	m.log.Warn("watch failed", "err", err)
 	m.watch = nil
-	m.watchAt = time.Now().Add(backoff(&m.watchWait))
+	m.watchAt = m.now().Add(backoff(&m.watchWait))
+}
+
+// startWatch starts the watcher of the repository. The watcher uses the
+// clock of the model.
+func (m *model) startWatch() error {
+	w, err := m.repo.Watch(m.ctx)
+	if err != nil {
+		return err
+	}
+	w.SetClock(m.now)
+	m.watch, m.watchAt = w, time.Time{}
+	return nil
 }
 
 // changed tells what the watcher sees. Without a watcher, it tells that
@@ -805,13 +819,10 @@ func (m *model) dropWatch(err error) {
 // tells that both change.
 func (m *model) changed() vcs.Change {
 	all := vcs.Change{Files: true, Refs: true}
-	now := time.Now()
+	now := m.now()
 	if m.watch == nil && !m.watchAt.IsZero() && !now.Before(m.watchAt) {
-		w, err := m.repo.Watch(m.ctx)
-		if err != nil {
+		if err := m.startWatch(); err != nil {
 			m.dropWatch(err)
-		} else {
-			m.watch, m.watchAt = w, time.Time{}
 		}
 	}
 	if m.watch == nil {
@@ -823,7 +834,7 @@ func (m *model) changed() vcs.Change {
 	}
 	m.watch.Show(m.shownIgnored())
 	ch, err := m.watch.Changed(m.ctx)
-	m.log.Debug("watch", "took", time.Since(now), "files", ch.Files, "refs", ch.Refs)
+	m.log.Debug("watch", "took", m.now().Sub(now), "files", ch.Files, "refs", ch.Refs)
 	if err != nil {
 		m.dropWatch(err)
 		m.polled = now
@@ -833,7 +844,8 @@ func (m *model) changed() vcs.Change {
 	return ch
 }
 
-// onTick reloads the current tab if the watcher sees a change.
+// onTick reloads the current tab if the watcher sees a change. It
+// returns the work of the tick. Update adds the next tick.
 func (m *model) onTick() tea.Cmd {
 	m.ticks++
 	ch := m.changed()
@@ -842,12 +854,12 @@ func (m *model) onTick() tea.Cmd {
 	}
 	m.reloadOwed = m.reloadOwed || ch.Files || ch.Refs
 	m.filesOwed = m.filesOwed || ch.Files
-	now := time.Now()
+	now := m.now()
 	m.reloadDue()
-	if m.status != "" && time.Now().After(m.statusTill) {
+	if m.status != "" && m.now().After(m.statusTill) {
 		m.status = ""
 	}
-	cmds := []tea.Cmd{tick(time.Second)}
+	var cmds []tea.Cmd
 	// Without a watcher, each tick reports a change of the refs. Then only
 	// the poll reads the pull request.
 	if ch.Refs && m.watch != nil {
@@ -857,7 +869,7 @@ func (m *model) onTick() tea.Cmd {
 		m.sampleAt = time.Time{} // one list at a time
 		cmds = append(cmds, m.listAgents(agentsMsg{}))
 	}
-	if m.tab == tabPR && time.Since(m.prf.polled) >= prPoll {
+	if m.tab == tabPR && m.now().Sub(m.prf.polled) >= prPoll {
 		cmds = append(cmds, m.requestPR(false))
 	}
 	if m.ticks%colorTicks == 0 { // follow the changes of the terminal theme
@@ -874,11 +886,12 @@ func (m *model) reloadDue() {
 	if m.mode == modeComment {
 		return
 	}
-	now := time.Now()
+	now := m.now()
 	switch {
 	case m.tab == tabChanges && m.reloadOwed && !now.Before(m.reloadAt) && !now.Before(m.retryAt):
 		m.reloadIfChanged()
-		m.reloadAt = time.Now().Add(budgetFactor * time.Since(now))
+		end := m.now()
+		m.reloadAt = end.Add(budgetFactor * end.Sub(now))
 	case m.tab == tabFiles && m.filesOwed:
 		m.reloadFiles() // reloadFiles renders the file too
 	case m.tab == tabFiles && m.watch == nil:

@@ -37,6 +37,7 @@ func newTreeModel(t *testing.T) (model, string) {
 		t.Fatal(err)
 	}
 	m := newModel(t.Context(), Options{Repo: repo}, defaultConfig())
+	setClock(&m)
 	m.reload()
 	m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	m.focusList = true

@@ -25,7 +25,7 @@ const budgetFactor = 20
 type Watcher struct {
 	r              *Repo
 	gitDir, common string           // absolute paths
-	now            func() time.Time // the clock, which a test can set
+	now            func() time.Time // the clock, see SetClock
 	next           time.Time        // no check before this time
 
 	started bool
@@ -58,6 +58,10 @@ func (r *Repo) Watch(ctx context.Context) (*Watcher, error) {
 	}
 	return &Watcher{r: r, gitDir: gitDir, common: common, now: time.Now}, nil
 }
+
+// SetClock sets the clock of w. The pause between two checks follows it.
+// A clock that does not move turns off the pause.
+func (w *Watcher) SetClock(now func() time.Time) { w.now = now }
 
 // Show sets the ignored paths that show: the directories that the user
 // expands and the open file. paths are relative to the root. Git does not

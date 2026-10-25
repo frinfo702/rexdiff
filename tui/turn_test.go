@@ -99,13 +99,14 @@ func TestTurnKeepsOldBaseline(t *testing.T) {
 // it the last turn, before the turn ends.
 func TestTurnPromotesOnChange(t *testing.T) {
 	m, dir := turnModel(t)
+	clk := setClock(&m)
 	m = step(t, m, status("p", "pi", rex.StateWorking))
 	m = step(t, m, tickMsg{})
 	if m.turn != nil {
 		t.Fatal("a tick with no change promotes the turn")
 	}
 	testgit.WriteFile(t, dir, "c.go", "package a\n")
-	m.polled = time.Time{} // without a watcher, the poll sees the change
+	clk.advance(pollEvery) // without a watcher, the poll sees the change
 	m = step(t, m, tickMsg{})
 	if m.turn == nil || !m.turn.running || m.pending != nil {
 		t.Fatalf("turn %+v, pending %+v, want a running turn", m.turn, m.pending)
@@ -186,23 +187,27 @@ func TestTurnUnknownCwdHolds(t *testing.T) {
 	}
 }
 
-// tickAgents runs a tick of m and returns the agent lists that its
-// commands give.
+// tickAgents runs the work of a tick of m and returns the agent lists
+// that its commands give. The work has no timer, so each command returns
+// at once.
 func tickAgents(t *testing.T, m *model) []agentsMsg {
 	t.Helper()
-	batch, _ := m.onTick()().(tea.BatchMsg)
 	var out []agentsMsg
-	for _, c := range batch {
-		got := make(chan tea.Msg, 1)
-		go func() { got <- c() }()
-		select {
-		case msg := <-got:
-			if a, ok := msg.(agentsMsg); ok {
-				out = append(out, a)
+	var run func(tea.Cmd)
+	run = func(c tea.Cmd) {
+		if c == nil {
+			return
+		}
+		switch msg := c().(type) {
+		case tea.BatchMsg:
+			for _, c := range msg {
+				run(c)
 			}
-		case <-time.After(300 * time.Millisecond): // the next tick
+		case agentsMsg:
+			out = append(out, msg)
 		}
 	}
+	run(m.onTick())
 	return out
 }
 
@@ -211,6 +216,7 @@ func tickAgents(t *testing.T, m *model) []agentsMsg {
 // the list, the turns do not start.
 func TestSampleRetry(t *testing.T) {
 	m, dir := newTestModel(t)
+	clk := setClock(&m)
 	logRex(t, &m) // its output is no list
 	m = step(t, m, m.listAgents(agentsMsg{})())
 	if m.sampled || m.sampleAt.IsZero() || m.sampleWait != 2*time.Second {
@@ -220,7 +226,7 @@ func TestSampleRetry(t *testing.T) {
 	if got := tickAgents(t, &m); len(got) != 0 {
 		t.Errorf("a tick before the wait lists %d times, want 0", len(got))
 	}
-	m.sampleAt = time.Now().Add(-time.Millisecond)
+	clk.advance(time.Second)
 	got := tickAgents(t, &m)
 	if len(got) != 1 || got[0].err == nil {
 		t.Fatalf("a tick after the wait lists %d times, want 1 that fails", len(got))
@@ -229,7 +235,7 @@ func TestSampleRetry(t *testing.T) {
 		t.Errorf("after a second failure: wait %v, want 4s", m.sampleWait)
 	}
 	m = step(t, m, sample("p", "pi", dir))
-	m.sampleAt = time.Now().Add(-time.Millisecond)
+	clk.advance(2 * time.Second)
 	if !m.sampled || len(tickAgents(t, &m)) != 0 {
 		t.Errorf("after a good list: sampled %v, want true and no more lists", m.sampled)
 	}

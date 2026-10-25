@@ -94,7 +94,7 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 	defer cancel()
 
 	m := newModel(ctx, o, cfg)
-	if m.watch, err = o.Repo.Watch(ctx); err != nil {
+	if err := m.startWatch(); err != nil {
 		m.dropWatch(err)
 	}
 	var saved *savedState

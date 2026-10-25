@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -184,7 +183,7 @@ func (m *model) startTurn(ms []member) {
 		app:     ms[i].app,
 		tree:    tree,
 		running: true,
-		at:      time.Now(),
+		at:      m.now(),
 	}
 }
 
@@ -244,7 +243,7 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	case !m.sampled && !msg.send:
 		// Without a list, the turns do not start. Thus list again later.
 		m.log.Warn("agent list failed", "err", msg.err)
-		m.sampleAt = time.Now().Add(backoff(&m.sampleWait))
+		m.sampleAt = m.now().Add(backoff(&m.sampleWait))
 	}
 	m.observeTurn()
 	if !msg.send {

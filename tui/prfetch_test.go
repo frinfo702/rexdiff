@@ -29,17 +29,23 @@ func TestPRStaleResult(t *testing.T) {
 // after the last request, but only on the PR tab.
 func TestPRPoll(t *testing.T) {
 	m, _ := newTestModel(t)
-	m.prf.polled = time.Now().Add(-61 * time.Second)
+	clk := setClock(&m)
+	clk.advance(61 * time.Second)
 	if m = step(t, m, tickMsg{}); m.prf.inFlight {
 		t.Error("a tick on the Changes tab reads the pull request")
 	}
 	m = press(t, m, "3")
-	m.prf.polled = time.Now().Add(-59 * time.Second)
+	if m = step(t, m, tickMsg{}); !m.prf.inFlight || m.prf.gen != 1 {
+		t.Fatalf("the first tick on the PR tab: in flight %v, gen %d, want a read",
+			m.prf.inFlight, m.prf.gen)
+	}
+	m = step(t, m, prMsg{gen: 1})
+	clk.advance(59 * time.Second)
 	if m = step(t, m, tickMsg{}); m.prf.inFlight {
 		t.Error("a tick before a minute reads the pull request")
 	}
-	m.prf.polled = time.Now().Add(-61 * time.Second)
-	if m = step(t, m, tickMsg{}); !m.prf.inFlight || m.prf.gen != 1 {
+	clk.advance(2 * time.Second)
+	if m = step(t, m, tickMsg{}); !m.prf.inFlight || m.prf.gen != 2 {
 		t.Errorf("after a minute: in flight %v, gen %d, want a read", m.prf.inFlight, m.prf.gen)
 	}
 }
@@ -48,6 +54,7 @@ func TestPRPoll(t *testing.T) {
 // more read after it, and that r and a hung read start one at once.
 func TestPRTrailing(t *testing.T) {
 	m, _ := newTestModel(t)
+	clk := setClock(&m)
 	m = press(t, m, "3")
 	m.requestPR(true)
 	if cmd := m.requestPR(false); cmd != nil || !m.prf.trailing || m.prf.gen != 1 {
@@ -68,7 +75,7 @@ func TestPRTrailing(t *testing.T) {
 	if m = press(t, m, "r"); m.prf.gen != 4 {
 		t.Errorf("r during a read: gen %d, want a new read", m.prf.gen)
 	}
-	m.prf.started = time.Now().Add(-61 * time.Second)
+	clk.advance(61 * time.Second)
 	if m.requestPR(false); m.prf.gen != 5 || m.prf.trailing {
 		t.Errorf("a request after a hung read: gen %d, want a new read", m.prf.gen)
 	}
@@ -77,12 +84,11 @@ func TestPRTrailing(t *testing.T) {
 // TestPRBranchSwitch checks that a switch to another branch blanks the PR
 // tab, and that a commit on the branch keeps the pull request.
 func TestPRBranchSwitch(t *testing.T) {
-	m, dir, pause := watched(t)
+	m, dir := watched(t)
 	m = press(t, m, "3")
 	m = step(t, m, prMsg{gen: m.prf.gen, pr: &vcs.PullRequest{Title: "T"}})
 
 	testgit.Git(t, dir, "commit", "-qam", "more")
-	time.Sleep(pause)
 	m = step(t, m, tickMsg{})
 	if m.pr.pr == nil || !m.prf.inFlight {
 		t.Fatalf("after a commit: pr %+v, in flight %v, want the PR kept and a read",
@@ -92,7 +98,6 @@ func TestPRBranchSwitch(t *testing.T) {
 
 	testgit.Git(t, dir, "checkout", "-q", "main")
 	gen := m.prf.gen
-	time.Sleep(pause)
 	m = step(t, m, tickMsg{})
 	if m.pr.pr != nil || m.prf.gen == gen || !shows(m, "loading the pull request") {
 		t.Errorf("after a switch: pr %+v, gen %d, want a blank tab and a read", m.pr.pr, m.prf.gen)

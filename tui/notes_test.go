@@ -68,12 +68,18 @@ func TestEmptyNotes(t *testing.T) {
 // long they show.
 func TestStatusMessages(t *testing.T) {
 	m, _ := newTestModel(t)
+	clk := setClock(&m)
 	m = press(t, m, "]", "c", "h", "i", "enter")
 	if m.status != "comment added" {
 		t.Errorf("a new comment: status %q, want \"comment added\"", m.status)
 	}
-	if d := time.Until(m.statusTill); d <= 3*time.Second || d > 4*time.Second {
-		t.Errorf("the status shows for %v, want 4s", d)
+	clk.advance(flashTime)
+	if m = step(t, m, tickMsg{}); m.status != "comment added" {
+		t.Errorf("a tick at the end of the flash: status %q, want it kept", m.status)
+	}
+	clk.advance(time.Nanosecond)
+	if m = step(t, m, tickMsg{}); m.status != "" {
+		t.Errorf("a tick after the flash: status %q, want none", m.status)
 	}
 	m = press(t, m, "e", "!", "enter")
 	if m.status != "comment updated" {
