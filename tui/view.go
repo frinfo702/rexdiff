@@ -14,6 +14,7 @@ import (
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/internal/termtext"
+	"github.com/rednafi/rexdiff/internal/tree"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -202,25 +203,27 @@ func statusMark(s vcs.Status) string {
 }
 
 // listLines renders h lines of the file list. The lines are a title and the
-// files.
+// rows of the tree.
 func (m *model) listLines(h int) []string {
+	t := m.list()
+	if t == nil {
+		return nil
+	}
 	w := m.listWidth()
-	var title string
-	var n int
-	var row func(i int) string // the loop makes only the rows on the screen
-	switch m.tab {
-	case tabChanges:
-		title, n = fmt.Sprintf("Changes (%d)", len(m.files)), len(m.files)
-		row = func(i int) string { return m.changedRow(m.files[i], w) }
-	case tabFiles:
-		title, n = fmt.Sprintf("Files (%d)", len(m.allFiles)), len(m.allFiles)
-		row = func(i int) string { return m.entryRow(m.allFiles[i], w) }
+	title := fmt.Sprintf("Changes (%d)", len(m.files))
+	if m.tab == tabFiles {
+		n := 0
+		for _, e := range m.allFiles {
+			if !strings.HasSuffix(e.Path, "/") {
+				n++
+			}
+		}
+		title = fmt.Sprintf("Files (%d)", n)
 	}
 	out := []string{headerStyle.Render(title)}
-	sel := m.listSel()
-	for i := m.listStart(h); i < n && len(out) < h; i++ {
-		r := row(i)
-		if i == sel {
+	for i := m.listStart(h); i < len(t.rows) && len(out) < h; i++ {
+		r := m.treeRow(t.rows[i], w)
+		if i == t.cur {
 			r = m.selectedRow(r, w)
 		}
 		out = append(out, r)
@@ -228,31 +231,62 @@ func (m *model) listLines(h int) []string {
 	return out
 }
 
-// changedRow renders changed file f in the file list, w columns wide.
-func (m *model) changedRow(f changed, w int) string {
+// treeRow renders row r of the file list, w columns wide.
+func (m *model) treeRow(r tree.Row, w int) string {
+	indent := strings.Repeat("  ", r.Depth)
+	switch {
+	case r.File < 0:
+		return m.dirRow(r, indent, w)
+	case m.tab == tabChanges:
+		return m.changedRow(m.files[r.File], indent, r.Name, w)
+	}
+	return m.entryRow(m.allFiles[r.File], indent, r.Name, w)
+}
+
+// dirRow renders directory r of the file list, w columns wide. As in
+// herdr-reviewr, a collapsed directory of the Files tab has a dot if it
+// holds a change.
+func (m *model) dirRow(r tree.Row, indent string, w int) string {
+	arrow, mark := "▸", ""
+	if r.Expanded {
+		arrow = "▾"
+	}
+	if m.tab == tabFiles && !r.Expanded && r.Changed {
+		mark = noteStyle.Render("•")
+	}
+	room := w - ansi.StringWidth(indent) - lipgloss.Width(mark) - 4
+	name := lipgloss.NewStyle().Bold(true).Render(fitName(r.Name+"/", room))
+	if r.Ignored {
+		name = dimStyle.Render(fitName(r.Name+"/", room))
+	}
+	return " " + indent + dimStyle.Render(arrow) + " " + name + " " + mark
+}
+
+// changedRow renders changed file f in the file list, w columns wide. The
+// row shows the name in the tree, after indent.
+func (m *model) changedRow(f changed, indent, name string, w int) string {
 	adds := addStyle.Render(fmt.Sprintf("+%d", f.adds))
 	stat := adds + " " + delStyle.Render(fmt.Sprintf("-%d", f.dels))
 	if c := m.comments.Count(m.anchorOf(tabChanges), f.Path); c > 0 {
 		stat = cursorStyle.Render(fmt.Sprintf("●%d ", c)) + stat
 	}
-	name := f.Path
 	if f.From != "" {
-		name = f.From + " → " + f.Path
+		name = f.From + " → " + name
 	}
-	return fileRow(statusMark(f.Status), name, stat, w)
+	return fileRow(indent, statusMark(f.Status), name, stat, w)
 }
 
 // entryRow renders file f of the Files tab in the file list, w columns
-// wide.
-func (m *model) entryRow(f vcs.Entry, w int) string {
+// wide. The row shows the name in the tree, after indent.
+func (m *model) entryRow(f vcs.Entry, indent, name string, w int) string {
 	if f.Ignored {
-		return dimStyle.Render(fileRow(" ", f.Path, "", w))
+		return dimStyle.Render(fileRow(indent, " ", name, "", w))
 	}
 	stat := ""
 	if c := m.comments.Count(m.anchorOf(tabFiles), f.Path); c > 0 {
 		stat = cursorStyle.Render(fmt.Sprintf("●%d", c))
 	}
-	return fileRow(" ", f.Path, stat, w)
+	return fileRow(indent, " ", name, stat, w)
 }
 
 // selectedRow highlights row r of the selected file, w columns wide.
@@ -265,14 +299,26 @@ func (m *model) selectedRow(r string, w int) string {
 	return style.Render(cursorStyle.Render("▌") + ansi.TruncateLeft(r, 1, ""))
 }
 
-// listStart returns the index of the first file that the list shows.
-func (m *model) listStart(h int) int { return max(0, m.listSel()-(h-2)) }
+// listStart returns the first row that the file list shows in h lines.
+func (m *model) listStart(h int) int {
+	t := m.list()
+	if t == nil {
+		return 0
+	}
+	return max(0, t.cur-(h-2))
+}
 
-// fileRow returns " M name/of/file.go  +3 -1". If the path is too long,
-// fileRow removes the directory first, then the start of the name.
-func fileRow(mark, p, stat string, w int) string {
+// fileRow returns " M name/of/file.go  +3 -1", with indent before the
+// mark.
+func fileRow(indent, mark, p, stat string, w int) string {
+	room := w - ansi.StringWidth(indent) - lipgloss.Width(stat) - 4
+	return " " + indent + mark + " " + fitName(p, room) + " " + stat
+}
+
+// fitName returns p in room columns, with spaces after it. If p is too
+// long, fitName removes the directory first, then the start of the name.
+func fitName(p string, room int) string {
 	p = termtext.Quote(p)
-	room := w - lipgloss.Width(stat) - 4
 	if n := ansi.StringWidth(p); n > room {
 		if base := path.Base(p); ansi.StringWidth(base)+2 <= room {
 			p = "…/" + base
@@ -281,8 +327,7 @@ func fileRow(mark, p, stat string, w int) string {
 		}
 	}
 	// Pad by width, not by runes.
-	pad := strings.Repeat(" ", max(room-ansi.StringWidth(p), 0))
-	return " " + mark + " " + p + pad + " " + stat
+	return p + strings.Repeat(" ", max(room-ansi.StringWidth(p), 0))
 }
 
 // mainLines renders the visible part of the main pane. rowAt[y] is the row

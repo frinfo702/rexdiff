@@ -5,6 +5,7 @@ import (
 	"context"
 	"image/color"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -228,10 +229,12 @@ type model struct {
 	memberDirs map[string]bool // the working directories of the members
 
 	files      []changed // the Changes tab
-	changeSel  int
-	shownTrees string      // the two trees of files, to notice a change
+	changeSel  int       // the file that shows in the Changes tab
+	shownTrees string    // the two trees of files, to notice a change
+	changeTree navTree
 	allFiles   []vcs.Entry // the Files tab
 	allSel     int
+	fileTree   navTree
 	viewed     string // the content in the Files tab, to notice edits
 
 	changes, viewer, prPane pane
@@ -471,6 +474,7 @@ func (m *model) reloadIfChanged() {
 	}
 	if note != "" {
 		m.changes.note, m.files, m.shownTrees = note, nil, ""
+		m.buildTrees()
 		m.renderChanges()
 		return
 	}
@@ -479,7 +483,7 @@ func (m *model) reloadIfChanged() {
 		selPath = f.Path
 	}
 	m.files = make([]changed, len(files))
-	m.shownTrees, m.changeSel, m.changes.note = trees, 0, ""
+	m.shownTrees, m.changeSel, m.changes.note = trees, -1, ""
 	for i, f := range files {
 		c := &m.files[i]
 		c.File = f
@@ -490,6 +494,7 @@ func (m *model) reloadIfChanged() {
 			m.changeSel = i
 		}
 	}
+	m.buildTrees()
 	if f := m.changedFile(); f == nil || f.Path != selPath {
 		// Another file shows, so the cursor and the selection do not apply.
 		m.changes.cur, m.changes.top, m.changes.anchor = 0, 0, -1
@@ -511,19 +516,33 @@ func (m *model) loadFiles() {
 func (m *model) reloadFiles() {
 	m.filesOwed = false
 	m.readFiles()
-	m.allSel = min(m.allSel, max(len(m.allFiles)-1, 0))
 	m.refreshViewer()
 }
 
-// readFiles reads the list of all files. On an error, it keeps the old
-// list and shows the error.
+// readFiles reads the list of all files. The selected file stays. On an
+// error, it keeps the old list and shows the error.
 func (m *model) readFiles() {
 	files, err := m.repo.Files(m.ctx)
 	if err != nil {
 		m.flash("refresh failed: " + err.Error())
 		return
 	}
-	m.allFiles = files
+	var sel string
+	if m.allSel < len(m.allFiles) {
+		sel = m.allFiles[m.allSel].Path
+	}
+	m.allFiles = m.withIgnored(files)
+	m.allSel = slices.IndexFunc(m.allFiles, func(e vcs.Entry) bool { return e.Path == sel })
+	m.buildFileTree()
+}
+
+// buildTrees makes the rows of the file lists after a change of the
+// Changes tab. The Files tab marks the directories with a change.
+func (m *model) buildTrees() {
+	m.buildChangeTree()
+	if m.allFiles != nil {
+		m.buildFileTree()
+	}
 }
 
 // Update handles a message. After an install, Update restarts the program

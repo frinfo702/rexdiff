@@ -73,6 +73,7 @@ that show.
 | `]` `[` | next or previous change. Past the last one, press it again to go to the next file |
 | `→` or click | show the unchanged lines of a fold (`⋯ 12 unmodified lines`) |
 | `f` `F` | next or previous file |
+| `→` `←` or click | expand or collapse a directory in the file list |
 | `c` | new comment, also on a line that has one |
 | `e` | edit the comment at the cursor, else open the file in the editor |
 | `d` | delete the comment at the cursor |
@@ -95,6 +96,10 @@ that show.
 The search shows up to 50 files and 200 lines of code, then "… more". With no
 query, it lists the files you opened from the search in this session first.
 The preview below the results shows the file, with the match in the middle.
+
+The file list is a tree. Directories start expanded in the changes and
+collapsed in all files. There, a collapsed directory with a change has a dot.
+Ignored directories are dim and read their files when you expand them.
 
 At a side, the file list takes 15% to 60% of the width. Above or below, it takes
 a quarter of the rows, and `<` `>` change that from 15% to 50%.

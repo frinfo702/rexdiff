@@ -122,11 +122,11 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.Focus):
 		m.focusList = !m.focusList
 	case key.Matches(msg, k.Down) && inList:
-		m.pickFile(m.listSel() + 1)
+		m.stepRow(1)
 	case key.Matches(msg, k.Down):
 		p.cur = min(p.end(p.cur)+1, last)
 	case key.Matches(msg, k.Up) && inList:
-		m.pickFile(m.listSel() - 1)
+		m.stepRow(-1)
 	case key.Matches(msg, k.Up):
 		p.cur = max(p.cur-1, 0)
 	case key.Matches(msg, k.PageDown):
@@ -142,9 +142,13 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.PrevHunk):
 		m.stepChange(-1)
 	case key.Matches(msg, k.NextFile):
-		m.pickFile(m.listSel() + 1)
+		m.stepFile(1)
 	case key.Matches(msg, k.PrevFile):
-		m.pickFile(m.listSel() - 1)
+		m.stepFile(-1)
+	case key.Matches(msg, k.Right) && m.onDir():
+		m.setDir(true)
+	case key.Matches(msg, k.Left) && m.onDir():
+		m.setDir(false)
 	case key.Matches(msg, k.Right) && m.onFold():
 		m.expandFold(p.rows[p.cur].Fold)
 	case key.Matches(msg, k.Right) && !m.wrap:
@@ -424,8 +428,14 @@ func (m *model) listSel() int {
 	return m.changeSel
 }
 
-// pickFile selects file i of the file list of the current tab.
+// pickFile selects file i of the file list of the current tab. The
+// cursor of the list goes to the row of the file, if the row shows.
 func (m *model) pickFile(i int) {
+	if t := m.list(); t != nil {
+		if r := t.rowOf(i); r >= 0 {
+			t.cur = r
+		}
+	}
 	switch m.tab {
 	case tabChanges:
 		if i < 0 || i >= len(m.files) {
@@ -500,10 +510,16 @@ func changeRow(rows []diff.Row, from, d int) int {
 }
 
 // crossTarget returns the index of the nearest file in direction d that
-// has a changed line, or -1.
+// has a changed line, or -1. It goes in the order of the rows of the file
+// list, from the row of the file that shows.
 func (m *model) crossTarget(d int) int {
-	for i := m.changeSel + d; i >= 0 && i < len(m.files); i += d {
-		if f := m.files[i]; f.adds+f.dels > 0 {
+	t := &m.changeTree
+	from := t.rowOf(m.changeSel)
+	if from < 0 {
+		from = t.cur
+	}
+	for r := t.nextFile(from, d); r >= 0; r = t.nextFile(r, d) {
+		if i := t.rows[r].File; m.files[i].adds+m.files[i].dels > 0 {
 			return i
 		}
 	}
@@ -562,6 +578,7 @@ func (m *model) jumpTo(path string, s diff.Side, line int) {
 	inChanges := func(f changed) bool { return f.Path == path }
 	if i := slices.IndexFunc(m.files, inChanges); i >= 0 {
 		m.tab = tabChanges
+		m.revealFile(path)
 		m.pickFile(i)
 		cursorToLine(&m.changes, s, line)
 		return
@@ -578,6 +595,7 @@ func (m *model) jumpToFile(path string, s diff.Side, line int) {
 		return
 	}
 	m.tab = tabFiles
+	m.revealFile(path)
 	m.pickFile(i)
 	if s == diff.SideOld { // the Files tab shows only the new side
 		m.flash("the removed line is not in the file now")

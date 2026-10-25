@@ -40,8 +40,7 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	}
 	if m.inList(mouse.X, mouse.Y) {
 		if y := mouse.Y - m.listY(); y >= 1 {
-			m.focusList = true
-			m.pickFile(m.listStart(m.listRows()) + y - 1)
+			m.clickRow(m.listStart(m.listRows()) + y - 1)
 		}
 		return nil
 	}
@@ -178,7 +177,7 @@ func (m *model) onWheel(mouse tea.Mouse) {
 		return
 	}
 	if m.inList(mouse.X, mouse.Y) {
-		m.pickFile(m.listSel() + d)
+		m.stepRow(d)
 		return
 	}
 	p := m.cur()

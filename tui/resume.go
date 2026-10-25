@@ -164,6 +164,12 @@ func (m *model) restorePlaces(s *savedState) {
 	if i := slices.IndexFunc(m.allFiles, func(e vcs.Entry) bool { return e.Path == s.FilePath }); i >= 0 {
 		m.allSel = i
 	}
+	// The cursors go to the selected files, and the directories above
+	// them expand.
+	m.changeTree.reveal(s.ChangePath)
+	m.fileTree.reveal(s.FilePath)
+	m.changeTree.cur, m.fileTree.cur = -1, -1
+	m.buildTrees()
 	m.renderChanges()
 	m.refreshViewer()
 	m.changes.restore(s.Changes)

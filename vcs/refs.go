@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -156,6 +158,27 @@ func (r *Repo) Files(ctx context.Context) ([]Entry, error) {
 		return strings.Compare(a.Path, b.Path)
 	})
 	return es, nil
+}
+
+// IgnoredDir returns the entries of the ignored directory dir, sorted by
+// name. It reads them from the disk, as herdr-reviewr does, because git
+// lists an ignored directory as one path. The path of a directory ends
+// with a slash, as in [Repo.Files]. A directory that it cannot read has
+// no entries.
+func (r *Repo) IgnoredDir(dir string) []Entry {
+	des, err := os.ReadDir(filepath.Join(r.root, filepath.FromSlash(dir)))
+	if err != nil {
+		return nil
+	}
+	es := make([]Entry, 0, len(des))
+	for _, de := range des {
+		p := dir + "/" + de.Name()
+		if de.IsDir() {
+			p += "/"
+		}
+		es = append(es, Entry{Path: p, Ignored: true})
+	}
+	return es
 }
 
 // Match is a line that [Repo.Grep] finds.

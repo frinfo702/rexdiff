@@ -331,6 +331,18 @@ func TestWorktree(t *testing.T) {
 		t.Errorf("Files = %s, want %s", got, want)
 	}
 
+	write(t, dir, "build/sub/x", "x\n")
+	var ignored []string
+	for _, e := range r.IgnoredDir("build") {
+		ignored = append(ignored, e.Path)
+	}
+	if want := []string{"build/out", "build/sub/"}; !slices.Equal(ignored, want) {
+		t.Errorf("IgnoredDir(build) = %q, want %q", ignored, want)
+	}
+	if es := r.IgnoredDir("no such dir"); len(es) != 0 {
+		t.Errorf("IgnoredDir(no such dir) = %v, want none", es)
+	}
+
 	ms, _, err := r.Grep(ctx, "TWO", 10)
 	match := vcs.Match{Path: "a.txt", Line: 2, Text: "two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {

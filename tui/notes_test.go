@@ -57,6 +57,7 @@ func TestEmptyNotes(t *testing.T) {
 	}
 
 	m.allFiles = []vcs.Entry{}
+	m.buildFileTree()
 	if m.renderViewer(); !shows(m, "no files") {
 		t.Errorf("no files got:\n%s\nwant \"no files\"", view(m))
 	}
