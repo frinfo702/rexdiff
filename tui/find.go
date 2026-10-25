@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/search"
 )
 
 // findState is the query of the find band. The band is open in modeFind.
@@ -126,17 +127,17 @@ func (m *model) findHits(q string) []findHit {
 		case r.Continued:
 		case r.Fold.Lines > 0:
 			for n := r.Fold.New; n < r.Fold.New+r.Fold.Lines; n++ {
-				if diff.Match(line(new, n), q) {
+				if search.Match(line(new, n), q) {
 					hits = append(hits, findHit{i, n})
 				}
 			}
 		case r.Old > 0 || r.New > 0:
-			if (r.New > 0 && diff.Match(line(new, r.New), q)) ||
-				(r.Old > 0 && diff.Match(line(old, r.Old), q)) {
+			if (r.New > 0 && search.Match(line(new, r.New), q)) ||
+				(r.Old > 0 && search.Match(line(old, r.Old), q)) {
 				hits = append(hits, findHit{i, 0})
 			}
 		case p.content(i):
-			if diff.Match(ansi.Strip(p.lines[i]), q) {
+			if search.Match(ansi.Strip(p.lines[i]), q) {
 				hits = append(hits, findHit{i, 0})
 			}
 		}

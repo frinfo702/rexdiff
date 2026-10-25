@@ -1,5 +1,5 @@
-// Package search finds the files of the search screen. The limits come
-// from herdr-reviewr.
+// Package search finds the files of the search screen, and the lines of
+// the find band. The limits and the smart case come from herdr-reviewr.
 package search
 
 import (

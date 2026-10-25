@@ -1,10 +1,6 @@
-package diff_test
+package search
 
-import (
-	"testing"
-
-	"github.com/rednafi/rexdiff/diff"
-)
+import "testing"
 
 // TestMatch checks the smart case of herdr-reviewr.
 func TestMatch(t *testing.T) {
@@ -25,7 +21,7 @@ func TestMatch(t *testing.T) {
 		{"ab", "abc", false},
 	}
 	for _, tt := range tests {
-		if got := diff.Match(tt.text, tt.query); got != tt.want {
+		if got := Match(tt.text, tt.query); got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.text, tt.query, got, tt.want)
 		}
 	}
