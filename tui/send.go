@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -179,6 +180,7 @@ func (m *model) startTurn(ms []member) {
 		return
 	}
 	i := slices.IndexFunc(ms, func(a member) bool { return a.state == rex.StateWorking })
+	m.log.Debug("turn start", "block", ms[i].block, "tree", tree)
 	m.pending = &turnState{
 		block:   ms[i].block,
 		app:     ms[i].app,
@@ -371,11 +373,17 @@ func (m *model) copyComments() {
 	m.copyText(m.reviewText(), "copied "+plural(len(ids), "comment"), ids)
 }
 
+// copyTimeout is the longest time of a copy.
+const copyTimeout = 2 * time.Second
+
 // copyText writes text to the clipboard. If the copy works, it removes
 // the comments ids and shows done. As in herdr-reviewr, the copy runs
-// before the next frame, so two copies keep their order.
+// before the next frame, so two copies keep their order. A clipboard tool
+// that does not answer fails after copyTimeout.
 func (m *model) copyText(text, done string, ids []int) {
-	err := clipboard.Write(m.ctx, text)
+	ctx, cancel := context.WithTimeout(m.ctx, copyTimeout)
+	defer cancel()
+	err := clipboard.Write(ctx, text)
 	switch {
 	case errors.Is(err, clipboard.ErrNoTool):
 		m.flash("copy failed: install wl-clipboard, xclip, or xsel")
