@@ -308,12 +308,41 @@ func (c config) checkHosts(set map[string]jsontext.Value) error {
 	return nil
 }
 
-// checkKeybindings checks the keys of the actions. The decoder rejects an
-// unknown action. A list that is set must have keys.
+// checkKeybindings checks the keys of the actions, as herdr-reviewr does.
+// The decoder rejects an unknown action. A list that is set must have
+// keys, and each key must have a valid name. Then no key can have two
+// actions, after the setting changes the default keys.
 func (c config) checkKeybindings() error {
-	for _, b := range new(keyMap).bindings(c.Keybindings) {
-		if b.keys != nil && (len(b.keys) == 0 || slices.Contains(b.keys, "")) {
-			return invalid("keybindings."+b.name, "a list of keys", fmt.Sprint(b.keys))
+	k := defaultKeys()
+	bs := k.bindings(c.Keybindings)
+	for _, b := range bs {
+		if b.keys == nil {
+			continue
+		}
+		want := "a list of keys, each a character or a named key (" + keyNames() +
+			"), alone or after ctrl+ or alt+"
+		if len(b.keys) == 0 {
+			return invalid("keybindings."+b.name, want, "[]")
+		}
+		for _, s := range b.keys {
+			if _, ok := keyName(s); !ok {
+				return invalid("keybindings."+b.name, want, s)
+			}
+		}
+	}
+	k.applyConfig(c.Keybindings)
+	first := map[string]string{} // the first action of each key
+	for _, b := range bs {
+		for _, key := range b.key.Keys() {
+			switch a, ok := first[key]; {
+			case ok && a == b.name:
+				return fmt.Errorf("invalid value for keybindings: `%s` is bound twice to `%s`",
+					herdrKeyName(key), b.name)
+			case ok:
+				return fmt.Errorf("invalid value for keybindings: `%s` is bound to both `%s` and `%s`",
+					herdrKeyName(key), a, b.name)
+			}
+			first[key] = b.name
 		}
 	}
 	return nil

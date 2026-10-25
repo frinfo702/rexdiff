@@ -419,8 +419,8 @@ func TestParseConfig(t *testing.T) {
 		scope-uncommitted search select send split tab-all-files tab-changes tab-pr up
 		wrap`)
 	keys := map[string][]string{}
-	for _, n := range names {
-		keys[n] = []string{"x"}
+	for i, n := range names {
+		keys[n] = []string{string(rune('A' + i))} // a key for each action
 	}
 	all, err := json.Marshal(map[string]any{"keybindings": keys})
 	if err != nil {

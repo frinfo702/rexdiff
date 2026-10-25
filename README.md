@@ -95,6 +95,10 @@ Other settings:
 
 See [herdr-reviewr] for the values and the action names.
 
+A key in `keybindings` is one character, or `left`, `right`, `up`, `down`, `pageup`, or
+`pagedown`, alone or after `ctrl+` or `alt+`. A key bound to two actions is an error that
+names both.
+
 `e` opens the file at the cursor line in `editor`, else in `$VISUAL`, `$EDITOR`, or git's
 `core.editor`. If none is set, rexdiff shows "no editor" and opens nothing. A terminal editor, such as `nvim`, `micro`, or `fresh`, opens in a new pane
 beside rexdiff. A window editor, such as `code`, opens in its window.
