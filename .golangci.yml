@@ -62,6 +62,7 @@ linters:
         - G302 # file permissions on chmod
         - G304 # file path from a variable
         - G306 # file permissions on write
+        - G702 # subprocess with a variable, found by taint analysis
         - G703 # file path from a variable, found by taint analysis
     nolintlint:
       require-explanation: true
