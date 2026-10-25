@@ -25,7 +25,7 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 	abs := filepath.Join(m.repo.Root(), path)
 	var ed editor.Command
 	if m.cfg.Editor != "" {
-		ed = editor.FromTemplate(m.cfg.Editor, abs, line)
+		ed = editor.Template(m.cfg.Editor, abs, line)
 	} else {
 		e := cmp.Or(
 			strings.TrimSpace(os.Getenv("VISUAL")),
@@ -33,7 +33,7 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 			m.repo.Editor(m.ctx),
 			"vi",
 		)
-		ed = editor.FromEditor(e, abs, line)
+		ed = editor.Program(e, abs, line)
 	}
 	m.log.Debug("editor", "command", ed.Script, "window", ed.Window)
 	if ed.Window {
@@ -79,7 +79,7 @@ func runWindowEditor(script string) tea.Cmd {
 // the opener of the system.
 func openURL(cfg config, url string) error {
 	if cfg.URLOpener != "" {
-		script := strings.ReplaceAll(cfg.URLOpener, "{url}", editor.Quote(url))
+		script := strings.ReplaceAll(cfg.URLOpener, "{url}", editor.ShellQuote(url))
 		return start("sh", "-c", script)
 	}
 	opener := "xdg-open"

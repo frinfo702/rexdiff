@@ -57,8 +57,8 @@ func NewComment(path string, s Side, rows []Row, old, new string) Comment {
 }
 
 // Location returns the path and the lines of c, for example "a.go:3-4".
-// A comment on the old side has " (removed)" at the end. [Quote] quotes
-// the path.
+// A comment on the old side has " (removed)" at the end. [termtext.Quote]
+// quotes the path.
 func (c *Comment) Location() string {
 	loc := fmt.Sprintf("%s:%d", termtext.Quote(c.Path), c.Start)
 	if c.End != c.Start {

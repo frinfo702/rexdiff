@@ -72,9 +72,6 @@ type View struct {
 	afterNumDigits  int
 	heights         []int // the number of screen lines of each row, for rows
 
-	// The View keeps the lexer, because to match a file name is slow.
-	cachedLexer chroma.Lexer
-
 	cache *Cache
 }
 
@@ -150,10 +147,8 @@ func (v *View) After(path, content string) *View {
 	return v
 }
 
-// clearCaches clears the lexer and the diff. Call it when the content
-// changes.
+// clearCaches clears the diff. Call it when the content changes.
 func (v *View) clearCaches() {
-	v.cachedLexer = nil
 	v.isComputed = false
 }
 
@@ -613,17 +608,15 @@ func newSyntaxKey(lexer, source string, bgColor color.Color) syntaxKey {
 	return k
 }
 
-// chromaLexer returns the lexer of the old file, and keeps it.
+// chromaLexer returns the lexer of the old file, and keeps it in the
+// cache.
 func (v *View) chromaLexer() chroma.Lexer {
-	if v.cachedLexer == nil {
-		lx := &v.cache.lexer
-		if lx.l == nil || lx.path != v.before.path || lx.content != v.before.content {
-			lx.path, lx.content = v.before.path, v.before.content
-			lx.l = Lexer(lx.path, lx.content)
-		}
-		v.cachedLexer = lx.l
+	lx := &v.cache.lexer
+	if lx.l == nil || lx.path != v.before.path || lx.content != v.before.content {
+		lx.path, lx.content = v.before.path, v.before.content
+		lx.l = Lexer(lx.path, lx.content)
 	}
-	return v.cachedLexer
+	return lx.l
 }
 
 // Lexer returns the coalesced lexer for the file at path. If no lexer

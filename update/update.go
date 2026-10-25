@@ -107,8 +107,8 @@ func Version(stamped string) string {
 // rexdiff. If bin links into a Caskroom, it uses Homebrew. If stamped is ""
 // and the version comes from go install, it uses go install. Else it
 // downloads the release. If REXDIFF_LATEST_URL is set, the Updater gets the
-// latest release from that address. Use this variable to test a release
-// before it is public.
+// latest release from that address. Set it to test a release before it
+// is public.
 func Detect(bin, stamped string) *Updater {
 	return detect(bin, Version(stamped), stamped == "")
 }

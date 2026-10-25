@@ -17,26 +17,26 @@ type Command struct {
 	Window bool   // the editor opens a window and does not draw in the terminal
 }
 
-// FromTemplate returns the command that opens file at line with template,
+// Template returns the command that opens file at line with template,
 // a command that the user writes. The template gets file in place of
 // {file}, and line in place of {line}. Without {file}, file goes at the
 // end.
-func FromTemplate(template, file string, line int) Command {
-	r := strings.NewReplacer("{file}", Quote(file), "{line}", strconv.Itoa(line))
+func Template(template, file string, line int) Command {
+	r := strings.NewReplacer("{file}", ShellQuote(file), "{line}", strconv.Itoa(line))
 	script := r.Replace(template)
 	if !strings.Contains(template, "{file}") {
-		script += " " + Quote(file)
+		script += " " + ShellQuote(file)
 	}
 	return Command{script, dialectOf(template).window}
 }
 
-// FromEditor returns the command that opens file at line with editor, for
-// example the value of $EDITOR. FromEditor adds file and line in the form
-// that the editor expects.
-func FromEditor(editor, file string, line int) Command {
-	d := dialectOf(editor)
-	n, f := strconv.Itoa(line), Quote(file)
-	at := Quote(file + ":" + n)
+// Program returns the command that opens file at line with command, the
+// command of an editor program such as the value of $EDITOR. Program adds
+// file and line in the form that the editor expects.
+func Program(command, file string, line int) Command {
+	d := dialectOf(command)
+	n, f := strconv.Itoa(line), ShellQuote(file)
+	at := ShellQuote(file + ":" + n)
 	var args string
 	switch d.line {
 	case argNone:
@@ -50,11 +50,11 @@ func FromEditor(editor, file string, line int) Command {
 	case argFlag:
 		args = "--line " + n + " " + f
 	}
-	return Command{editor + " " + args, d.window}
+	return Command{command + " " + args, d.window}
 }
 
-// Quote quotes s as one word for sh.
-func Quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+// ShellQuote quotes s as one word for sh.
+func ShellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // lineArg is how an editor takes the line to open at.
 type lineArg int

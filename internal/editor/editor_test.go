@@ -41,9 +41,9 @@ func TestCommands(t *testing.T) {
 	for _, tt := range tests {
 		var got editor.Command
 		if tt.template != "" {
-			got = editor.FromTemplate(tt.template, abs, 12)
+			got = editor.Template(tt.template, abs, 12)
 		} else {
-			got = editor.FromEditor(tt.editor, abs, 12)
+			got = editor.Program(tt.editor, abs, 12)
 		}
 		if want := (editor.Command{Script: tt.script, Window: tt.window}); got != want {
 			t.Errorf("editor %q%q = %+v, want %+v", tt.template, tt.editor, got, want)
