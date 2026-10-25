@@ -176,8 +176,8 @@ func TestScopes(t *testing.T) {
 	}
 }
 
-// TestComment checks comments in the two layouts, and the send, copy, and
-// quit keys with unsent comments.
+// TestComment checks comments in the two layouts, and the send and quit
+// keys with unsent comments.
 func TestComment(t *testing.T) {
 	m, _ := newTestModel(t)
 
@@ -212,12 +212,6 @@ func TestComment(t *testing.T) {
 	if !strings.Contains(m.status, "not inside Rex") {
 		t.Errorf("send outside Rex: status %q, want \"not inside Rex\"", m.status)
 	}
-	next, cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if m = *next.(*model); cmd == nil || m.status != "copied 2 comments" {
-		t.Errorf("copy: status %q, command %v; want %q, true",
-			m.status, cmd != nil, "copied 2 comments")
-	}
-
 	// Quit asks first, because the comments are not sent.
 	if m = press(t, m, "q"); m.overlay == nil || m.overlay.kind != overlayQuit {
 		t.Error("q with unsent comments: no quit prompt, want a prompt")

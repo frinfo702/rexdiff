@@ -125,8 +125,7 @@ func (m *model) onRelease() tea.Cmd {
 	case d.moved: // a drag on the code copies the range
 		lo, hi := p.span(d.start, p.cur)
 		out := m.sourceLines(lo, hi, d.pref)
-		m.flash("copied " + plural(len(out), "line"))
-		return tea.SetClipboard(strings.Join(out, "\n"))
+		return m.copyText(strings.Join(out, "\n"), "copied "+plural(len(out), "line"), nil)
 	}
 	return nil
 }

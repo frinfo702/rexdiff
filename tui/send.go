@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/rednafi/rexdiff/internal/clipboard"
 	"github.com/rednafi/rexdiff/rex"
 )
 
@@ -194,9 +196,7 @@ func (m *model) onSent(msg sentMsg) {
 		m.flashCopy(msg.err.Error())
 		return
 	}
-	for _, id := range msg.ids {
-		m.comments.Remove(id)
-	}
+	m.clearComments(msg.ids)
 	m.lastSent = msg.agent.Block
 	sent := plural(len(msg.ids), "comment")
 	m.flash(fmt.Sprintf("sent %s to %s", sent, msg.agent.Name))
@@ -220,14 +220,63 @@ func (m *model) startSend() tea.Cmd {
 	return m.listAgents(agentsMsg{send: true})
 }
 
-// copyComments copies the review to the clipboard.
+// copyComments copies the review to the clipboard. A good copy clears
+// the comments, as a send does.
 func (m *model) copyComments() tea.Cmd {
 	if m.comments.Len() == 0 {
 		m.flash("no comments yet")
 		return nil
 	}
-	m.flash("copied " + plural(m.comments.Len(), "comment"))
-	return tea.SetClipboard(m.reviewText())
+	var ids []int
+	for _, c := range m.comments.All() {
+		ids = append(ids, c.ID)
+	}
+	m.sends++
+	return m.copyText(m.reviewText(), "copied "+plural(len(ids), "comment"), ids)
+}
+
+// copyText returns a command that writes text to the clipboard. If the
+// copy works, onCopied removes the comments ids and shows done.
+func (m *model) copyText(text, done string, ids []int) tea.Cmd {
+	ctx := m.ctx
+	return func() tea.Msg {
+		err := clipboard.Write(ctx, text)
+		return copiedMsg{ids: ids, done: done, err: err}
+	}
+}
+
+// onCopied shows the result of a copy. A good copy of the comments
+// removes them. The comments that the user adds or changes during the
+// copy stay.
+func (m *model) onCopied(msg copiedMsg) {
+	if msg.ids != nil {
+		m.sends--
+	}
+	switch {
+	case errors.Is(msg.err, clipboard.ErrNoTool):
+		m.flash("copy failed: install wl-clipboard, xclip, or xsel")
+	case msg.err != nil:
+		m.log.Warn("copy failed", "err", msg.err)
+		m.flash("copy failed")
+	default:
+		m.clearComments(msg.ids)
+		m.flash(msg.done)
+	}
+}
+
+// clearComments removes the comments ids after a send or a copy. An open
+// comment list shows the rest, or closes if no comment stays.
+func (m *model) clearComments(ids []int) {
+	for _, id := range ids {
+		m.comments.Remove(id)
+	}
+	if ov := m.overlay; ov != nil && ov.kind == overlayComments {
+		if m.comments.Len() == 0 {
+			m.closeOverlay()
+			return
+		}
+		m.fillCommentList(ov)
+	}
 }
 
 // flashCopy shows why the review cannot go to an agent, and tells the

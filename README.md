@@ -58,7 +58,7 @@ are gone, rexdiff marks the comment as stale.
 | `f` `F` | next or previous file |
 | `c` | comment |
 | `s` | send the comments to the agent |
-| `y` | copy the comments |
+| `y` | copy the comments and clear them, as a send does |
 | `\|` | side by side |
 | `:` | go to a line (`0` first, `$` last) |
 | `m` | rendered markdown |
@@ -66,6 +66,8 @@ are gone, rexdiff marks the comment as stale.
 | `?` | all keys |
 
 Side by side needs 135 columns. A narrower pane shows one column.
+
+A copy uses the first of `pbcopy`, `wl-copy`, `xclip`, or `xsel` on your PATH.
 
 ## Configure
 
