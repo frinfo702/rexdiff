@@ -148,8 +148,9 @@ func TestScopes(t *testing.T) {
 	if got := names(changes(t, r, mb, now)); got != "A.gitignore Ma.txt Ab.txt Anew.txt" {
 		t.Errorf("branch: %s, want A.gitignore Ma.txt Ab.txt Anew.txt", got)
 	}
-	if _, err := r.MergeBase(ctx, "nosuchbranch"); err == nil {
-		t.Error("MergeBase(nosuchbranch): no error, want an error")
+	_, err = r.MergeBase(ctx, "nosuchbranch")
+	if _, ok := errors.AsType[*exec.ExitError](err); !ok {
+		t.Errorf("MergeBase(nosuchbranch) = %v, want the error of git", err)
 	}
 
 	// In a turn, rexdiff takes a snapshot and then the agent edits a file.
@@ -416,13 +417,23 @@ func TestOwns(t *testing.T) {
 
 // TestRefs checks Branches, DefaultBase, and Resolve.
 func TestRefs(t *testing.T) {
-	r, _ := newRepo(t)
+	r, dir := newRepo(t)
 	ctx := t.Context()
 	if bs, err := r.Branches(ctx); err != nil || strings.Join(bs, " ") != "feat main" {
 		t.Errorf("Branches = %v, %v, want [feat main], nil", bs, err)
 	}
 	if b := r.DefaultBase(ctx); b != "main" {
 		t.Errorf("DefaultBase = %q, want main", b)
+	}
+	// The HEAD of each remote is not a branch.
+	for _, remote := range []string{"origin", "up"} {
+		git(t, dir, "update-ref", "refs/remotes/"+remote+"/main", "main")
+		git(t, dir, "symbolic-ref", "refs/remotes/"+remote+"/HEAD",
+			"refs/remotes/"+remote+"/main")
+	}
+	want := "feat main origin/main up/main"
+	if bs, err := r.Branches(ctx); err != nil || strings.Join(bs, " ") != want {
+		t.Errorf("Branches with remotes = %v, %v, want %s", bs, err, want)
 	}
 	if _, err := r.Resolve(ctx, "nosuchref"); err == nil {
 		t.Error("Resolve(nosuchref): no error, want an error")
@@ -509,6 +520,22 @@ func TestNewRepo(t *testing.T) {
 	}
 	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Aa.txt" {
 		t.Errorf("Diff(Head, Snapshot) = %s, want Aa.txt", got)
+	}
+}
+
+// TestSnapshotBadIndex checks that Snapshot fails if it cannot read the
+// real index. Only a missing index means no index.
+func TestSnapshotBadIndex(t *testing.T) {
+	r, dir := newRepo(t)
+	idx := filepath.Join(dir, ".git", "index")
+	if err := os.Remove(idx); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("index", idx); err != nil { // a loop
+		t.Fatal(err)
+	}
+	if tree, err := r.Snapshot(t.Context()); err == nil {
+		t.Errorf("Snapshot with a bad index = %s, want an error", tree)
 	}
 }
 

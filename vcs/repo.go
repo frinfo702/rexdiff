@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -200,7 +201,7 @@ func (r *Repo) MergeBase(ctx context.Context, base string) (string, error) {
 func (r *Repo) ForkPoint(ctx context.Context, base string) (string, error) {
 	out, err := r.run(ctx, nil, "merge-base", "--end-of-options", base, "HEAD")
 	if err != nil {
-		return "", fmt.Errorf("no merge base with %s", base)
+		return "", fmt.Errorf("no merge base with %s: %w", base, err)
 	}
 	return strings.TrimSpace(out), nil
 }
@@ -243,8 +244,11 @@ func (r *Repo) Snapshot(ctx context.Context) (string, error) {
 // to find files that changed in the same second as the index.
 func (r *Repo) copyIndex(dst string) error {
 	st, err := os.Stat(r.index)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil // a new repository has no index
+	}
+	if err != nil {
+		return err
 	}
 	b, err := os.ReadFile(r.index)
 	if err != nil {

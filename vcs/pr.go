@@ -92,25 +92,26 @@ type Comment struct {
 }
 
 // PullRequest returns the pull request of the current branch. It selects the
-// forge from the URL of the remote "upstream", or else "origin". Then it runs
+// forge from the host of the remote "upstream", or else "origin". Then it runs
 // the command-line tool of the forge: gh, glab, or az. The tool must be
 // installed and signed in. The text of the pull request has no control
 // characters.
 func (r *Repo) PullRequest(ctx context.Context, h Hosts) (*PullRequest, error) {
-	remote := strings.ToLower(r.remoteURL(ctx)) // host names ignore case
-	has := func(host string) bool {
-		return host != "" && strings.Contains(remote, strings.ToLower(host))
+	remote := r.remoteURL(ctx)
+	if remote == "" {
+		return nil, errNoRemote
 	}
+	host := remoteHost(remote)
+	is := func(name string) bool { return name != "" && strings.EqualFold(host, name) }
 	var pr *PullRequest
 	var err error
 	switch {
-	case remote == "":
-		return nil, errNoRemote
-	case has("github.com") || has(h.GitHub):
+	case is("github.com") || is(h.GitHub):
 		pr, err = r.gitHub(ctx, h.GitHub)
-	case has("gitlab") || has(h.GitLab):
+	case is("gitlab.com") || is(h.GitLab):
 		pr, err = r.gitLab(ctx)
-	case has("dev.azure.com") || has("visualstudio.com") || has(h.Azure):
+	case is("dev.azure.com") || is("ssh.dev.azure.com") ||
+		strings.HasSuffix(host, ".visualstudio.com") || is(h.Azure):
 		pr, err = r.azure(ctx)
 	default:
 		return nil, errUnsupported
@@ -123,6 +124,21 @@ func (r *Repo) PullRequest(ctx context.Context, h Hosts) (*PullRequest, error) {
 	}
 	cleanPR(pr)
 	return pr, nil
+}
+
+// remoteHost returns the host of the remote URL u, in lower case. u is a
+// URL such as "ssh://git@host:22/path", or has the scp form
+// "git@host:path", as herdr-reviewr reads it. A local path has no host.
+func remoteHost(u string) string {
+	var auth string // [user@]host[:port]
+	if _, rest, ok := strings.Cut(u, "://"); ok {
+		auth, _, _ = strings.Cut(rest, "/")
+	} else if a, _, ok := strings.Cut(u, ":"); ok {
+		auth = a
+	}
+	auth = auth[strings.LastIndex(auth, "@")+1:]
+	host, _, _ := strings.Cut(auth, ":")
+	return strings.ToLower(host)
 }
 
 // cleanPR removes the control characters from the text of pr, because the

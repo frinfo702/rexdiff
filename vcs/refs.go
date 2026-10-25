@@ -69,16 +69,20 @@ func (r *Repo) Commits(ctx context.Context, since string) ([]Commit, error) {
 
 // Branches returns the names of the local and the remote branches.
 func (r *Repo) Branches(ctx context.Context) ([]string, error) {
-	out, err := r.run(ctx, nil,
-		"for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes")
+	// A ref name has no space. The short name of refs/remotes/origin/HEAD
+	// is "origin", thus filter by the full name.
+	out, err := r.run(ctx, nil, "for-each-ref",
+		"--format=%(refname) %(refname:short)", "refs/heads", "refs/remotes")
 	if err != nil {
 		return nil, err
 	}
 	var bs []string
-	// The short name of refs/remotes/origin/HEAD is "origin".
-	for b := range strings.FieldsSeq(out) {
-		if !strings.HasSuffix(b, "/HEAD") && b != "origin" {
-			bs = append(bs, b)
+	for l := range strings.Lines(out) {
+		full, short, _ := strings.Cut(strings.TrimSuffix(l, "\n"), " ")
+		remoteHead := strings.HasPrefix(full, "refs/remotes/") &&
+			strings.HasSuffix(full, "/HEAD")
+		if short != "" && !remoteHead {
+			bs = append(bs, short)
 		}
 	}
 	return bs, nil

@@ -159,11 +159,25 @@ func TestPullRequestErrors(t *testing.T) {
 	fakePath(t, dir)
 	fakeTool(t, dir, "az", map[string]string{azArgs("none"): `[]`})
 	const azure = "https://dev.azure.com/o/p/_git/r"
+	const unsupported = "the remote is not on GitHub, GitLab, or Azure DevOps"
+	corp := vcs.Hosts{GitLab: "Git.Corp"}
 	tests := []struct {
 		remote, branch string
+		hosts          vcs.Hosts
 		want           error  // if not nil, err must wrap it
 		msg            string // if not empty, the text of err
 	}{
+		// The host selects the forge, not a name in the path.
+		{remote: "https://example.com/github.com/r.git", branch: "feat", msg: unsupported},
+		{remote: "git@example.com:gitlab/r.git", branch: "feat", msg: unsupported},
+		{remote: "https://git.corp.example/r", branch: "feat", hosts: corp, msg: unsupported},
+		{remote: "git@git.corp:o/r.git", branch: "feat", hosts: corp, msg: "glab isn't installed"},
+		{remote: "ssh://git@GitHub.com:22/o/r", branch: "feat", msg: "gh isn't installed"},
+		{
+			remote: "https://u@org.visualstudio.com/p/_git/r",
+			branch: "other",
+			msg:    "unexpected call: " + azArgs("other"),
+		},
 		{remote: "", branch: "feat", msg: "no git remote"},
 		{
 			remote: "https://example.com/r.git",
@@ -186,7 +200,7 @@ func TestPullRequestErrors(t *testing.T) {
 		if tt.branch != "feat" {
 			git(t, dir, "checkout", "-qb", tt.branch)
 		}
-		_, err := r.PullRequest(t.Context(), vcs.Hosts{})
+		_, err := r.PullRequest(t.Context(), tt.hosts)
 		switch {
 		case err == nil:
 			t.Errorf("PullRequest(%q): no error, want an error", tt.remote)
