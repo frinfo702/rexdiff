@@ -125,9 +125,6 @@ type overlayKeyMap struct {
 
 	// ListDown and ListUp work in the agent picker.
 	ListDown, ListUp key.Binding
-
-	// Mark starts or clears a range in the commit picker.
-	Mark key.Binding
 }
 
 // overlayKeys has the keys of the overlays. The settings do not change
@@ -139,7 +136,6 @@ var overlayKeys = overlayKeyMap{
 	Down:     key.NewBinding(key.WithKeys("down", "ctrl+n", "ctrl+j", "tab")),
 	ListDown: key.NewBinding(key.WithKeys("j")),
 	ListUp:   key.NewBinding(key.WithKeys("k")),
-	Mark:     key.NewBinding(key.WithKeys("space")),
 }
 
 // binding is an action of the keybindings setting and the key binding that

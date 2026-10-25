@@ -2,6 +2,7 @@ package vcs_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,7 +164,7 @@ func TestScopes(t *testing.T) {
 		t.Errorf("git status after Snapshot = %q, want ?? new.txt", st)
 	}
 
-	cs, err := r.Commits(ctx, 5)
+	cs, err := r.Commits(ctx, "")
 	if err != nil || len(cs) != 2 || cs[0].Subject != "b" || cs[1].Subject != "init" {
 		t.Fatalf("Commits = %+v, %v, want b and init", cs, err)
 	}
@@ -187,7 +188,7 @@ func TestMissingCommit(t *testing.T) {
 	// The empty tree is not a correct result. It shows every file as added.
 	r, dir := newRepo(t)
 	ctx := t.Context()
-	cs, err := r.Commits(ctx, 2)
+	cs, err := r.Commits(ctx, "")
 	if err != nil || len(cs) != 2 {
 		t.Fatalf("Commits = %+v, %v, want two commits", cs, err)
 	}
@@ -488,5 +489,55 @@ func TestSnapshotRacyEdit(t *testing.T) {
 
 	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Mb.txt" {
 		t.Errorf("Diff(HEAD, Snapshot) = %s, want Mb.txt", got)
+	}
+}
+
+// TestCommitsLikeHerdr checks the commits of the commit picker. They are
+// the first-parent commits after since, else the last 50.
+func TestCommitsLikeHerdr(t *testing.T) {
+	r, dir := newRepo(t)
+	ctx := t.Context()
+	run := func(args ...string) { git(t, dir, args...) }
+	run("checkout", "-qb", "side", "main")
+	run("commit", "-q", "--allow-empty", "-m", "side")
+	run("checkout", "-q", "feat")
+	run("merge", "-q", "--no-ff", "-m", "merge side", "side")
+	for i := range 60 {
+		run("commit", "-q", "--allow-empty", "-m", fmt.Sprint("c", i))
+	}
+	subjects := func(cs []vcs.Commit) []string {
+		var s []string
+		for _, c := range cs {
+			s = append(s, c.Subject)
+		}
+		return s
+	}
+
+	since, err := r.ForkPoint(ctx, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs, err := r.Commits(ctx, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := subjects(cs)
+	if len(got) != 62 || got[0] != "c59" || got[60] != "merge side" || got[61] != "b" {
+		t.Errorf("Commits(fork point) = %d commits %q…, want c59 to b, no side", len(got), got[:3])
+	}
+
+	cs, err = r.Commits(ctx, "")
+	if err != nil || len(cs) != vcs.LastCommits || cs[0].Subject != "c59" {
+		t.Errorf("Commits(\"\") = %d commits, %v; want the last %d", len(cs), err, vcs.LastCommits)
+	}
+
+	empty := t.TempDir()
+	git(t, empty, "init", "-q")
+	er, err := vcs.Open(ctx, empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cs, err := er.Commits(ctx, ""); err != nil || len(cs) != 0 {
+		t.Errorf("Commits with no commit = %v, %v; want none, no error", cs, err)
 	}
 }

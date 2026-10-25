@@ -15,14 +15,30 @@ type Commit struct {
 	When       string // the relative date, for example "2 hours ago"
 }
 
-// Commits returns the last n commits of HEAD, the newest first.
-func (r *Repo) Commits(ctx context.Context, n int) ([]Commit, error) {
+// LastCommits is the number of commits that [Repo.Commits] returns with no
+// since.
+const LastCommits = 50
+
+// Commits returns the first-parent commits of HEAD after the commit since,
+// the newest first, as herdr-reviewr lists them. If since is "", it returns
+// the last [LastCommits] commits. A HEAD with no commit yet has no commits.
+func (r *Repo) Commits(ctx context.Context, since string) ([]Commit, error) {
 	// The subject is last, because it can have the separator.
 	const (
 		format  = "--format=%H%x1f%h%x1f%ar%x1f%an%x1f%s"
 		nFields = 5 // the number of fields in format
 	)
-	out, err := r.run(ctx, nil, "log", "-n", strconv.Itoa(n), format)
+	_, err := r.run(ctx, nil, "rev-parse", "-q", "--verify", "HEAD")
+	if exitedWith(err, 1) {
+		return nil, nil
+	}
+	args := []string{"log", "--first-parent", format}
+	if since == "" {
+		args = append(args, "-n", strconv.Itoa(LastCommits), "--end-of-options", "HEAD")
+	} else {
+		args = append(args, "--end-of-options", since+"..HEAD")
+	}
+	out, err := r.run(ctx, nil, args...)
 	if err != nil {
 		return nil, err
 	}

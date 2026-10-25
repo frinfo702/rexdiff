@@ -177,11 +177,20 @@ func (r *Repo) Parent(ctx context.Context, rev string) (string, error) {
 
 // MergeBase returns the tree of the best common ancestor of base and HEAD.
 func (r *Repo) MergeBase(ctx context.Context, base string) (string, error) {
+	c, err := r.ForkPoint(ctx, base)
+	if err != nil {
+		return "", err
+	}
+	return r.Tree(ctx, c)
+}
+
+// ForkPoint returns the best common ancestor commit of base and HEAD.
+func (r *Repo) ForkPoint(ctx context.Context, base string) (string, error) {
 	out, err := r.run(ctx, nil, "merge-base", "--end-of-options", base, "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("no merge base with %s", base)
 	}
-	return r.Tree(ctx, strings.TrimSpace(out))
+	return strings.TrimSpace(out), nil
 }
 
 // Snapshot writes the working tree as a tree object and returns its ID.

@@ -53,6 +53,7 @@ are gone, rexdiff marks the comment as stale.
 | Key | Action |
 | --- | --- |
 | `u` `b` `t` | uncommitted, branch, or last-turn changes |
+| `G` | pick commits: `v` marks the start of a range, enter opens, esc clears or closes |
 | `]` `[` | next or previous change |
 | `→` or click | show the unchanged lines of a fold (`⋯ 12 unmodified lines`) |
 | `f` `F` | next or previous file |
@@ -72,6 +73,9 @@ are gone, rexdiff marks the comment as stale.
 Side by side needs 135 columns. A narrower pane shows one column.
 
 An edit with blank text keeps the comment as it was.
+
+The commit picker lists the branch's own commits (first parent only), or the last 50 on
+the base branch.
 
 When `q` asks first, `Q` quits, `s` sends, `y` copies, and any other key closes the
 question.
