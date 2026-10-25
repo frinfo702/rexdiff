@@ -378,8 +378,8 @@ func (m *model) fillCommentList(ov *overlay) {
 	var items []pickItem
 	for _, c := range m.comments.All() {
 		tag := ""
-		if c.Stale {
-			tag = "stale"
+		if m.stale(c) {
+			tag = "(stale)"
 		}
 		text, _, _ := strings.Cut(c.Text, "\n")
 		items = append(items, pickItem{
@@ -478,13 +478,14 @@ func (m *model) updateCommentList(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, k.Copy):
 		return m.copyComments()
 	case key.Matches(msg, k.Edit) && it != nil:
+		// As in herdr-reviewr, a comment on another diff takes no edit.
 		c := m.comments.Find(it.comment)
-		if c == nil {
+		if c == nil || !m.revCurrent(c) {
 			return nil
 		}
 		row := ov.cur
 		m.closeOverlay()
-		m.jumpTo(c.Path, c.Side, c.Start)
+		m.jumpToComment(c)
 		m.focusList = false
 		m.ensureVisible()
 		return m.editComment(c, row)
@@ -578,7 +579,7 @@ func (m *model) chooseOverlay() tea.Cmd {
 			break
 		}
 		if c := m.comments.Find(it.comment); c != nil {
-			m.jumpTo(c.Path, c.Side, c.Start)
+			m.jumpToComment(c)
 		}
 	case overlayAgents:
 		m.closeOverlay()
@@ -673,11 +674,18 @@ func (m *model) quitHint() string {
 }
 
 // listHint returns the keys of the comment list, as the footer of
-// herdr-reviewr shows them.
+// herdr-reviewr shows them. The edit key shows only if the selected
+// comment takes an edit.
 func (m *model) listHint() string {
 	k := m.keys
-	return fmt.Sprintf("%s send %d · esc close · %s copy · %s edit · %s delete · enter jump",
-		k.Send.Help().Key, m.comments.Len(), k.Copy.Help().Key, k.Edit.Help().Key,
+	edit := ""
+	if it := m.overlay.selected(); it != nil {
+		if c := m.comments.Find(it.comment); c != nil && m.revCurrent(c) {
+			edit = fmt.Sprintf(" · %s edit", k.Edit.Help().Key)
+		}
+	}
+	return fmt.Sprintf("%s send %d · esc close · %s copy%s · %s delete · enter jump",
+		k.Send.Help().Key, m.comments.Len(), k.Copy.Help().Key, edit,
 		k.Delete.Help().Key)
 }
 

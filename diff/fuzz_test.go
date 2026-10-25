@@ -235,8 +235,7 @@ func FuzzCount(f *testing.F) {
 	})
 }
 
-// FuzzComments checks that Relocate keeps a valid range. It also checks that
-// the review text has no control characters.
+// FuzzComments checks that the review text has no control characters.
 func FuzzComments(f *testing.F) {
 	for i, s := range hostile {
 		f.Add("a\nb\nc\n", s, "a.go", s, uint8(i), uint8(i%3))
@@ -257,21 +256,12 @@ func FuzzComments(f *testing.F) {
 		s := int(start) % len(lines)
 		e := min(s+int(size), len(lines)-1)
 		var cs diff.Comments
-		code := lines[s : e+1]
 		c := cs.Add(commentOn(path, diff.SideNew, before, s+1, e+1))
 		c.Text = text
+		if c.Start != s+1 || c.End != e+1 {
+			t.Errorf("commentOn lines %d-%d: %+v", s+1, e+1, c)
+		}
 		cs.Add(comment(path, diff.SideOld, before, after, text))
-
-		cs.Relocate(path, before, after)
-		n := len(diff.Lines(after))
-		badRange := c.Start < 1 || c.Start > c.End
-		if badRange || (!c.Stale && c.End > n) {
-			t.Errorf("after Relocate: %+v, want 1 <= Start <= End <= %d", c, n)
-		}
-		if !c.Stale && !slices.Equal(diff.Lines(after)[c.Start-1:c.End], code) {
-			t.Errorf("after Relocate: lines %d-%d = %q, want %q",
-				c.Start, c.End, diff.Lines(after)[c.Start-1:c.End], code)
-		}
 		r := cs.Review(text)
 		if strings.ContainsFunc(r, isUnsafeControl) {
 			t.Errorf("Review = %q, want no control characters", r)

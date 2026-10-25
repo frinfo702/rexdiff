@@ -5,6 +5,7 @@ package tui
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
 	"charm.land/glamour/v2"
@@ -164,7 +165,10 @@ func (m *model) renderChanges() {
 			delete(m.folds, f.Path)
 		}
 		o := m.diffOptions(p.xoff)
-		comments := m.comments.All()
+		a := m.anchorOf(tabChanges)
+		comments := slices.DeleteFunc(m.comments.All(), func(c *diff.Comment) bool {
+			return c.Anchor != a
+		})
 		o.Expanded = func(fd diff.Fold) bool { return m.expanded(f.Path, comments, fd) }
 		p.setDiff(diff.Render(f.Path, f.Old, f.New, o))
 	}

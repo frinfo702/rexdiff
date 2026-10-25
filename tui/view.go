@@ -24,7 +24,6 @@ var (
 	delStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
 	noteStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	staleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Strikethrough(true)
 	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
 	activeStyle = lipgloss.NewStyle().Bold(true).Underline(true)
 	findStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
@@ -230,7 +229,7 @@ func (m *model) listLines(h int) []string {
 func (m *model) changedRow(f changed, w int) string {
 	adds := addStyle.Render(fmt.Sprintf("+%d", f.adds))
 	stat := adds + " " + delStyle.Render(fmt.Sprintf("-%d", f.dels))
-	if c := m.comments.Count(f.Path); c > 0 {
+	if c := m.comments.Count(m.anchorOf(tabChanges), f.Path); c > 0 {
 		stat = cursorStyle.Render(fmt.Sprintf("●%d ", c)) + stat
 	}
 	name := f.Path
@@ -247,7 +246,7 @@ func (m *model) entryRow(f vcs.Entry, w int) string {
 		return dimStyle.Render(fileRow(" ", f.Path, "", w))
 	}
 	stat := ""
-	if c := m.comments.Count(f.Path); c > 0 {
+	if c := m.comments.Count(m.anchorOf(tabFiles), f.Path); c > 0 {
 		stat = cursorStyle.Render(fmt.Sprintf("●%d", c))
 	}
 	return fileRow(" ", f.Path, stat, w)
@@ -365,14 +364,14 @@ func (m *model) rowMark(i int, t *targetLine, lo, hi int) string {
 	case t == nil || p.cont(i):
 		return commentMark(nil)
 	}
-	return commentMark(m.comments.At(p.path, t.side, t.line))
+	return commentMark(m.comments.At(m.anchor(), p.path, t.side, t.line))
 }
 
 // commentsBelow returns the lines of the comments whose range ends on
 // line t. The comment that the box edits does not show.
 func (m *model) commentsBelow(t *targetLine) []string {
 	var out []string
-	for _, c := range m.comments.EndingAt(m.cur().path, t.side, t.line) {
+	for _, c := range m.comments.EndingAt(m.anchor(), m.cur().path, t.side, t.line) {
 		if m.mode == modeComment && c.ID == m.draft.editID {
 			continue
 		}
@@ -384,11 +383,8 @@ func (m *model) commentsBelow(t *targetLine) []string {
 // commentMark returns the gutter mark of a line with comment c, which can
 // be nil.
 func commentMark(c *diff.Comment) string {
-	switch {
-	case c == nil:
+	if c == nil {
 		return "  "
-	case c.Stale:
-		return dimStyle.Render("● ")
 	}
 	return cursorStyle.Render("● ")
 }
@@ -406,17 +402,11 @@ func (m *model) commentBox() []string {
 func (m *model) commentLines(c *diff.Comment) []string {
 	var out []string
 	for i, l := range strings.Split(c.Text, "\n") {
-		prefix, st := "    💬 ", noteStyle
+		prefix := "    💬 "
 		if i > 0 {
 			prefix = "       "
 		}
-		if c.Stale {
-			st = staleStyle
-			if i == 0 {
-				l = "(stale) " + l
-			}
-		}
-		out = append(out, truncate(prefix+st.Render(l), m.mainWidth()))
+		out = append(out, truncate(prefix+noteStyle.Render(l), m.mainWidth()))
 	}
 	return out
 }

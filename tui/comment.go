@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -58,6 +60,44 @@ func (m *model) contentFor(path string, s diff.Side) string {
 	return content
 }
 
+// diffRev returns the revision of the diff in the Changes tab, for
+// [diff.Anchor]. That is the picked commits, or "" for the working tree.
+func (m *model) diffRev() string {
+	if m.scope == scopeCommits {
+		return m.from + ".." + m.to
+	}
+	return ""
+}
+
+// anchorOf returns the anchor of a comment made in tab t. As in
+// herdr-reviewr, a comment on a file view is always on the working tree.
+func (m *model) anchorOf(t tab) diff.Anchor {
+	if t == tabChanges {
+		return diff.Anchor{InDiff: true, Rev: m.diffRev()}
+	}
+	return diff.Anchor{}
+}
+
+// anchor returns the anchor of a comment made in the current tab.
+func (m *model) anchor() diff.Anchor { return m.anchorOf(m.tab) }
+
+// revCurrent reports whether the scope shows the diff that c is made on.
+// Only then can the user edit c from the comment list.
+func (m *model) revCurrent(c *diff.Comment) bool {
+	return !c.Anchor.InDiff || c.Anchor.Rev == m.diffRev()
+}
+
+// stale reports whether the lines of c can have moved. A comment on a diff
+// is stale if its file leaves the changes. A comment on a file view is
+// stale if its file is gone.
+func (m *model) stale(c *diff.Comment) bool {
+	if c.Anchor.InDiff {
+		return !slices.ContainsFunc(m.files, func(f changed) bool { return f.Path == c.Path })
+	}
+	_, err := os.Lstat(filepath.Join(m.repo.Root(), c.Path))
+	return err != nil
+}
+
 // commentAtCursor returns the comment on the cursor line, or nil.
 func (m *model) commentAtCursor() *diff.Comment {
 	p := m.cur()
@@ -65,7 +105,7 @@ func (m *model) commentAtCursor() *diff.Comment {
 	if t == nil {
 		return nil
 	}
-	return m.comments.At(p.path, t.side, t.line)
+	return m.comments.At(m.anchor(), p.path, t.side, t.line)
 }
 
 // selection returns the first and the last row of the visual selection.
@@ -99,6 +139,7 @@ func (m *model) startComment(pref diff.Side) tea.Cmd {
 		m.contentFor(p.path, diff.SideOld),
 		m.contentFor(p.path, diff.SideNew),
 	)
+	c.Anchor = m.anchor()
 	m.draft = &draft{Comment: c, listRow: -1}
 	m.editor.SetValue("")
 	m.mode = modeComment
@@ -131,7 +172,7 @@ func (m *model) updateComment(msg tea.KeyPressMsg) tea.Cmd {
 		case d.editID > 0:
 			m.comments.Remove(d.editID)
 			c := d.Comment
-			c.Text, c.Stale = text, false
+			c.Text = text
 			m.comments.Add(c)
 			m.flash("comment updated")
 		default:

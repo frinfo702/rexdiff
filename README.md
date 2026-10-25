@@ -47,8 +47,11 @@ them, run `rexdiff uninstall`.
 A long run of unchanged lines folds into one row. Three lines show beside each
 change.
 
-When the agent edits a file, the comments move with their lines. If the lines
-are gone, rexdiff marks the comment as stale.
+A comment stays on its line numbers and keeps the code it was made on. It
+shows only where you made it: in the changes or in all files, and on the same
+commits. If its file leaves the changes (or, for all files, is gone), the
+comment list marks it (stale). The list edits only a comment on the commits
+that show.
 
 | Key | Action |
 | --- | --- |

@@ -489,7 +489,12 @@ func (m *model) crossTarget(d int) int {
 // stepComment moves the cursor to the next (d = 1) or previous (d = -1)
 // comment, by file and line. It wraps around.
 func (m *model) stepComment(d int) {
-	cs := m.comments.All()
+	// As in herdr-reviewr, n and N step only through the comments that
+	// the view shows.
+	a := m.anchor()
+	cs := slices.DeleteFunc(m.comments.All(), func(c *diff.Comment) bool {
+		return c.Anchor != a || (a.InDiff && m.stale(c))
+	})
 	if len(cs) == 0 {
 		return
 	}
@@ -515,7 +520,16 @@ func (m *model) stepComment(d int) {
 			idx = 0
 		}
 	}
-	m.jumpTo(cs[idx].Path, cs[idx].Side, cs[idx].Start)
+	m.jumpToComment(cs[idx])
+}
+
+// jumpToComment shows comment c in the tab of its anchor.
+func (m *model) jumpToComment(c *diff.Comment) {
+	if c.Anchor.InDiff {
+		m.jumpTo(c.Path, c.Side, c.Start)
+		return
+	}
+	m.jumpToFile(c.Path, c.Side, c.Start)
 }
 
 // jumpTo shows path with the cursor on line. It uses the Changes tab if
@@ -528,6 +542,11 @@ func (m *model) jumpTo(path string, s diff.Side, line int) {
 		cursorToLine(&m.changes, s, line)
 		return
 	}
+	m.jumpToFile(path, s, line)
+}
+
+// jumpToFile shows path in the Files tab with the cursor on line.
+func (m *model) jumpToFile(path string, s diff.Side, line int) {
 	m.loadFiles()
 	i := slices.IndexFunc(m.allFiles, func(e vcs.Entry) bool { return e.Path == path })
 	if i < 0 {

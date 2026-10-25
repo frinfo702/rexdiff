@@ -446,7 +446,6 @@ func (m *model) reloadIfChanged() {
 		if f.Path == selPath {
 			m.changeSel = i
 		}
-		m.comments.Relocate(f.Path, f.Old, f.New)
 	}
 	if f := m.changedFile(); f == nil || f.Path != selPath {
 		// Another file shows, so the cursor and the selection do not apply.
