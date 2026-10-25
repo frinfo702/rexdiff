@@ -23,13 +23,13 @@ const (
 	listStep = 4
 )
 
-// updateNormal handles a key when no box is open.
+// updateNormal handles a key when no box is open. As in herdr-reviewr,
+// the key of QuitDiscard does nothing here. It only answers the prompt
+// before a quit.
 func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 	k := m.keys
 	var cmd tea.Cmd
 	switch {
-	case key.Matches(msg, k.QuitDiscard):
-		return tea.Quit
 	case key.Matches(msg, k.Quit):
 		if m.comments.Len() > 0 {
 			m.openConfirmQuit()

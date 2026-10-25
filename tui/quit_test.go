@@ -90,3 +90,18 @@ func TestNoCtrlCHomeEnd(t *testing.T) {
 			cur, m.changes.cur)
 	}
 }
+
+// TestQuitDiscardInert checks that Q does nothing outside the prompt
+// before a quit, as in herdr-reviewr.
+func TestQuitDiscardInert(t *testing.T) {
+	m, _ := newTestModel(t)
+	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'Q', Text: "Q"}); quits(cmd) {
+		t.Error("Q with no comments: a quit, want nothing")
+	}
+	m = press(t, m, "]", "c", "h", "i", "enter")
+	next, cmd := m.Update(tea.KeyPressMsg{Code: 'Q', Text: "Q"})
+	if m = *next.(*model); quits(cmd) || m.comments.Len() != 1 || m.overlay != nil {
+		t.Errorf("Q with a comment: quit %v, %d comments, overlay %v; want nothing",
+			quits(cmd), m.comments.Len(), m.overlay)
+	}
+}

@@ -150,7 +150,8 @@ type binding struct {
 // bindings returns each action of c with its key binding in k, in the
 // order of the table of herdr-reviewr. The check of the keybindings
 // setting uses this order to name the actions of a key that two actions
-// use. herdr-reviewr has no focus action.
+// use. herdr-reviewr has no focus action. The upgrade is last. Its key
+// is fixed, and the check keeps it free.
 func (k *keyMap) bindings(c keybindings) []binding {
 	return []binding{
 		{"down", c.Down, &k.Down},
@@ -199,6 +200,7 @@ func (k *keyMap) bindings(c keybindings) []binding {
 		{"refresh", c.Refresh, &k.Refresh},
 		{"quit", c.Quit, &k.Quit},
 		{"quit-discard", c.QuitDiscard, &k.QuitDiscard},
+		{"upgrade", nil, &k.Upgrade},
 	}
 }
 
@@ -340,7 +342,7 @@ func (h helpKeys) FullHelp() [][]key.Binding {
 	view := []key.Binding{
 		k.Search, k.Find, k.Rendered, k.Split, k.Wrap, k.NavPosition, k.NavHide, k.NavGrow,
 	}
-	other := []key.Binding{k.OpenPR, k.Refresh, k.Keys, k.Quit, k.QuitDiscard}
+	other := []key.Binding{k.OpenPR, k.Refresh, k.Keys, k.Quit}
 	return [][]key.Binding{move, scopes, comments, view, other}
 }
 

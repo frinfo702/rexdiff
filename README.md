@@ -76,19 +76,28 @@ that show.
 
 | Key | Action |
 | --- | --- |
+| `j` `k` or `↓` `↑` | move down or up. With the focus on the file list, move in the list |
+| `ctrl+d` `ctrl+u` | half a page down or up |
+| `pgdn` `pgup` | a page down or up |
+| `tab` | move the focus between the diff and the file list. A hidden list shows |
 | `u` `b` `t` | uncommitted, branch, or last-turn changes |
+| `g` | commits scope. With no commits picked, it opens the commit picker |
+| `B` | pick the base branch of the branch scope |
 | `G` | pick commits: `v` marks the start of a range, enter opens, esc clears or closes |
 | `]` `[` | next or previous change. Past the last one, press it again to go to the next file |
 | `→` or click | show the unchanged lines of a fold (`⋯ 12 unmodified lines`) |
 | `f` `F` | next or previous file |
 | `→` `←` or click | expand or collapse a directory in the file list |
-| `c` | new comment, also on a line that has one |
+| `→` `←` | scroll sideways, without wrap |
+| `w` | wrap long lines |
+| `v` | select lines |
+| `c` | new comment, also on a line that has one. The focus must be on the diff |
 | `e` | edit the comment at the cursor, else open the file in the editor |
-| `d` | delete the comment at the cursor |
+| `d` | delete the comment at the cursor. The focus must be on the diff |
 | `n` `N` | next or previous comment in the file |
 | `l` | list the comments: `e` edit, `d` delete, `s` send, `y` copy, enter jump |
-| `s` | send the comments to the agent |
-| `y` | copy the comments and clear them, as a send does |
+| `s` or `S` | send the comments to the agent |
+| `y` or `Y` | copy the comments and clear them, as a send does |
 | `\|` | side by side |
 | `:` | go to a line (`0` first, `$` last) |
 | `/` | search files. `tab` switches to code, `↑` `↓` or `ctrl+n` `ctrl+p` move, `pgup` `pgdn` scroll the preview, enter opens |
@@ -98,9 +107,13 @@ that show.
 | `z` | hide or show the file list |
 | `<` `>` | make the file list larger or smaller |
 | `1` `2` `3` | changes, all files, or pull request |
+| `o` | open the pull request in the browser |
+| `r` | reload at once |
+| `U` | install the new version that the bottom line shows |
 | `esc` | clear the selection, then the armed `]` or `[`, then the key list |
 | `?` | all keys |
 | `q` | quit, or ask first if comments are unsent |
+| `Q` | when `q` asks first, quit and drop the comments. Else it does nothing |
 
 The search shows up to 50 files and 200 lines of code, then "… more". With no
 query, it lists the files you opened from the search in this session first.
@@ -115,7 +128,8 @@ At a side, the file list takes 32% of the width, and `<` `>` change that from 15
 to 60%. Above or below, it takes
 a quarter of the rows, and `<` `>` change that from 15% to 50%.
 
-Side by side needs 135 columns. A narrower pane shows one column.
+Side by side needs 135 columns for the code, so the diff pane must be 137 columns
+wide with its cursor column. A narrower pane shows one column.
 
 An edit with blank text keeps the comment as it was.
 

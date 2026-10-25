@@ -68,3 +68,12 @@ func TestKeybindingPageUp(t *testing.T) {
 		t.Errorf("pageup bound to page-up: cursor %d, want 0", m.changes.cur)
 	}
 }
+
+// TestKeybindingUpgrade checks that a key of the upgrade is not free for
+// another action.
+func TestKeybindingUpgrade(t *testing.T) {
+	_, err := parseConfig(`{"keybindings": {"send": ["U"]}}`)
+	if !errorHas(err, "`U`", "`send`", "`upgrade`") {
+		t.Errorf("send on U: error %v, want the clash with upgrade", err)
+	}
+}

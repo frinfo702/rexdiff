@@ -438,7 +438,11 @@ func TestParseConfig(t *testing.T) {
 		wrap`)
 	keys := map[string][]string{}
 	for i, n := range names {
-		keys[n] = []string{string(rune('A' + i))} // a key for each action
+		r := rune('A' + i) // a key for each action
+		if r >= 'U' {
+			r++ // U upgrades rexdiff
+		}
+		keys[n] = []string{string(r)}
 	}
 	all, err := json.Marshal(map[string]any{"keybindings": keys})
 	if err != nil {
