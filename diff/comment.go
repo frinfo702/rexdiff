@@ -28,6 +28,8 @@ type Comment struct {
 
 	code    []string // the text of the lines Start to End
 	snippet []string // the rows as unified diff lines, or empty to use code
+	// noAnchor is true for a comment from a file with no anchors.
+	noAnchor bool
 }
 
 // Anchor is the view that a comment is made in. A comment shows only in a
@@ -112,6 +114,17 @@ func (cs *Comments) All() []*Comment {
 		return cmp.Or(strings.Compare(a.Path, b.Path), cmp.Compare(a.Start, b.Start))
 	})
 	return all
+}
+
+// SetOldRev sets the Rev of each comment that [Comments.UnmarshalJSON]
+// reads from the file of an older rexdiff. Such a file has no anchors, and
+// its comments are on the diff of the scope that the file saves.
+func (cs *Comments) SetOldRev(rev string) {
+	for _, c := range cs.items {
+		if c.noAnchor {
+			c.Anchor.Rev, c.noAnchor = rev, false
+		}
+	}
 }
 
 // Find returns the comment with the given ID, or nil.
@@ -216,7 +229,7 @@ func (cs *Comments) UnmarshalJSON(b []byte) error {
 		cs.items = append(cs.items, &Comment{
 			ID: c.ID, Path: c.Path, Side: c.Side, Start: c.Start, End: c.End,
 			Text: c.Text, Anchor: Anchor{InDiff: inDiff, Rev: c.Rev},
-			code: c.Code, snippet: c.Snippet,
+			code: c.Code, snippet: c.Snippet, noAnchor: c.InDiff == nil,
 		})
 	}
 	return nil

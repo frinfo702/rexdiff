@@ -150,6 +150,7 @@ func (m *model) restoreSettings(s *savedState) {
 	m.folds = s.Folds
 	if s.Comments != nil {
 		m.comments = *s.Comments
+		m.comments.SetOldRev(m.diffRev())
 	}
 	m.lastSent, m.beside = s.LastSent, s.Beside
 }

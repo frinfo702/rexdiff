@@ -120,3 +120,29 @@ func (m *model) fileIndex(path string) int {
 	}
 	return -1
 }
+
+// TestResumeOldComments checks the comments of a state file of v0.2.7,
+// which has no anchors. A comment gets the revision of the saved scope, so
+// that a comment in the commits scope still shows.
+func TestResumeOldComments(t *testing.T) {
+	m, _ := newTestModel(t)
+	path := filepath.Join(t.TempDir(), "state.json")
+	state := `{"tab":0,"scope":"commits","from":"aaa","to":"bbb",` +
+		`"comments":{"last":1,"items":[{"id":1,"path":"a.go","side":1,` +
+		`"start":2,"end":2,"text":"x","stale":false,"code":["b"],"snippet":null}]}}`
+	if err := os.WriteFile(path, []byte(state), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := loadState(path)
+	if err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
+	m.restoreSettings(s)
+	want := diff.Anchor{InDiff: true, Rev: "aaa..bbb"}
+	if c := m.comments.Find(1); c == nil || c.Anchor != want {
+		t.Errorf("comment after the restore = %+v, want anchor %+v", c, want)
+	}
+	if m.anchor() != want {
+		t.Errorf("anchor of the view = %+v, want %+v", m.anchor(), want)
+	}
+}

@@ -243,6 +243,16 @@ func TestCommentsJSON(t *testing.T) {
 	if c == nil || c.Anchor != (diff.Anchor{InDiff: true}) || c.Start != 2 {
 		t.Errorf("comment of an old file = %+v, want lines 2-3 on a diff", c)
 	}
+	back.SetOldRev("x..y")
+	cs2.SetOldRev("a..b")
+	for i, c := range back.All() {
+		if c.Anchor != anchors[i] {
+			t.Errorf("comment %d after SetOldRev: anchor %+v, want %+v", i, c.Anchor, anchors[i])
+		}
+	}
+	if want := (diff.Anchor{InDiff: true, Rev: "a..b"}); c.Anchor != want {
+		t.Errorf("comment of an old file after SetOldRev: anchor %+v, want %+v", c.Anchor, want)
+	}
 }
 
 // TestCommentsJSONLatin1 checks that a comment on a file that is not UTF-8,
