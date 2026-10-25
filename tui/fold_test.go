@@ -171,6 +171,12 @@ func TestFoldStaysOpen(t *testing.T) {
 	if got := foldsOf(&m.changes); !slices.Equal(got, []int{3, 7}) {
 		t.Errorf("after a change in the fold, folds = %v, want [3 7]", got)
 	}
+	// An undo of the change at line 31 makes one fold of old lines 14 to
+	// 40. It overlaps the open range, so it shows.
+	edit(func(s string) string { return strings.Replace(s, "LINE 30\n", "line 30\n", 1) })
+	if got := foldsOf(&m.changes); !slices.Equal(got, []int{3}) {
+		t.Errorf("after an undo next to the fold, folds = %v, want [3]", got)
+	}
 	// After the commit, the file has 41 lines. Changes at lines 12 and 26
 	// make a fold of old lines 16 to 22, inside the range that was open.
 	git(t, dir, "commit", "-qam", "agent")
@@ -181,6 +187,33 @@ func TestFoldStaysOpen(t *testing.T) {
 	})
 	if got := foldsOf(&m.changes); !slices.Equal(got, []int{8, 7, 12}) {
 		t.Errorf("after a commit, folds = %v, want [8 7 12]", got)
+	}
+}
+
+// TestFoldsSurviveRestart checks that the expanded folds and the cursor
+// line come back after a restart for an update.
+func TestFoldsSurviveRestart(t *testing.T) {
+	m := newFoldModel(t)
+	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })
+	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
+	m.changes.cur = m.changes.rowOf(diff.SideNew, 20)
+	path, err := m.saveState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := loadState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m2 := newModel(t.Context(), Options{Repo: m.repo, Layout: LayoutUnified}, defaultConfig())
+	m2.restoreSettings(saved)
+	m2.reload()
+	m2.restorePlaces(saved)
+	if got := foldsOf(&m2.changes); !slices.Equal(got, []int{6, 7}) {
+		t.Errorf("after the restart, folds = %v, want [6 7]", got)
+	}
+	if r := m2.changes.rows[m2.changes.cur]; r.New != 20 {
+		t.Errorf("after the restart, the cursor is on %+v, want line 20", r)
 	}
 }
 

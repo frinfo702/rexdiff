@@ -12,8 +12,8 @@ import (
 	"github.com/rednafi/rexdiff/diff"
 )
 
-// savedState holds the comments, the scope, the view, and the places in
-// the panes for a restart.
+// savedState holds the comments, the scope, the view, the expanded folds,
+// and the places in the panes for a restart.
 type savedState struct {
 	Tab   tab        `json:"tab"`
 	Scope Scope      `json:"scope"`
@@ -37,6 +37,8 @@ type savedState struct {
 	ListHidden bool `json:"list_hidden"`
 	FocusList  bool `json:"focus_list"`
 	ListW      int  `json:"list_w"`
+
+	Folds map[string]*openFolds `json:"folds"`
 
 	Comments *diff.Comments `json:"comments"`
 	LastSent string         `json:"last_sent"`
@@ -76,7 +78,7 @@ func (m *model) saveState() (string, error) {
 		PR:      m.prPane.place(),
 		Split:   m.split, Wrap: m.wrap, Rendered: m.rendered,
 		ListLeft: m.listLeft, ListHidden: m.listHidden, FocusList: m.focusList,
-		ListW: m.listW, Comments: &m.comments, LastSent: m.lastSent, Beside: m.beside,
+		ListW: m.listW, Folds: m.folds, Comments: &m.comments, LastSent: m.lastSent, Beside: m.beside,
 	}
 	if t := m.turn; t != nil {
 		s.Turn = &savedTurn{t.block, t.app, t.tree, t.running, t.at}
@@ -129,6 +131,7 @@ func (m *model) restoreSettings(s *savedState) {
 	}
 	m.split, m.wrap, m.rendered = s.Split, s.Wrap, s.Rendered
 	m.listLeft, m.listHidden, m.focusList, m.listW = s.ListLeft, s.ListHidden, s.FocusList, s.ListW
+	m.folds = s.Folds
 	if s.Comments != nil {
 		m.comments = *s.Comments
 	}

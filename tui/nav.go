@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"hash/fnv"
 	"slices"
 	"strconv"
 	"strings"
@@ -296,20 +297,29 @@ func (m *model) onFold() bool {
 
 // openFolds has the folds that the user expanded in one file, as ranges of
 // old line numbers. The old side does not change while the agent edits the
-// file, so an edit in a range keeps the lines of the range open. The
-// ranges are for the old content old. A different old content, for example
+// file, so an edit keeps the lines of a range open. The ranges are for the
+// old content with the hash Old. A different old content, for example
 // after a commit, closes them.
 type openFolds struct {
-	old    string
-	ranges [][2]int // the first and the last line of each range
+	Old    uint64   `json:"old"`
+	Ranges [][2]int `json:"ranges"` // the first and the last line of each range
+}
+
+// hash returns the FNV-1a hash of s.
+func hash(s string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(s)) // a hash.Hash does not fail
+	return h.Sum64()
 }
 
 // expanded tells if the lines of fold f of the file at path show: the
 // user expanded the fold, or a comment is on one of its lines.
 func (m *model) expanded(path string, f diff.Fold) bool {
+	// A fold that overlaps a range shows. An undo of a change next to a
+	// range makes a larger fold, which shows as a whole.
 	if o := m.folds[path]; o != nil {
-		for _, r := range o.ranges {
-			if f.Old >= r[0] && f.Old+f.Lines-1 <= r[1] {
+		for _, r := range o.Ranges {
+			if f.Old <= r[1] && f.Old+f.Lines-1 >= r[0] {
 				return true
 			}
 		}
@@ -340,10 +350,10 @@ func (m *model) expandFold(f diff.Fold) {
 	}
 	o := m.folds[file.Path]
 	if o == nil {
-		o = &openFolds{old: file.Old}
+		o = &openFolds{Old: hash(file.Old)}
 		m.folds[file.Path] = o
 	}
-	o.ranges = append(o.ranges, [2]int{f.Old, f.Old + f.Lines - 1})
+	o.Ranges = append(o.Ranges, [2]int{f.Old, f.Old + f.Lines - 1})
 	m.rerender()
 	p.cur = max(p.rowOf(diff.SideNew, f.New), 0)
 	if m.find.active() {

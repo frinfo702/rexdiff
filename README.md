@@ -99,6 +99,9 @@ beside rexdiff. A window editor, such as `code`, opens in its window.
 rexdiff opens an editor that it does not know in a pane. To open such an editor in a window,
 start it with `open`, for example `editor = "open -a Zed {file}"`.
 
+rexdiff gets `$VISUAL` and `$EDITOR` from your login shell. With zsh, set them in
+`~/.zprofile` or `~/.zshenv`, not in `~/.zshrc`.
+
 After a change:
 
 - Run `rex config reload`.

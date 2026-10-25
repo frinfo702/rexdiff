@@ -120,7 +120,7 @@ func (m *model) renderChanges() {
 	case m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted:
 		m.setMarkdown(p, f.New)
 	default:
-		if o := m.folds[f.Path]; o != nil && o.old != f.Old {
+		if o := m.folds[f.Path]; o != nil && o.Old != hash(f.Old) {
 			delete(m.folds, f.Path)
 		}
 		o := m.diffOptions(p.xoff)
