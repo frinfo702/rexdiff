@@ -137,8 +137,8 @@ type State string
 const (
 	StateIdle    State = "idle"    // waits for the next instruction of the user
 	StateWorking State = "working" // does a task
-	StateDone    State = "done"    // finished a task, and the user did not look yet
-	StateBlocked State = "blocked" // cannot continue until the user does something
+	StateDone    State = "done"    // waits for the user to see the done task
+	StateBlocked State = "blocked" // waits for an action of the user
 )
 
 // statusEntry is a status as Rex sends it. A program can send one status
@@ -184,7 +184,7 @@ func (c *Client) Cwd(ctx context.Context, block string) (string, error) {
 	type process struct {
 		Cwd string `json:"cwd"` // a file:// URL
 	}
-	// The foreground process is the program that has the terminal now, for
+	// The foreground process is the program that holds the terminal, for
 	// example an agent that runs in a shell. The child is the shell.
 	var reply struct {
 		Foreground process `json:"foreground"`
@@ -201,7 +201,7 @@ func (c *Client) Cwd(ctx context.Context, block string) (string, error) {
 // Agent is a block whose program sends a status with an app name.
 type Agent struct {
 	Block  string // the ID of the block
-	Name   string // the label of the block, or the app if the block has no label
+	Name   string // the label of the block, or else the app name
 	Window string // the label of the window of the block, or ""
 	Cwd    string // the working directory of the program
 	Status
@@ -268,7 +268,8 @@ type window struct {
 	Label string `json:"label"`
 }
 
-// windows returns the windows of the session. If rex fails, it returns nil.
+// windows returns the windows of the session. If rex fails, windows returns
+// nil.
 func (c *Client) windows(ctx context.Context) []window {
 	var reply struct {
 		Windows []window `json:"windows"`
@@ -381,7 +382,7 @@ type Event struct {
 	Block  string // the ID of the block
 	Closed bool   // true if the block closed
 	// Status is the new status of the program in the block. If the program
-	// removed its status, Status is the zero Status.
+	// removes its status, Status is the zero Status.
 	Status Status
 }
 
@@ -449,7 +450,8 @@ func parseEvent(line []byte) (Event, bool) {
 	var msg struct {
 		Payload struct {
 			Event struct {
-				Type  string     `json:"type"` // "block_event" or "block_closed"
+				// Type is "block_event" or "block_closed".
+				Type  string     `json:"type"`
 				Block blockEvent `json:"payload"`
 			} `json:"event"`
 		} `json:"payload"`

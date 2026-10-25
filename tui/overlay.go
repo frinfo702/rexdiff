@@ -44,13 +44,15 @@ type pickItem struct {
 	label  string
 	detail string // the dim text after the label
 	tag    string // a short mark at the end, for example "current"
-	// id is what the row picks: a path, a ref, a commit, or a block.
+	// id is what the row picks, for example a path, a ref, a commit, or a
+	// block.
 	id      string
 	line    int // the search: the line of a code match
 	comment int // the comment list: the ID of the comment
 }
 
-// overlay is a modal box: a list to pick from, a search, or a prompt.
+// overlay is a modal box. It shows a list to pick from, a search, or a
+// prompt.
 type overlay struct {
 	kind   overlayKind
 	title  string
@@ -123,8 +125,8 @@ func (o *overlay) selected() *pickItem {
 func (o *overlay) down() { o.cur = min(o.cur+1, max(len(o.shown)-1, 0)) }
 func (o *overlay) up()   { o.cur = max(o.cur-1, 0) }
 
-// setSearch shows the search results: the files that match by name, then
-// the matches in the code.
+// setSearch shows the search results. It shows the files that match by
+// name, then the matches in the code.
 func (o *overlay) setSearch(files []vcs.Entry, hits []vcs.Match) {
 	q := o.input.Value()
 	var items []pickItem
@@ -241,7 +243,8 @@ func (m *model) openBasePicker() {
 // the commits scope. It lists the newest commits first.
 func (m *model) openCommitPicker() {
 	ov := newOverlay(overlayCommits, "pick a commit, or space to start a range")
-	commits, _ := m.repo.Commits(m.ctx, maxCommits) // an error shows an empty picker
+	// An error shows an empty picker.
+	commits, _ := m.repo.Commits(m.ctx, maxCommits)
 	var items []pickItem
 	for _, c := range commits {
 		items = append(items, pickItem{
@@ -454,7 +457,7 @@ func (o *overlay) agent(it *pickItem) (a rex.Agent, ok bool) {
 
 // baseRef returns the ref that the base picker picks, with the selected
 // item it. A typed ref, for example a tag, wins over the first match. A
-// match that the user moved to wins over the typed text. If the ref is
+// match that the user moves to wins over the typed text. If the ref is
 // not valid, ok is false.
 func (m *model) baseRef(it *pickItem) (ref string, ok bool) {
 	ref = strings.TrimSpace(m.overlay.input.Value())
@@ -472,7 +475,8 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 	ov := m.overlay
 	w := min(max(m.w*2/3, 50), m.w-4)
 	inner := w - 4
-	lines := []string{truncate(headerStyle.Render(ov.title), inner)} // one line, for listY
+	// The title takes one line, for listY.
+	lines := []string{truncate(headerStyle.Render(ov.title), inner)}
 	if ov.kind == overlayQuit {
 		lines = append(lines, "", dimStyle.Render("q/enter quit · esc stay"))
 	} else {

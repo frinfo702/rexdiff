@@ -70,7 +70,7 @@ func TestTerminalEditorInRex(t *testing.T) {
 			t.Setenv("EDITOR", tt.env)
 			log := logRex(t, &m)
 			if _, cmd := pressE(t, m); cmd != nil {
-				t.Errorf("e returned a command %T, want none", cmd)
+				t.Errorf("e returns a command %T, want none", cmd)
 			}
 			b, err := os.ReadFile(log)
 			if err != nil {
@@ -97,10 +97,10 @@ func TestWindowEditor(t *testing.T) {
 	log := logRex(t, &m)
 	m, cmd := pressE(t, m)
 	if cmd == nil {
-		t.Fatal("e returned no command")
+		t.Fatal("e returns no command, want a command")
 	}
 	if msg := cmd(); msg != nil {
-		t.Fatalf("the editor failed: %v", msg)
+		t.Fatalf("the editor command = %v, want nil", msg)
 	}
 	b, err := os.ReadFile(out)
 	if err != nil {
@@ -111,11 +111,12 @@ func TestWindowEditor(t *testing.T) {
 		t.Errorf("the editor got\n%q\nwant\n%q", b, want)
 	}
 	if _, err := os.Stat(log); err == nil {
-		t.Error("a window editor opened a Rex block")
+		t.Errorf("rex log %s exists, want no Rex block for a window editor",
+			log)
 	}
 }
 
-// TestEditorError checks that the footer tells why an editor failed.
+// TestEditorError checks that the footer tells why an editor fails.
 func TestEditorError(t *testing.T) {
 	code := writeScript(t, t.TempDir(), "code", "echo 'code: no such file' >&2\nexit 3\n")
 	tests := []struct {
@@ -131,10 +132,10 @@ func TestEditorError(t *testing.T) {
 			t.Setenv("PATH", tt.path)
 			m, cmd := pressE(t, m)
 			if cmd == nil {
-				t.Fatal("e returned no command")
+				t.Fatal("e returns no command, want a command")
 			}
 			if m = step(t, m, cmd()); !strings.Contains(view(m), tt.want) {
-				t.Errorf("the footer does not show %q:\n%s", tt.want, view(m))
+				t.Errorf("view got:\n%s\nwant %q in the footer", view(m), tt.want)
 			}
 		})
 	}

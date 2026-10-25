@@ -7,8 +7,8 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 )
 
-// TestCacheShared checks that a View uses the lines that another View
-// highlighted into the same Cache.
+// TestCacheShared checks that a View uses the lines that another View puts
+// in the same Cache.
 func TestCacheShared(t *testing.T) {
 	render := func(c *Cache) string {
 		out, _, _ := New().Cache(c).Before("a.go", "x := 1\n").After("a.go", "x := 2\n").Render()
@@ -17,7 +17,7 @@ func TestCacheShared(t *testing.T) {
 	c := &Cache{}
 	render(c)
 	if len(c.lines) == 0 {
-		t.Fatal("the cache is empty after a render")
+		t.Fatal("the cache is empty after a render, want lines")
 	}
 	for k := range c.lines {
 		c.lines[k] = "kept"
@@ -50,12 +50,12 @@ func TestCacheLimit(t *testing.T) {
 // TestCacheNil checks that a View with a nil Cache renders.
 func TestCacheNil(t *testing.T) {
 	if out, _, _ := New().Cache(nil).Before("a.go", "x\n").After("a.go", "y\n").Render(); out == "" {
-		t.Error("the render is empty")
+		t.Error(`Render with a nil Cache = "", want lines`)
 	}
 }
 
 // TestCacheLexer checks that a View uses the last lexer of the Cache for
-// the same file, and selects a new lexer for a changed file.
+// the same file. It selects a new lexer for a changed file.
 func TestCacheLexer(t *testing.T) {
 	c := &Cache{}
 	lexer := func(content string) string {
@@ -68,6 +68,6 @@ func TestCacheLexer(t *testing.T) {
 		t.Errorf("the same file has the lexer %q, want the kept Python", got)
 	}
 	if got := lexer("y\n"); got == "Python" {
-		t.Error("a changed file has the kept lexer")
+		t.Errorf("a changed file has the lexer %q, want a new lexer", got)
 	}
 }

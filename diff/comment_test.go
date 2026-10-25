@@ -58,10 +58,10 @@ func TestReviewMatchesHerdr(t *testing.T) {
 		"c.go:1-2 (stale: the code has changed since)\n" +
 		" ctx\n-\told[31m\n+\tnew\nfix]7501;state=idle this"
 	if got != want {
-		t.Errorf("Review:\n%s\nwant:\n%s", got, want)
+		t.Errorf("Review got:\n%s\nwant:\n%s", got, want)
 	}
 	if got := new(diff.Comments).Review(""); got != "" {
-		t.Errorf("Review of nothing = %q", got)
+		t.Errorf("Review with no comments = %q, want \"\"", got)
 	}
 }
 
@@ -80,7 +80,8 @@ func TestReviewContinuedRows(t *testing.T) {
 	// The comment has no diff lines, so Review writes the lines of its range.
 	want := "a.go:1\n+" + strings.TrimSuffix(new, "\n") + "\nlong"
 	if got := review(c); len(cont) == 0 || got != want {
-		t.Errorf("%d continued rows, Review:\n%s\nwant:\n%s", len(cont), got, want)
+		t.Errorf("%d continued rows, Review got:\n%s\nwant:\n%s",
+			len(cont), got, want)
 	}
 }
 
@@ -91,27 +92,30 @@ func TestComments(t *testing.T) {
 	b := cs.Add(diff.Comment{Path: "a.go", Side: diff.SideOld, Start: 4, End: 4})
 	cs.Add(diff.Comment{Path: "b.go", Side: diff.SideNew, Start: 1, End: 1})
 	if cs.Len() != 3 || cs.Count("a.go") != 2 || a.ID == b.ID {
-		t.Fatalf("Len = %d, Count(a.go) = %d, IDs %d %d",
+		t.Fatalf("Len = %d, Count(a.go) = %d, IDs %d %d; "+
+			"want 3, 2, two different IDs",
 			cs.Len(), cs.Count("a.go"), a.ID, b.ID)
 	}
 	if c := cs.At("a.go", diff.SideNew, 3); c != a {
-		t.Errorf("At(a.go, New, 3) = %v", c)
+		t.Errorf("At(a.go, New, 3) = %v, want %v", c, a)
 	}
 	if c := cs.At("a.go", diff.SideNew, 5); c != nil {
 		t.Errorf("At(a.go, New, 5) = %v, want nil", c)
 	}
 	if got := cs.EndingAt("a.go", diff.SideOld, 4); len(got) != 1 || got[0] != b {
-		t.Errorf("EndingAt(a.go, Old, 4) = %v", got)
+		t.Errorf("EndingAt(a.go, Old, 4) = %v, want [%v]", got, b)
 	}
 	if cs.Find(b.ID) != b {
-		t.Error("Find did not find b")
+		t.Errorf("Find(%d) = %v, want %v", b.ID, cs.Find(b.ID), b)
 	}
 	cs.Remove(b.ID)
 	if cs.Find(b.ID) != nil || cs.Len() != 2 {
-		t.Error("Remove did not remove b")
+		t.Errorf("after Remove(%d): Find = %v, Len = %d; want nil, 2",
+			b.ID, cs.Find(b.ID), cs.Len())
 	}
 	if c := cs.Add(diff.Comment{}); c.ID == a.ID || c.ID == b.ID {
-		t.Error("Add reused an ID")
+		t.Errorf("Add gives ID %d, want an ID other than %d and %d",
+			c.ID, a.ID, b.ID)
 	}
 }
 
@@ -136,7 +140,7 @@ func TestNewComment(t *testing.T) {
 			}
 			want += "\n a\n-b\n-c\n+B\n+C\n d\n"
 			if got := review(c); got != want {
-				t.Errorf("split %v, side %d: Review:\n%s\nwant:\n%s",
+				t.Errorf("split %v, side %d: Review got:\n%s\nwant:\n%s",
 					split, s, got, want)
 			}
 			// The comment follows the lines of its side.
@@ -161,7 +165,8 @@ func TestNewComment(t *testing.T) {
 			t.Errorf("split %v, the new lines: %+v, want lines 2-3", split, got)
 		}
 		if cs.Relocate("x.txt", "", "B\nC\n"); got.Start != 1 || got.Stale {
-			t.Errorf("split %v, the new lines did not follow B and C: %+v", split, got)
+			t.Errorf("split %v, the new lines after a move: %+v, want line 1",
+				split, got)
 		}
 	}
 	// A hunk header has no line.
@@ -183,26 +188,27 @@ func TestRelocateFollowsMovedCode(t *testing.T) {
 	// Each comment looks in the version of its side.
 	cs.Relocate("a.go", "x\nx\nx\nb\n", "new\nnew\na\nb\nc\n")
 	if c.Start != 4 || c.End != 5 || c.Stale {
-		t.Errorf("moved: %+v", c)
+		t.Errorf("after a move: %+v, want lines 4-5", c)
 	}
 	if other.Start != 4 || other.Stale {
-		t.Errorf("the comment on the old side did not follow the old version: %+v", other)
+		t.Errorf("the comment on the old side after a move: %+v, want line 4",
+			other)
 	}
 	cs.Relocate("a.go", "b\n", "a\nB\nc\n")
 	if !c.Stale || c.Start != 4 {
-		t.Errorf("not stale: %+v", c)
+		t.Errorf("after an edit: %+v, want stale at line 4", c)
 	}
 	cs.Relocate("a.go", "b\n", "b\nc\nx\nx\nx\nb\nc\n")
 	if c.Stale || c.Start != 6 {
-		t.Errorf("did not go to the nearest copy: %+v", c)
+		t.Errorf("with two copies: %+v, want line 6", c)
 	}
-	// The end of a file is not an empty line, and CRLF is the same as LF.
+	// The end of a file is not an empty line. CRLF is the same as LF.
 	blank := cs.Add(commentOn("b.go", diff.SideNew, "x\n\n", 2, 2))
 	if cs.Relocate("b.go", "", "x\n"); !blank.Stale {
-		t.Errorf("a comment on a deleted blank line is not stale: %+v", blank)
+		t.Errorf("a comment on a deleted blank line: %+v, want stale", blank)
 	}
 	if cs.Relocate("b.go", "", "x\r\n\r\n"); blank.Stale || blank.Start != 2 {
-		t.Errorf("a comment on a CRLF blank line: %+v", blank)
+		t.Errorf("a comment on a CRLF blank line: %+v, want line 2", blank)
 	}
 }
 
@@ -216,7 +222,7 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 		d := diff.Render("x.go", old, new, diff.Options{Split: split})
 		got := strings.Join(snippet(d.Rows, old, new), "\n")
 		if got != want {
-			t.Errorf("split %v:\n%s\nwant:\n%s", split, got, want)
+			t.Errorf("split %v: snippet got:\n%s\nwant:\n%s", split, got, want)
 		}
 	}
 
@@ -235,6 +241,6 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 	out, _ := git.Output()
 	_, body, _ := strings.Cut(string(out), "@@\n")
 	if strings.TrimSuffix(body, "\n") != want {
-		t.Errorf("git diff:\n%s\nwant:\n%s", body, want)
+		t.Errorf("git diff got:\n%s\nwant:\n%s", body, want)
 	}
 }

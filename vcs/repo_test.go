@@ -132,10 +132,11 @@ func TestScopes(t *testing.T) {
 	now := snapshot(t, r)
 	unc := changes(t, r, head(t, r), now)
 	if got := names(unc); got != "A.gitignore Ma.txt Anew.txt" {
-		t.Errorf("uncommitted: %s", got)
+		t.Errorf("uncommitted: %s, want A.gitignore Ma.txt Anew.txt", got)
 	}
 	if unc[1].Old != "one\n" || unc[1].New != "one\ntwo\n" {
-		t.Errorf("a.txt: %q -> %q", unc[1].Old, unc[1].New)
+		t.Errorf("a.txt: Old %q, New %q; want %q, %q",
+			unc[1].Old, unc[1].New, "one\n", "one\ntwo\n")
 	}
 
 	mb, err := r.MergeBase(ctx, "main")
@@ -143,37 +144,37 @@ func TestScopes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := names(changes(t, r, mb, now)); got != "A.gitignore Ma.txt Ab.txt Anew.txt" {
-		t.Errorf("branch: %s", got)
+		t.Errorf("branch: %s, want A.gitignore Ma.txt Ab.txt Anew.txt", got)
 	}
 	if _, err := r.MergeBase(ctx, "nosuchbranch"); err == nil {
-		t.Error("MergeBase(nosuchbranch): no error")
+		t.Error("MergeBase(nosuchbranch): no error, want an error")
 	}
 
-	// A turn: a snapshot, then the agent edits one file.
+	// In a turn, rexdiff takes a snapshot and then the agent edits a file.
 	write(t, dir, "new.txt", "untracked\nmore\n")
 	tf := changes(t, r, now, snapshot(t, r))
 	if got := names(tf); got != "Mnew.txt" || tf[0].New != "untracked\nmore\n" {
-		t.Errorf("turn: %s", got)
+		t.Errorf("turn: %s, want Mnew.txt with the new line", got)
 	}
 
 	// Snapshot must not change the real index.
 	st, _ := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
 	if !strings.Contains(string(st), "?? new.txt") {
-		t.Errorf("the index changed: %s", st)
+		t.Errorf("git status after Snapshot = %q, want ?? new.txt", st)
 	}
 
 	cs, err := r.Commits(ctx, 5)
 	if err != nil || len(cs) != 2 || cs[0].Subject != "b" || cs[1].Subject != "init" {
-		t.Fatalf("Commits = %+v, %v", cs, err)
+		t.Fatalf("Commits = %+v, %v, want b and init", cs, err)
 	}
 	tree, err := r.Tree(ctx, cs[0].SHA)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := names(changes(t, r, parent(t, r, cs[0].SHA), tree)); got != "Ab.txt" {
-		t.Errorf("commit b: %s", got)
+		t.Errorf("commit b: %s, want Ab.txt", got)
 	}
-	// The ID of the tree that has no files.
+	// emptyTree is the ID of the tree that has no files.
 	const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 	if got := parent(t, r, cs[1].SHA); got != emptyTree {
 		t.Errorf("parent of the root commit = %s, want the empty tree", got)
@@ -183,13 +184,12 @@ func TestScopes(t *testing.T) {
 // TestMissingCommit checks that Head and Parent fail when a commit object
 // is missing.
 func TestMissingCommit(t *testing.T) {
-	// The empty tree is not a correct result, because it shows every file as
-	// added.
+	// The empty tree is not a correct result. It shows every file as added.
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	cs, err := r.Commits(ctx, 2)
 	if err != nil || len(cs) != 2 {
-		t.Fatalf("Commits = %+v, %v", cs, err)
+		t.Fatalf("Commits = %+v, %v, want two commits", cs, err)
 	}
 	remove := func(sha string) {
 		t.Helper()
@@ -218,17 +218,19 @@ func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 	write(t, dir, "bin", "a\x00b")
 	write(t, dir, "big", strings.Repeat("x\n", 50_001))
 	write(t, dir, "huge", strings.Repeat("x", 2<<20+1)) // over 2 MiB
-	write(t, dir, "small", "after\n")                   // read after the skipped content
+	// Diff reads this file after the skipped content.
+	write(t, dir, "small", "after\n")
 	got := map[string]vcs.File{}
 	for _, f := range changes(t, r, head(t, r), snapshot(t, r)) {
 		got[f.Path] = f
 	}
 	if f := got["bin"]; !f.Binary || f.New != "" {
-		t.Errorf("bin: %+v", f)
+		t.Errorf("bin: %+v, want Binary with no New", f)
 	}
 	for _, p := range []string{"big", "huge"} {
 		if f := got[p]; !f.TooBig || f.New != "" {
-			t.Errorf("%s: TooBig = %v, New has %d bytes", p, f.TooBig, len(f.New))
+			t.Errorf("%s: TooBig = %v, New has %d bytes; want true, 0",
+				p, f.TooBig, len(f.New))
 		}
 	}
 	if f := got["small"]; f.New != "after\n" {
@@ -260,7 +262,7 @@ func TestFilesInConflict(t *testing.T) {
 	cmd := exec.Command("git", "merge", "other")
 	cmd.Dir = dir
 	if err := cmd.Run(); err == nil {
-		t.Fatal("the merge has no conflict")
+		t.Fatal("git merge other: no error, want a conflict")
 	}
 	r, err := vcs.Open(t.Context(), dir)
 	if err != nil {
@@ -305,20 +307,21 @@ func TestWorktree(t *testing.T) {
 	ms, err := r.Grep(ctx, "TWO", 10)
 	match := vcs.Match{Path: "a.txt", Line: 2, Text: "two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
-		t.Errorf("Grep(TWO) = %+v, %v", ms, err)
+		t.Errorf("Grep(TWO) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
 	write(t, dir, "a:é\n.txt", "x: two\n") // git quotes this name unless -z
 	ms, err = r.Grep(ctx, "x: two", 10)
 	match = vcs.Match{Path: "a:é\n.txt", Line: 1, Text: "x: two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
-		t.Errorf("Grep(x: two) = %+v, %v", ms, err)
+		t.Errorf("Grep(x: two) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
 	if ms, err := r.Grep(ctx, "nothing has this", 10); err != nil || len(ms) != 0 {
-		t.Errorf("Grep with no match = %+v, %v", ms, err)
+		t.Errorf("Grep with no match = %+v, %v, want none, nil", ms, err)
 	}
 
 	if s, err := r.ReadFile("a.txt"); err != nil || s != "one\ntwo\n" {
-		t.Errorf("ReadFile(a.txt) = %q, %v", s, err)
+		t.Errorf("ReadFile(a.txt) = %q, %v, want %q, nil",
+			s, err, "one\ntwo\n")
 	}
 	contains := []struct {
 		path string
@@ -340,13 +343,13 @@ func TestRefs(t *testing.T) {
 	r, _ := newRepo(t)
 	ctx := t.Context()
 	if bs, err := r.Branches(ctx); err != nil || strings.Join(bs, " ") != "feat main" {
-		t.Errorf("Branches = %v, %v", bs, err)
+		t.Errorf("Branches = %v, %v, want [feat main], nil", bs, err)
 	}
 	if b := r.DefaultBase(ctx); b != "main" {
-		t.Errorf("DefaultBase = %q", b)
+		t.Errorf("DefaultBase = %q, want main", b)
 	}
 	if _, err := r.Resolve(ctx, "nosuchref"); err == nil {
-		t.Error("Resolve(nosuchref): no error")
+		t.Error("Resolve(nosuchref): no error, want an error")
 	}
 }
 
@@ -407,14 +410,14 @@ func TestDiffRenameAndSubmodule(t *testing.T) {
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Diff:\n%+v\nwant:\n%+v", got, want)
+		t.Errorf("Diff got:\n%+v\nwant:\n%+v", got, want)
 	}
 }
 
 // TestOpenOutsideARepo checks that Open fails outside a repository.
 func TestOpenOutsideARepo(t *testing.T) {
 	if _, err := vcs.Open(t.Context(), t.TempDir()); err == nil {
-		t.Error("Open: no error outside a repository")
+		t.Error("Open outside a repository: no error, want an error")
 	}
 }
 
@@ -437,7 +440,7 @@ func TestNewRepo(t *testing.T) {
 // same second as the last write of the index.
 func TestSnapshotRacyEdit(t *testing.T) {
 	// git checks such "racily clean" files by their content. It finds them by
-	// the modification time of the index, so the copy of the index must keep
+	// the modification time of the index. The copy of the index must keep
 	// that time.
 	r, dir := newRepo(t)
 	git(t, dir, "config", "core.trustctime", "false")
@@ -452,7 +455,8 @@ func TestSnapshotRacyEdit(t *testing.T) {
 	}
 	write(t, dir, "b.txt", "bee\n")
 	touch("b.txt")
-	git(t, dir, "update-index", "--really-refresh") // the entry gets the time of b.txt
+	// The index entry gets the time of b.txt.
+	git(t, dir, "update-index", "--really-refresh")
 	touch(".git/index")
 	write(t, dir, "b.txt", "BEE\n") // the same size and time
 	touch("b.txt")

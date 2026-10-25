@@ -166,7 +166,8 @@ func (r *Repo) Parent(ctx context.Context, rev string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := r.run(ctx, nil, "rev-parse", c+"^@") // the parents, one on each line
+	// The output has the parents, one on each line.
+	out, err := r.run(ctx, nil, "rev-parse", c+"^@")
 	if err != nil {
 		return "", err
 	}
@@ -206,7 +207,7 @@ func (r *Repo) Snapshot(ctx context.Context) (string, error) {
 	env := []string{"GIT_INDEX_FILE=" + idx}
 	_, err = r.run(ctx, env, "add", "-A", "--ignore-errors")
 	if exitedWith(err, 1) {
-		err = nil // git could not add some files, but it added the others
+		err = nil // git cannot add some files, but it adds the others
 	}
 	if err != nil {
 		return "", fmt.Errorf("snapshot: %w", err)

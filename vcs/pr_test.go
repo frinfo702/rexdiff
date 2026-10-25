@@ -142,11 +142,12 @@ func TestPullRequest(t *testing.T) {
 		r, _ := repoAt(t, tt.remote)
 		pr, err := r.PullRequest(t.Context(), tt.hosts)
 		if err != nil {
-			t.Errorf("PullRequest(%s): %v", tt.remote, err)
+			t.Errorf("PullRequest(%s) = %v, want no error", tt.remote, err)
 			continue
 		}
 		if !reflect.DeepEqual(pr, tt.want) {
-			t.Errorf("PullRequest(%s):\n%+v\nwant:\n%+v", tt.remote, pr, tt.want)
+			t.Errorf("PullRequest(%s) got:\n%+v\nwant:\n%+v",
+				tt.remote, pr, tt.want)
 		}
 	}
 }
@@ -188,7 +189,7 @@ func TestPullRequestErrors(t *testing.T) {
 		_, err := r.PullRequest(t.Context(), vcs.Hosts{})
 		switch {
 		case err == nil:
-			t.Errorf("PullRequest(%q): no error", tt.remote)
+			t.Errorf("PullRequest(%q): no error, want an error", tt.remote)
 		case tt.want != nil && !errors.Is(err, tt.want):
 			t.Errorf("PullRequest(%q): err = %v, want %v", tt.remote, err, tt.want)
 		case tt.msg != "" && err.Error() != tt.msg:

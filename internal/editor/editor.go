@@ -14,7 +14,7 @@ import (
 // Command is a command that opens a file at a line.
 type Command struct {
 	Script string // the command, for sh -c
-	Window bool   // the editor opens a window, not in the terminal
+	Window bool   // the editor opens a window and does not draw in the terminal
 }
 
 // FromTemplate returns the command that opens file at line with template,

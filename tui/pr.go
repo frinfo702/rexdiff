@@ -41,9 +41,9 @@ func prStateStyle(s vcs.State) lipgloss.Style {
 	return dimStyle
 }
 
-// checkSummary counts the checks that passed, failed, or are pending, and
-// returns the names of the checks that failed. A skipped check counts as
-// passed.
+// checkSummary counts the checks that pass, fail, or are pending, and
+// returns the names of the checks that fail. A skipped check counts as a
+// pass.
 func checkSummary(checks []vcs.Check) (pass, fail, pend int, failed []string) {
 	for _, c := range checks {
 		switch c.Result {
@@ -110,7 +110,7 @@ func prHeader(pr *vcs.PullRequest) []string {
 }
 
 // checkLines returns the counts of the checks, and the names of the
-// checks that failed. With no checks, it returns no lines.
+// checks that fail. With no checks, it returns no lines.
 func checkLines(checks []vcs.Check) []string {
 	if len(checks) == 0 {
 		return nil

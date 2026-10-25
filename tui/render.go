@@ -1,7 +1,7 @@
 package tui
 
-// This file turns files into the lines of a pane: diffs, the file viewer,
-// and markdown.
+// This file turns files into the lines of a pane. It renders diffs, the
+// file viewer, and Markdown.
 
 import (
 	"errors"
@@ -113,7 +113,7 @@ func (m *model) renderChanges() {
 	case f.TooBig:
 		p.setNote("file over 2 MB or 50,000 lines, not diffed")
 	case f.Old == f.New:
-		// A rename without changes, or a change of the file mode.
+		// The change is a rename with no edit, or a change of the file mode.
 		note := "no change to the content"
 		if f.From != "" {
 			note = "renamed from " + termtext.Quote(f.From) + ", no change to the content"
@@ -139,14 +139,14 @@ func (p *pane) setNote(note string) {
 }
 
 // renderViewer shows the selected file in the Files tab, even if the file
-// did not change.
+// does not change.
 func (m *model) renderViewer() {
 	m.viewer.path = "" // no file has the path "", so refreshViewer renders
 	m.refreshViewer()
 }
 
 // refreshViewer shows the selected file in the Files tab if the file
-// changed.
+// changes.
 func (m *model) refreshViewer() {
 	p := &m.viewer
 	if m.allSel >= len(m.allFiles) {
@@ -193,7 +193,7 @@ func (m *model) markdown(wrap int) *glamour.TermRenderer {
 }
 
 // renderMarkdown returns the lines of src, rendered with r. If r is nil or
-// fails, it returns the lines of src as they are.
+// fails, renderMarkdown returns the lines of src as they are.
 func renderMarkdown(r *glamour.TermRenderer, src string) []string {
 	if r != nil {
 		if out, err := r.Render(src); err == nil {

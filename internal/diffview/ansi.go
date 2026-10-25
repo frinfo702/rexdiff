@@ -43,8 +43,8 @@ func ansiFor(t chroma.TokenType) (c string, italic, ok bool) {
 
 // ANSIFormatter returns a chroma formatter that colours the tokens with the
 // ANSI palette colours, on the background bgColor. It ignores the chroma
-// style. If processValue is not nil, it changes the text of each token
-// first.
+// style. If processValue is not nil, ANSIFormatter calls it on the text of
+// each token first.
 func ANSIFormatter(bgColor color.Color, processValue func(string) string) chroma.Formatter {
 	format := func(w io.Writer, _ *chroma.Style, it chroma.Iterator) error {
 		plain := lipgloss.NewStyle().Background(bgColor)

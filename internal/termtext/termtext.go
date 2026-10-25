@@ -8,9 +8,9 @@ import (
 	"unicode/utf8"
 )
 
-// Plain returns s without control characters. This removes the escape
-// sequences too, but keeps tabs and newlines. Use it on text from other
-// people before you show or send it.
+// Plain returns s without control characters and escape sequences. It keeps
+// tabs and newlines. Use Plain on text from other people before you show or
+// send the text.
 func Plain(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r == '\t' || r == '\n' || !unicode.IsControl(r) {

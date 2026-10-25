@@ -33,8 +33,8 @@ var (
 // truncate cuts s to w columns, with an ellipsis.
 func truncate(s string, w int) string { return ansi.Truncate(s, max(w, 0), "…") }
 
-// selStyle returns the style of a selected row: a tint of the terminal
-// background.
+// selStyle returns the style of a selected row. The style is a tint of the
+// terminal background.
 func (m *model) selStyle() lipgloss.Style {
 	if m.bg == nil {
 		return lipgloss.NewStyle().Reverse(true)
@@ -137,7 +137,7 @@ func (m *model) headerScopes(l *headerLine) {
 	}
 }
 
-// commitsLabel returns the name of the commits of the commits scope in the header.
+// commitsLabel returns the header text for the commits of the commits scope.
 func (m *model) commitsLabel() string {
 	if m.to == "" {
 		return "pick ▾"
@@ -199,7 +199,8 @@ func statusMark(s vcs.Status) string {
 	return " "
 }
 
-// listLines renders h lines of the file list: a title and the files.
+// listLines renders h lines of the file list. The lines are a title and the
+// files.
 func (m *model) listLines(h int) []string {
 	w := m.listWidth()
 	var title string
@@ -265,8 +266,8 @@ func (m *model) selectedRow(r string, w int) string {
 // listStart returns the index of the first file that the list shows.
 func (m *model) listStart(h int) int { return max(0, m.listSel()-(h-2)) }
 
-// fileRow returns " M name/of/file.go  +3 -1". If the path is too long, it
-// removes the directory first, then the start of the name.
+// fileRow returns " M name/of/file.go  +3 -1". If the path is too long,
+// fileRow removes the directory first, then the start of the name.
 func fileRow(mark, p, stat string, w int) string {
 	p = termtext.Quote(p)
 	room := w - lipgloss.Width(stat) - 4
@@ -277,7 +278,8 @@ func fileRow(mark, p, stat string, w int) string {
 			p = "…" + ansi.TruncateLeft(p, n-room+1, "")
 		}
 	}
-	pad := strings.Repeat(" ", max(room-ansi.StringWidth(p), 0)) // by width, not runes
+	// Pad by width, not by runes.
+	pad := strings.Repeat(" ", max(room-ansi.StringWidth(p), 0))
 	return " " + mark + " " + p + pad + " " + stat
 }
 
@@ -431,7 +433,7 @@ func (m *model) ensureVisible() {
 	if m.mode == modeComment {
 		last, box = p.end(p.cur), lipgloss.Height(m.editor.View())
 	}
-	// Each row takes one line or more. So the last row cannot show if it is
+	// Each row takes one line or more. Thus the last row cannot show if it is
 	// h rows or more below the top.
 	p.top = max(p.top, last-h+1)
 	p.top = min(last, p.top, max(len(p.lines)-1, 0))
@@ -456,7 +458,7 @@ func (m *model) footer() string {
 
 // wrapWords breaks s into lines of width w or less, at spaces only.
 // ansi.Wrap and lipgloss let a line end past w at a hyphen. Then the edge
-// of the screen cuts off a "--". A word wider than w is cut, and a
+// of the screen cuts off a "--". wrapWords cuts a word wider than w. A
 // character wider than w gets a line of its own.
 func wrapWords(s string, w int) string {
 	w = max(w, 1)

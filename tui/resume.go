@@ -1,8 +1,8 @@
 package tui
 
 // After an update, rexdiff starts again in the same terminal. The old
-// program saves the comments and the place of the user in a file, and the
-// new one reads it, so that the user continues from the same place.
+// program saves the comments and the place of the user in a file. The new
+// program reads the file, so that the user continues from the same place.
 
 import (
 	"encoding/json/v2"

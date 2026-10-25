@@ -117,12 +117,12 @@ func (m *model) onRelease() tea.Cmd {
 		return nil
 	}
 	switch {
-	case d.gutter: // a line or a range on the line numbers: comment
+	case d.gutter: // a drag on the line numbers opens the comment box
 		if d.moved {
 			p.anchor = d.start
 		}
 		return m.startComment(d.pref)
-	case d.moved: // a range on the code: copy it
+	case d.moved: // a drag on the code copies the range
 		lo, hi := p.span(d.start, p.cur)
 		out := m.sourceLines(lo, hi, d.pref)
 		m.flash("copied " + plural(len(out), "line"))
@@ -132,8 +132,8 @@ func (m *model) onRelease() tea.Cmd {
 }
 
 // sourceLines returns the source lines of rows lo to hi of the current
-// pane. It uses side pref if they change it. A row with no source line
-// gives its text on the screen.
+// pane. It picks the side of each row as [model.target] does with pref. A
+// row with no source line gives its text on the screen.
 func (m *model) sourceLines(lo, hi int, pref diff.Side) []string {
 	p := m.cur()
 	var out []string
@@ -189,7 +189,7 @@ func (m *model) onWheel(mouse tea.Mouse) {
 }
 
 // clickOverlay handles a click while an overlay is open. A click outside
-// the box closes it, but not the prompt before a quit.
+// the box closes the overlay. The prompt before a quit does not close.
 func (m *model) clickOverlay(mouse tea.Mouse) tea.Cmd {
 	box, x, y, listY := m.overlayBox()
 	w, h := lipgloss.Width(box), lipgloss.Height(box)

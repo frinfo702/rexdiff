@@ -15,7 +15,8 @@ import (
 // BenchmarkReview reloads a large change and scrolls through it, as a user
 // does. Use it to profile the program:
 //
-//	go test ./tui -run '^$' -bench Review -cpuprofile cpu.out -memprofile mem.out
+//	go test ./tui -run '^$' -bench Review \
+//		-cpuprofile cpu.out -memprofile mem.out
 func BenchmarkReview(b *testing.B) {
 	m, dir := newTestModel(b)
 	// The benchmark makes 20 new files of 2,000 lines each.
@@ -40,8 +41,8 @@ func BenchmarkReview(b *testing.B) {
 	}
 }
 
-// BenchmarkScroll scrolls a large change sideways: in the Changes tab with
-// the folds closed and with the folds open, and in the Files tab.
+// BenchmarkScroll scrolls a large change sideways. It scrolls in the Changes
+// tab with the folds closed and open, and in the Files tab.
 //
 //	go test ./tui -run '^$' -bench Scroll
 func BenchmarkScroll(b *testing.B) {

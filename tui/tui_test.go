@@ -155,11 +155,12 @@ func TestScopes(t *testing.T) {
 	i := strings.Index(top, shortSHA(m.to))
 	m = step(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: ansi.StringWidth(top[:i])})
 	if m.mode != modeOverlay || m.overlay.kind != overlayCommits {
-		t.Errorf("a click on the commit in the header did not open the commit picker")
+		t.Errorf("after a click on the commit in the header: mode %v, "+
+			"want the commit picker", m.mode)
 	}
 	m = press(t, m, "esc")
 
-	// The turn scope shows only what changed during the turn of an agent.
+	// The turn scope shows only the changes of the turn of an agent.
 	m = press(t, m, "t")
 	if !strings.Contains(m.changes.note, "no agent turn") {
 		t.Errorf("turn scope before a turn: note %q, want a note that no turn ran", m.changes.note)
@@ -171,7 +172,7 @@ func TestScopes(t *testing.T) {
 		t.Errorf("turn scope shows %v (running %v), want [c.go]", got, m.turn.running)
 	}
 	if v := view(m); !strings.Contains(v, "pi · ") {
-		t.Errorf("header does not name the agent of the turn:\n%s", v)
+		t.Errorf("view got:\n%s\nwant the agent of the turn in the header", v)
 	}
 }
 
@@ -183,7 +184,7 @@ func TestComment(t *testing.T) {
 	// The unified layout uses three rows for the change.
 	m = press(t, m, "]", "v", "j", "j", "c")
 	if m.mode != modeComment {
-		t.Fatal("c did not open the comment box")
+		t.Fatalf("after c: mode %v, want the comment box", m.mode)
 	}
 	m = press(t, m, "h", "i", "enter")
 	// The split layout uses two rows for the same change.
@@ -195,10 +196,10 @@ func TestComment(t *testing.T) {
 	}
 	rows := "a.go:4-5\n-\treturn 1\n+\tx := 2\n+\treturn x\n"
 	if got, want := m.comments.Review(""), rows+"hi\n\n"+rows+"ok"; got != want {
-		t.Errorf("Review:\n%s\nwant:\n%s", got, want)
+		t.Errorf("Review got:\n%s\nwant:\n%s", got, want)
 	}
 	if !shows(m, "💬 hi", "2 unsent comments") {
-		t.Errorf("view:\n%s\nwant the comments", view(m))
+		t.Errorf("view got:\n%s\nwant the comments", view(m))
 	}
 
 	m = press(t, m, "s")
@@ -207,12 +208,13 @@ func TestComment(t *testing.T) {
 	}
 	next, cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	if m = *next.(*model); cmd == nil || m.status != "copied 2 comments" {
-		t.Errorf("copy: status %q, command %v", m.status, cmd)
+		t.Errorf("copy: status %q, command %v; want %q, true",
+			m.status, cmd != nil, "copied 2 comments")
 	}
 
 	// Quit asks first, because the comments are not sent.
 	if m = press(t, m, "q"); m.overlay == nil || m.overlay.kind != overlayQuit {
-		t.Error("q with unsent comments did not ask to confirm")
+		t.Error("q with unsent comments: no quit prompt, want a prompt")
 	}
 }
 
@@ -222,19 +224,20 @@ func TestTabs(t *testing.T) {
 
 	m = press(t, m, "2")
 	if !shows(m, "Files (2)", "package a") {
-		t.Errorf("Files tab:\n%s\nwant 2 files, with a.go shown", view(m))
+		t.Errorf("Files tab got:\n%s\nwant 2 files, with a.go shown", view(m))
 	}
 
 	// The repository has no remote, so the PR tab shows why.
 	m = press(t, m, "3")
 	m = step(t, m, m.loadPR()())
 	if v := view(m); !strings.Contains(v, "no git remote") {
-		t.Errorf("the PR tab does not say that there is no git remote:\n%s", v)
+		t.Errorf("the PR tab got:\n%s\nwant the note that there is no git remote",
+			v)
 	}
 }
 
 // TestPRChecks checks that the PR tab shows the counts of the checks of a
-// pull request, and the names of the checks that failed.
+// pull request, and the names of the checks that fail.
 func TestPRChecks(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "3")
@@ -250,7 +253,7 @@ func TestPRChecks(t *testing.T) {
 	}
 	m = step(t, m, prMsg{pr: pr})
 	if !shows(m, "checks: ✓ 2  ✗ 1  ◌ 1", "✗ build") {
-		t.Errorf("the PR tab does not show the checks:\n%s", view(m))
+		t.Errorf("the PR tab got:\n%s\nwant the checks", view(m))
 	}
 }
 
@@ -272,11 +275,13 @@ func TestSmallScreens(t *testing.T) {
 			m = press(t, m, k)
 			lines := strings.Split(view(m), "\n")
 			if len(lines) > max(size.h, 1) {
-				t.Errorf("%dx%d after %q: %d lines", size.w, size.h, k, len(lines))
+				t.Errorf("%dx%d after %q: %d lines, want %d or fewer",
+					size.w, size.h, k, len(lines), max(size.h, 1))
 			}
 			for _, l := range lines {
 				if w := ansi.StringWidth(l); w > max(size.w, 1) {
-					t.Errorf("%dx%d after %q: line width %d: %q", size.w, size.h, k, w, l)
+					t.Errorf("%dx%d after %q: line width %d, want %d or fewer: %q",
+						size.w, size.h, k, w, max(size.w, 1), l)
 					break
 				}
 			}
@@ -291,7 +296,7 @@ func TestDragAfterReload(t *testing.T) {
 	m.drag = dragState{active: true, gutter: true, moved: true, start: 48}
 	m = step(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft})
 
-	m.changes.set(nil, nil) // a reload found no changes
+	m.changes.set(nil, nil) // a reload finds no changes
 	m.drag = dragState{active: true}
 	m = step(t, m, tea.MouseMotionMsg{Button: tea.MouseLeft, Y: m.h})
 	view(m)
@@ -303,7 +308,7 @@ func screenY(t *testing.T, m model, i int) int {
 	_, rowAt := m.mainLines(m.bodyHeight())
 	y := slices.Index(rowAt, i)
 	if y < 0 {
-		t.Fatalf("row %d is not on the screen", i)
+		t.Fatalf("row %d is not on the screen, want it on the screen", i)
 	}
 	return bodyY + y
 }
@@ -325,10 +330,10 @@ func TestClickOldNumber(t *testing.T) {
 	m = click(t, m, m.mainX()+gutter, screenY(t, m, i))
 	m = press(t, m, "h", "i", "enter")
 	if v := view(m); !strings.Contains(v, "💬 hi") {
-		t.Errorf("the comment does not show:\n%s", v)
+		t.Errorf("view got:\n%s\nwant the comment", v)
 	}
 	if m = press(t, m, "d"); m.comments.Len() != 0 {
-		t.Errorf("d did not delete the comment: %+v", m.comments.All())
+		t.Errorf("after d: comments %+v, want none", m.comments.All())
 	}
 }
 
@@ -418,7 +423,7 @@ func TestParseConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := parseConfig(string(all)); err != nil {
-		t.Errorf("every action: %v", err)
+		t.Errorf("parseConfig with every action: %v, want no error", err)
 	}
 
 	// An unknown key is an error.
@@ -426,8 +431,8 @@ func TestParseConfig(t *testing.T) {
 		{`{"layuot": "split"}`, `"layuot"`},
 		{`{"keybindings": {"next-fiel": ["x"]}}`, `"keybindings.next-fiel"`},
 		{`{"theme": "monokai"}`, `"theme"`},
-		// Lua keys are case-sensitive, so a key in another case is unknown,
-		// and cannot skip the checks.
+		// Lua keys are case-sensitive. A key in another case is unknown and
+		// cannot skip the checks.
 		{`{"EDITOR": " "}`, `"EDITOR"`},
 		{`{"keybindings": {"Send": ["x"]}}`, `"keybindings.Send"`},
 	}
@@ -486,7 +491,7 @@ func TestParseConfig(t *testing.T) {
 	}`
 	c, err := parseConfig(good)
 	if err != nil {
-		t.Fatalf("good config: %v", err)
+		t.Fatalf("parseConfig(good) = %v, want no error", err)
 	}
 	if c.focusAgent() || c.FileList != positionLeft || c.Layout != LayoutUnified || !c.DiffSigns {
 		t.Errorf("good config = %+v, want no focus, the list on the left, "+
@@ -553,7 +558,8 @@ func TestConfigFlags(t *testing.T) {
 	m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = press(t, m, "X")
 	if m.split {
-		t.Error("the key X of the configuration did not change the layout")
+		t.Errorf("after the key X of the configuration: split %v, want false",
+			m.split)
 	}
 }
 
@@ -574,15 +580,17 @@ func TestNotice(t *testing.T) {
 	words := strings.Fields(v)
 	for _, w := range strings.Fields(notice)[:30] {
 		if !slices.Contains(words, w) {
-			t.Errorf("the view does not show %q of the notice:\n%s", w, v)
+			t.Errorf("view got:\n%s\nwant %q of the notice", v, w)
 		}
 	}
 	if !strings.Contains(v, strings.Repeat("x", 80)) {
-		t.Errorf("the view does not show the start of a word wider than the screen")
+		t.Errorf("view got:\n%s\nwant the start of a word wider than the screen",
+			v)
 	}
 	for line := range strings.SplitSeq(v, "\n") {
 		if ansi.StringWidth(line) > 80 {
-			t.Errorf("line wider than the screen: %q", line)
+			t.Errorf("line %q is %d cells wide, want 80 or fewer",
+				line, ansi.StringWidth(line))
 		}
 	}
 }
@@ -595,16 +603,17 @@ func TestPalette(t *testing.T) {
 	// The tint is black, mixed 16% toward pure green.
 	const tint = "48;2;0;40;0m"
 	if strings.Contains(m.View().Content, tint) {
-		t.Fatal("the view has the tint before the terminal reports its green")
+		t.Fatal("the view has the tint before the terminal reports its green, " +
+			"want no tint")
 	}
 	m = step(t, m, uv.UnknownOscEvent("\x1b]4;2;rgb:0000/ffff/0000\x1b\\"))
 	if !strings.Contains(m.View().Content, tint) {
-		t.Error("inserted lines are not tinted toward the green of the terminal")
+		t.Errorf("the view has no tint %q, want the green of the terminal", tint)
 	}
 }
 
-// wrapModel shows a change that makes line 4 of a.go too long for the
-// screen, which is 80 columns wide. Wrap is off.
+// wrapModel returns a model that shows a change that makes line 4 of a.go
+// too long for the screen. The screen is 80 columns wide. Wrap is off.
 func wrapModel(t *testing.T) (m model, dir, long string) {
 	t.Helper()
 	m, dir = newTestModel(t)
@@ -638,13 +647,14 @@ func TestWrap(t *testing.T) {
 			m.wrap, len(m.changes.lines), cut)
 	}
 	if v := view(m); !strings.Contains(v, "x + 1") {
-		t.Errorf("the end of the long line does not show:\n%s", v)
+		t.Errorf("view got:\n%s\nwant the end of the long line", v)
 	}
 	// The cursor moves by source lines.
 	m = press(t, m, "]")
 	for range len(m.changes.lines) {
 		if m.changes.cont(m.changes.cur) {
-			t.Fatalf("the cursor is on a continued row %d", m.changes.cur)
+			t.Fatalf("the cursor is on continued row %d, want a source line",
+				m.changes.cur)
 		}
 		m = press(t, m, "j")
 	}
@@ -662,12 +672,13 @@ func TestWrap(t *testing.T) {
 		return strings.Contains(l, "💬 ok")
 	})
 	if i < 1 || !strings.Contains(lines[i-1], "x + 1") {
-		t.Errorf("the comment is not below the end of the line:\n%s", view(m))
+		t.Errorf("view got:\n%s\nwant the comment below the end of the line",
+			view(m))
 	}
 
 	// The sideways scroll applies only without wrap.
 	if m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight}); m.changes.xoff != 0 {
-		t.Errorf("→ with wrap scrolled to %d", m.changes.xoff)
+		t.Errorf("→ with wrap: xoff %d, want 0", m.changes.xoff)
 	}
 	if m = press(t, m, "w"); m.wrap || len(m.changes.lines) != cut {
 		t.Errorf("w again: wrap %v, %d lines, want %d", m.wrap, len(m.changes.lines), cut)
@@ -685,13 +696,13 @@ func TestWrapKeepsCursor(t *testing.T) {
 	m, dir, long := wrapModel(t)
 	m = press(t, m, "end", "w")
 	if got := m.target(m.changes.cur, diff.SideNew).line; got != 5 {
-		t.Errorf("w moved the cursor from line 5 to line %d", got)
+		t.Errorf("after w: the cursor is on line %d, want 5", got)
 	}
 
 	m = twoHunks(t, m, dir, long)
 	m.changes.cur = hunks(m)[1]
 	if m = press(t, m, "w"); m.changes.cur != hunks(m)[1] {
-		t.Errorf("w moved the cursor from the second hunk header to row %+v",
+		t.Errorf("after w: the cursor is on row %+v, want the second hunk header",
 			m.changes.rows[m.changes.cur])
 	}
 }
@@ -722,17 +733,18 @@ func TestTallLine(t *testing.T) {
 		m = step(t, m, tea.MouseWheelMsg{Button: b, X: 1, Y: 5})
 		m = step(t, m, tea.BlurMsg{}) // a later event keeps the view
 		if m.changes.top == top {
-			t.Fatalf("the wheel stopped at row %d of %d", top, len(m.changes.lines))
+			t.Fatalf("the wheel stops at row %d of %d, want a scroll",
+				top, len(m.changes.lines))
 		}
 	}
 	// A taller screen shows more rows, not blank space below the view.
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 40})
 	if last := max(len(m.changes.lines)-m.bodyHeight(), 0); m.changes.top > last {
-		t.Errorf("top %d of %d rows on a screen of %d rows",
-			m.changes.top, len(m.changes.lines), m.bodyHeight())
+		t.Errorf("top %d of %d rows on a screen of %d rows, want %d or less",
+			m.changes.top, len(m.changes.lines), m.bodyHeight(), last)
 	}
 	if m = press(t, m, "j"); m.changes.top > m.changes.cur {
-		t.Errorf("j does not show the cursor: top %d, cursor %d",
+		t.Errorf("after j: top %d, cursor %d; want the cursor on the screen",
 			m.changes.top, m.changes.cur)
 	}
 
@@ -744,7 +756,7 @@ func TestTallLine(t *testing.T) {
 		m = press(t, m, "j")
 	}
 	if v := view(m); !strings.Contains(v, "return x") {
-		t.Errorf("the first rows of the line do not show:\n%s", v)
+		t.Errorf("view got:\n%s\nwant the first rows of the line", v)
 	}
 	m = press(t, m, "c", "o", "k", "enter", "c", "z", "z")
 	lines := strings.Split(view(m), "\n")
@@ -753,10 +765,12 @@ func TestTallLine(t *testing.T) {
 	}
 	i := slices.IndexFunc(lines, has("okzz"))
 	if i < 0 || !slices.ContainsFunc(lines[:i], has("+ 1")) {
-		t.Errorf("the comment box is not below the end of the line:\n%s", view(m))
+		t.Errorf("view got:\n%s\nwant the comment box below the end of the line",
+			view(m))
 	}
 	if strings.Contains(view(m), "💬 ok") {
-		t.Errorf("the comment shows above the box that edits it:\n%s", view(m))
+		t.Errorf("view got:\n%s\nwant no comment above the box that edits it",
+			view(m))
 	}
 }
 
@@ -768,7 +782,7 @@ func TestHostileText(t *testing.T) {
 	raw := func(where string, m model) {
 		t.Helper()
 		if strings.Contains(m.View().Content, osc) {
-			t.Errorf("%s: the screen has the escape sequence raw", where)
+			t.Errorf("%s: the screen has the raw escape sequence, want none", where)
 		}
 	}
 	m, dir := newTestModel(t)
@@ -854,12 +868,13 @@ func TestEmptyRepo(t *testing.T) {
 func TestFooterHints(t *testing.T) {
 	m, _ := newTestModel(t)
 	if m = press(t, m, "]", "v"); !strings.Contains(view(m), "extend") {
-		t.Errorf("select mode: the footer has no hint:\n%s", view(m))
+		t.Errorf("select mode: view got:\n%s\nwant the hint extend", view(m))
 	}
 	m = press(t, m, "esc")
 	m = step(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
 	m = press(t, m, "r", "e", "t", "u", "r", "n", "enter")
 	if !strings.Contains(view(m), "next/prev match") {
-		t.Errorf("find mode: the footer has no hint:\n%s", view(m))
+		t.Errorf("find mode: view got:\n%s\nwant the hint next/prev match",
+			view(m))
 	}
 }

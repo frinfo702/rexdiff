@@ -17,8 +17,8 @@ type targetLine struct {
 }
 
 // target returns the line that a comment on row i of the current pane
-// attaches to, or nil. If the row changes a line on side pref, it uses
-// that side. Else it prefers the new side. So a comment on an unchanged
+// attaches to, or nil. If the row changes a line on side pref, target uses
+// that side. Else target uses the new side. Thus a comment on an unchanged
 // line is on the new side.
 func (m *model) target(i int, pref diff.Side) *targetLine {
 	p := m.cur()
@@ -53,7 +53,8 @@ func (m *model) contentFor(path string, s diff.Side) string {
 		}
 		return f.New
 	}
-	content, _ := m.repo.ReadFile(path) // an unreadable file gives a comment no code
+	// An unreadable file gives a comment with no code.
+	content, _ := m.repo.ReadFile(path)
 	return content
 }
 

@@ -32,7 +32,8 @@ func format(c *Comment) string {
 	if c.Stale {
 		b.WriteString(" (stale: the code has changed since)")
 	}
-	// Write the rows as the diff shows them, so that the agent reads a real diff.
+	// Write the rows as the diff shows them, so that the agent reads a real
+	// diff.
 	if len(c.snippet) > 0 {
 		for _, l := range c.snippet {
 			b.WriteString("\n" + termtext.Plain(l))

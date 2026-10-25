@@ -97,7 +97,7 @@ func TestAgents(t *testing.T) {
 		},
 	}
 	if !slices.Equal(agents, want) {
-		t.Fatalf("Agents:\n%+v\nwant:\n%+v", agents, want)
+		t.Fatalf("Agents got:\n%+v\nwant:\n%+v", agents, want)
 	}
 }
 
@@ -106,14 +106,15 @@ func TestCommands(t *testing.T) {
 	c, dir := fakeRex(t)
 	ctx := t.Context()
 	if id, err := c.Resolve(ctx, "agent"); err != nil || id != "block:pi" {
-		t.Errorf("Resolve(agent) = %q, %v", id, err)
+		t.Errorf("Resolve(agent) = %q, %v, want block:pi, nil", id, err)
 	}
 	if id, _ := c.Resolve(ctx, "block:x"); id != "block:x" {
-		t.Errorf("Resolve(block:x) = %q", id)
+		t.Errorf("Resolve(block:x) = %q, want block:x", id)
 	}
 	_, err := c.Resolve(ctx, "nosuch")
 	if err == nil || err.Error() != "no block matches nosuch" {
-		t.Errorf("Resolve(nosuch): err = %v", err)
+		t.Errorf("Resolve(nosuch): err = %v, want %q",
+			err, "no block matches nosuch")
 	}
 	if err := c.Paste(ctx, "block:pi", "a\n\tb"); err != nil {
 		t.Fatal(err)
@@ -134,7 +135,7 @@ func TestCommands(t *testing.T) {
 		`split -s S -b block:self --cwd /repo -- sh -c vi x`,
 	} {
 		if !strings.Contains(calls, want) {
-			t.Errorf("no call %s in:\n%s", want, calls)
+			t.Errorf("calls got:\n%s\nwant a call %s", calls, want)
 		}
 	}
 }
@@ -176,7 +177,7 @@ func TestWatch(t *testing.T) {
 		{Block: "block:pi"},
 		{Block: "block:pi", Closed: true},
 	}
-	// Stop Watch when it has reported all the events.
+	// Stop Watch when it reports all the events.
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	var got []rex.Event
@@ -187,10 +188,10 @@ func TestWatch(t *testing.T) {
 		}
 	})
 	if !errors.Is(err, context.Canceled) {
-		t.Errorf("Watch returned %v, want context.Canceled", err)
+		t.Errorf("Watch = %v, want context.Canceled", err)
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("events:\n%+v\nwant:\n%+v", got, want)
+		t.Errorf("events got:\n%+v\nwant:\n%+v", got, want)
 	}
 }
 
@@ -242,7 +243,7 @@ func TestReloadConfigOutsideRex(t *testing.T) {
 }
 
 // TestErrorKeepsCause checks that the error of a failed rex is the message
-// of rex, and still wraps the exit error of the process.
+// of rex. The error also wraps the exit error of the process.
 func TestErrorKeepsCause(t *testing.T) {
 	dir := t.TempDir()
 	script := "#!/bin/sh\necho 'Error: no Rex server' >&2\nexit 3\n"

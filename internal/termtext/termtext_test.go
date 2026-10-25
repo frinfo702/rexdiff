@@ -42,14 +42,15 @@ func FuzzPlain(f *testing.F) {
 		p := termtext.Plain(s)
 		unsafe := func(r rune) bool { return r != '\t' && r != '\n' && unicode.IsControl(r) }
 		if strings.ContainsFunc(p, unsafe) {
-			t.Errorf("Plain(%q) = %q, has a control character", s, p)
+			t.Errorf("Plain(%q) = %q, want no control characters", s, p)
 		}
 		if pp := termtext.Plain(p); pp != p {
 			t.Errorf("Plain(Plain(%q)) = %q, want %q", s, pp, p)
 		}
 		q := termtext.Quote(s)
 		if strings.ContainsFunc(q, unicode.IsControl) || !utf8.ValidString(q) {
-			t.Errorf("Quote(%q) = %q, has a control character", s, q)
+			t.Errorf("Quote(%q) = %q, want valid UTF-8 with no control characters",
+				s, q)
 		}
 	})
 }

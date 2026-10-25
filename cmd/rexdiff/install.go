@@ -68,7 +68,7 @@ end
 
 -- runs_rexdiff returns true if the terminal block id runs rexdiff. rexdiff
 -- reports app=rexdiff to Rex with OSC 7501. Rex keeps an idle status after
--- its program stops, so the block counts only while the process that
+-- its program stops. Thus the block counts only while the process that
 -- reported the status is in the foreground.
 local function runs_rexdiff(id)
   for _, r in ipairs(call("program_status", id).records or {}) do
@@ -92,8 +92,8 @@ local function reviewers()
 end
 
 -- check fails the action if rexdiff does not accept config, the settings
--- as a JSON object. Here the user sees the error. If rexdiff stops at once
--- in a new pane, the pane closes and the error is lost.
+-- as a JSON object. The user sees an error of the action. If rexdiff stops
+-- at once in a new pane, the pane closes and the user does not see the error.
 local function check(config)
   local r, err = rex.exec({ BIN, "--check", "--config", config })
   if r == nil then error(err, 0) end
@@ -213,7 +213,7 @@ func splitLua(path, content string) (settings, code string, err error) {
 }
 
 // newLua returns the content of rexdiff.lua with the code for bin. It
-// keeps the settings of old, the content that the file has now. If old is
+// keeps the settings of old, the current content of the file. If old is
 // empty, it uses the default settings.
 func newLua(path, old, bin string) (string, error) {
 	if old == "" {
@@ -236,8 +236,8 @@ func readFile(path string) (string, error) {
 }
 
 // executable returns the path of the rexdiff binary, for the Rex action. It
-// keeps a symlink, such as the one from Homebrew. The target of the link
-// changes at each upgrade.
+// keeps a symlink, such as the one from Homebrew, because the target of the
+// link changes at each upgrade.
 func executable() (string, error) {
 	bin, err := os.Executable()
 	if err != nil {

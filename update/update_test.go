@@ -116,10 +116,10 @@ func TestLatest(t *testing.T) {
 		t.Errorf("Latest of the same version: newer %v, %v; want false, nil", isNewer, err)
 	}
 	if _, _, err := answer(403, `rate limit`).Latest(t.Context()); err == nil || !strings.Contains(err.Error(), "403") {
-		t.Errorf("Latest after 403: %v, want the status", err)
+		t.Errorf("Latest after 403: %v, want an error with the status", err)
 	}
 	if _, _, err := answer(200, `not json`).Latest(t.Context()); err == nil {
-		t.Error("Latest of bad JSON: no error")
+		t.Error("Latest of bad JSON: no error, want an error")
 	}
 }
 
@@ -156,7 +156,7 @@ func TestInstallCommands(t *testing.T) {
 		"/opt/homebrew/bin/rexdiff -version",
 	}
 	if !slices.Equal(brew.calls, want) {
-		t.Errorf("brew calls:\n%s\nwant:\n%s", strings.Join(brew.calls, "\n"), strings.Join(want, "\n"))
+		t.Errorf("brew calls got:\n%s\nwant:\n%s", strings.Join(brew.calls, "\n"), strings.Join(want, "\n"))
 	}
 
 	gorun := &fakeRun{version: "v0.2.0"}
@@ -175,7 +175,8 @@ func TestInstallCommands(t *testing.T) {
 	u = &Updater{bin: "/b/rexdiff", method: methodBrew, run: failing.run}
 	err := u.Install(t.Context(), r)
 	if err == nil || err.Error() != "brew: exit status 1: Error: another brew is running" {
-		t.Errorf("Install with a failing brew: %v", err)
+		t.Errorf("Install with a failing brew: %v, want %q",
+			err, "brew: exit status 1: Error: another brew is running")
 	}
 
 	// A new binary of another version is an error, so rexdiff does not
@@ -183,7 +184,8 @@ func TestInstallCommands(t *testing.T) {
 	stale := &fakeRun{version: "v0.1.0"}
 	u = &Updater{bin: "/b/rexdiff", method: methodBrew, run: stale.run}
 	if err := u.Install(t.Context(), r); err == nil || !strings.Contains(err.Error(), "left rexdiff v0.1.0, not v0.2.0") {
-		t.Errorf("Install that leaves the old version: %v", err)
+		t.Errorf("Install that leaves the old version: %v, want an error",
+			err)
 	}
 }
 
@@ -257,7 +259,7 @@ func TestDownload(t *testing.T) {
 		t.Errorf("target file = %q, want the new binary", b)
 	}
 	if info, _ := os.Lstat(link); info.Mode()&os.ModeSymlink == 0 {
-		t.Error("the link is no longer a link")
+		t.Errorf("after Install: %s is not a symlink, want a symlink", link)
 	}
 	if info, _ := os.Stat(target); info.Mode().Perm() != 0o755 {
 		t.Errorf("mode = %v, want 0755", info.Mode().Perm())
@@ -269,7 +271,8 @@ func TestDownload(t *testing.T) {
 	// A file that does not match its checksum is not installed.
 	file(t, target, "old binary")
 	if err := u.Install(t.Context(), release("/bad")); err == nil || !strings.Contains(err.Error(), "does not match its checksum") {
-		t.Errorf("Install of a tampered archive: %v", err)
+		t.Errorf("Install of a tampered archive: %v, want a checksum error",
+			err)
 	}
 	if b, _ := os.ReadFile(target); string(b) != "old binary" {
 		t.Errorf("target file after a bad download = %q, want the old binary", b)
@@ -280,25 +283,28 @@ func TestDownload(t *testing.T) {
 	stale := &fakeRun{version: "v0.1.9"}
 	u.run = stale.run
 	if err := u.Install(t.Context(), release("")); err == nil || !strings.Contains(err.Error(), "left rexdiff v0.1.9, not v0.2.0") {
-		t.Errorf("Install of a binary of another version: %v", err)
+		t.Errorf("Install of a binary of another version: %v, "+
+			"want a version error", err)
 	}
 	if b, _ := os.ReadFile(target); string(b) != "old binary" {
 		t.Errorf("target file after a failed check = %q, want the old binary", b)
 	}
 	if entries, _ := os.ReadDir(filepath.Dir(target)); len(entries) != 1 {
-		t.Errorf("a failed check left %d files, want only rexdiff", len(entries))
+		t.Errorf("after a failed check: %d files, want only rexdiff",
+			len(entries))
 	}
 	u.run = fake.run
 
 	// A release without the archive of this system is an error.
 	if err := u.Install(t.Context(), Release{Tag: "v0.2.0"}); err == nil || !strings.Contains(err.Error(), "has no "+name) {
-		t.Errorf("Install of a release without assets: %v", err)
+		t.Errorf("Install of a release without assets: %v, want an error",
+			err)
 	}
 }
 
 // TestInstallOutlivesCancel checks that the cancel of the context of the
-// program does not stop a brew that runs, because a stopped brew can leave
-// a broken cask.
+// program does not stop a brew that runs. A stopped brew can leave a broken
+// cask.
 func TestInstallOutlivesCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	var sawCancel bool
@@ -312,7 +318,8 @@ func TestInstallOutlivesCancel(t *testing.T) {
 	}
 	u := &Updater{bin: "/b/rexdiff", method: methodBrew, run: run}
 	if err := u.Install(ctx, Release{Tag: "v0.2.0"}); err != nil || sawCancel {
-		t.Errorf("Install after a cancel: %v; brew saw the cancel: %v", err, sawCancel)
+		t.Errorf("Install after a cancel = %v, brew sees the cancel %v; "+
+			"want nil, false", err, sawCancel)
 	}
 }
 
@@ -321,15 +328,16 @@ func TestInstallOutlivesCancel(t *testing.T) {
 func TestBinaryTooLarge(t *testing.T) {
 	big := strings.Repeat("x", maxBinary+1)
 	if _, err := binaryOf(archive(t, big)); err == nil || !strings.Contains(err.Error(), "larger than") {
-		t.Errorf("binaryOf of a binary over the limit: %v", err)
+		t.Errorf("binaryOf of a binary over the limit: %v, want an error",
+			err)
 	}
 	if b, err := binaryOf(archive(t, "ok")); err != nil || string(b) != "ok" {
-		t.Errorf("binaryOf = %q, %v", b, err)
+		t.Errorf("binaryOf = %q, %v, want \"ok\", nil", b, err)
 	}
 }
 
-// TestVersion checks the version from the release build, and that a test
-// binary, like a build for development, has none.
+// TestVersion checks the version from the release build. A test binary has
+// no version, like a build for development.
 func TestVersion(t *testing.T) {
 	for stamped, want := range map[string]string{"0.2.0": "v0.2.0", "v0.2.0": "v0.2.0", "": ""} {
 		if got := Version(stamped); got != want {
@@ -341,12 +349,13 @@ func TestVersion(t *testing.T) {
 	}
 	t.Setenv("REXDIFF_LATEST_URL", "http://127.0.0.1:1/latest")
 	if u := Detect("/bin/rexdiff", "0.2.0"); u == nil || u.latestURL != "http://127.0.0.1:1/latest" || u.method != methodDownload {
-		t.Errorf("Detect of a release build = %+v", u)
+		t.Errorf("Detect of a release build = %+v, "+
+			"want a download from the test URL", u)
 	}
 }
 
 // TestDetectBrew checks that a Homebrew install uses the brew beside its
-// Caskroom, because Rex starts rexdiff with a PATH without Homebrew.
+// Caskroom. Rex starts rexdiff with a PATH without Homebrew.
 func TestDetectBrew(t *testing.T) {
 	prefix := t.TempDir()
 	cask := file(t, filepath.Join(prefix, "Caskroom", "rexdiff", "0.2.0", "rexdiff"), "")

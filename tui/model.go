@@ -28,7 +28,7 @@ const (
 	tabPR
 )
 
-// scopeCommits compares the commits that the user picked. It is not a
+// scopeCommits compares the commits that the user picks. It is not a
 // value of Config.DefaultScope.
 const scopeCommits Scope = "commits"
 
@@ -47,25 +47,25 @@ const (
 	modeOverlay
 )
 
-// pane is one view that scrolls and takes comments: the rendered lines and
-// the source lines that they show.
+// pane is one view that scrolls and takes comments. It has the rendered
+// lines and the source lines that they show.
 type pane struct {
 	lines  []string
 	rows   []diff.Row // rows[i] is the source line that lines[i] shows
-	diff   *diff.Diff // the render, for mouse hits, or nil for markdown and the PR
-	path   string     // the file of the rows, or "" if the pane takes no comments
+	diff   *diff.Diff // the render for mouse hits, or nil for Markdown or PR
+	path   string     // the file of the rows, or "" for a pane with no comments
 	cur    int        // the row of the cursor
 	top    int        // the first row on the screen
 	anchor int        // the start of the visual selection, or -1
 	xoff   int        // the sideways scroll, in columns
-	note   string     // shown instead of the lines, if there are no lines
+	note   string     // the text that shows if there are no lines
 	// free is true after the wheel moves the view. Then the cursor can
 	// be off the screen until the next key or click.
 	free bool
 }
 
-// set shows lines that show rows. It keeps the cursor, the top, and the
-// selection in the new lines.
+// set shows lines, and rows tells which source lines they show. It keeps
+// the cursor, the top, and the selection in the new lines.
 func (p *pane) set(lines []string, rows []diff.Row) {
 	p.lines, p.rows, p.diff = lines, rows, nil
 	p.cur = min(p.cur, max(len(lines)-1, 0))
@@ -119,8 +119,8 @@ type changed struct {
 	adds, dels int
 }
 
-// turnState is the latest turn of an agent: a snapshot of the working tree
-// when the agent started work.
+// turnState is the latest turn of an agent. It keeps a snapshot of the
+// working tree from the start of the turn.
 type turnState struct {
 	block   string
 	app     string // the name of the agent, for example "pi"
@@ -142,14 +142,14 @@ func (f *findState) active() bool { return len(f.hits) > 0 }
 // dragState is a drag of the left mouse button in the main pane.
 type dragState struct {
 	active bool      // the button is down
-	moved  bool      // the cursor moved off the start row
-	gutter bool      // the drag started on the line numbers
-	start  int       // the row where the drag started
+	moved  bool      // the cursor has left the start row
+	gutter bool      // the drag starts on the line numbers
+	start  int       // the row where the drag starts
 	pref   diff.Side // the side of the line numbers or the code at the start
 }
 
-// draft is the comment that the user writes: a new one, or an edit of the
-// comment with ID editID.
+// draft is the comment that the user writes. It is a new comment, or an
+// edit of the comment with ID editID.
 type draft struct {
 	diff.Comment
 	editID int
@@ -164,9 +164,9 @@ type prState struct {
 
 // agentState is what the program knows about the agent in a block.
 type agentState struct {
-	state  rex.State // "" after the block closed
+	state  rex.State // "" after the block closes
 	cwd    string    // the working directory, or "" if unknown
-	hasCwd bool      // the program asked Rex for cwd
+	hasCwd bool      // the program has asked Rex for cwd
 }
 
 // model is the state of the program. It implements tea.Model.
@@ -197,10 +197,11 @@ type model struct {
 
 	tab   tab
 	scope Scope
-	folds map[string]*openFolds // the folds that the user expanded in the Changes tab, by path
+	// folds has the folds that the user expands in the Changes tab, by path.
+	folds map[string]*openFolds
 	base  string
-	from  string // the commits scope: the oldest commit that the user picked
-	to    string // the commits scope: the newest commit that the user picked
+	from  string // the commits scope: the oldest commit that the user picks
+	to    string // the commits scope: the newest commit that the user picks
 	turn  *turnState
 
 	files      []changed // the Changes tab
@@ -221,7 +222,7 @@ type model struct {
 	listHidden bool
 	focusList  bool // the keys j and k move in the file list
 	listW      int
-	cache      diff.Cache // the syntax colours, so that a sideways scroll is fast
+	cache      diff.Cache // the syntax colours, for a fast sideways scroll
 
 	comments diff.Comments
 	editor   textarea.Model
@@ -236,9 +237,9 @@ type model struct {
 	statusTill time.Time
 
 	agents   map[string]*agentState // by block
-	sends    int                    // the steps of sends that run now
+	sends    int                    // the steps of the sends that run
 	lastSent string                 // the block of the last send
-	beside   string                 // the agent block that the pane opened beside
+	beside   string                 // the agent block beside the pane
 }
 
 // newModel returns the model of the program with the options o and the
@@ -290,7 +291,7 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	return m
 }
 
-// Messages.
+// These are the messages of the program.
 type (
 	tickMsg   struct{}
 	agentsMsg struct {
@@ -383,15 +384,15 @@ func (m *model) trees() (from, to, note string, err error) {
 	return from, to, "", err
 }
 
-// reload reads the changes of the scope again, even if the trees did not
+// reload reads the changes of the scope again, even if the trees do not
 // change.
 func (m *model) reload() {
 	m.shownTrees = "" // no trees are "", so reloadIfChanged reads them
 	m.reloadIfChanged()
 }
 
-// reloadIfChanged reads the changes of the scope again if the trees
-// changed.
+// reloadIfChanged reads the changes of the scope again if the trees differ
+// from the shown trees.
 func (m *model) reloadIfChanged() {
 	from, to, note, err := m.trees()
 	trees := from + ".." + to
@@ -451,7 +452,7 @@ func (m *model) reloadFiles() {
 	m.refreshViewer()
 }
 
-// Update handles a message. After an install, it restarts the program
+// Update handles a message. After an install, Update restarts the program
 // when no work can get lost.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmd := m.handle(msg)
@@ -557,14 +558,15 @@ func (m *model) onGrep(msg grepMsg) {
 	}
 }
 
-// onPR shows the pull request that loadPR read.
+// onPR shows the pull request that loadPR reads.
 func (m *model) onPR(msg prMsg) {
 	m.pr = prState{pr: msg.pr}
 	if msg.err != nil {
 		m.pr.err = msg.err.Error()
 	}
 	m.renderPR()
-	if p := m.prPlace; p != nil && msg.err == nil && msg.pr != nil { // from before a restart
+	// prPlace is from before a restart.
+	if p := m.prPlace; p != nil && msg.err == nil && msg.pr != nil {
 		m.prPlace = nil
 		m.prPane.restore(*p)
 	}
@@ -589,7 +591,7 @@ const (
 	colorTicks   = 3  // a request for the colours of the terminal
 )
 
-// onTick reloads the current tab, if it changed.
+// onTick reloads the current tab if its content changes.
 func (m *model) onTick() tea.Cmd {
 	m.ticks++
 	every := 1
@@ -602,7 +604,7 @@ func (m *model) onTick() tea.Cmd {
 			m.reloadIfChanged()
 		case tabFiles:
 			if m.ticks%filesTicks == 0 {
-				m.reloadFiles() // it renders the file too
+				m.reloadFiles() // reloadFiles renders the file too
 			} else {
 				m.refreshViewer()
 			}

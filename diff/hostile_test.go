@@ -78,7 +78,8 @@ func TestWrapWideText(t *testing.T) {
 		}
 		got := strings.Join(strings.Fields(text.String()), "")
 		if !strings.Contains(got, line) {
-			t.Errorf("split %v: the wrapped lines lose text: %q", o.Split, got)
+			t.Errorf("split %v: the wrapped lines = %q, want all of %q",
+				o.Split, got, line)
 		}
 	}
 }
@@ -146,7 +147,7 @@ func TestBlackTint(t *testing.T) {
 	d := diff.Render("a.txt", "x\ny\nx\n", "y\nx\n", diff.Options{Theme: th})
 	for i, r := range d.Rows {
 		if r.Kind == diff.KindEqual && strings.Contains(d.Lines[i], "48;2;0;0;0mx") {
-			t.Errorf("equal line %d has the background of a deleted line: %q",
+			t.Errorf("equal line %d = %q, want no background of a deleted line",
 				r.New, d.Lines[i])
 		}
 	}

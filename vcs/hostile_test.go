@@ -41,11 +41,11 @@ func TestRevIsNotAnOption(t *testing.T) {
 			t.Errorf("Parent(%q) = %s, want an error", rev, id)
 		}
 		if _, err := r.Diff(ctx, rev, head(t, r)); err == nil {
-			t.Errorf("Diff(%q, HEAD): no error", rev)
+			t.Errorf("Diff(%q, HEAD): no error, want an error", rev)
 		}
 	}
 	if b, _ := os.ReadFile(out); string(b) != "keep\n" {
-		t.Errorf("git changed the file of --output: %q", b)
+		t.Errorf("the file of --output = %q, want %q", b, "keep\n")
 	}
 }
 
@@ -63,7 +63,8 @@ func TestHostilePaths(t *testing.T) {
 	for i, p := range paths {
 		s := fmt.Sprintf("id%02d\n", i)
 		if err := os.WriteFile(filepath.Join(dir, p), []byte(s), 0o644); err != nil {
-			t.Logf("skip %q: %v", p, err) // for example, macOS needs UTF-8 names
+			// For example, macOS needs UTF-8 names.
+			t.Logf("skip %q: %v", p, err)
 			continue
 		}
 		want[p] = s
@@ -77,7 +78,7 @@ func TestHostilePaths(t *testing.T) {
 		got[f.Path] = f.New
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Diff:\n%q\nwant:\n%q", got, want)
+		t.Errorf("Diff got:\n%q\nwant:\n%q", got, want)
 	}
 
 	es, err := r.Files(ctx)
@@ -90,7 +91,7 @@ func TestHostilePaths(t *testing.T) {
 	}
 	for p, s := range want {
 		if !files[p] {
-			t.Errorf("Files does not have %q", p)
+			t.Errorf("Files has no %q, want it", p)
 		}
 		if got, err := r.ReadFile(p); got != s || err != nil {
 			t.Errorf("ReadFile(%q) = %q, %v; want %q", p, got, err, s)
@@ -149,7 +150,7 @@ func TestDiffFileKinds(t *testing.T) {
 		{Path: "type", Status: vcs.StatusModified, Old: "a file\n", New: "a.txt"},
 	}
 	if got := changes(t, r, head(t, r), snapshot(t, r)); !reflect.DeepEqual(got, want) {
-		t.Errorf("Diff:\n%+v\nwant:\n%+v", got, want)
+		t.Errorf("Diff got:\n%+v\nwant:\n%+v", got, want)
 	}
 }
 
@@ -247,7 +248,8 @@ func TestGitWorktree(t *testing.T) {
 	}
 	st, _ := exec.Command("git", "-C", wt, "status", "--porcelain").Output()
 	if string(st) != " M a.txt\nA  staged.txt\n" {
-		t.Errorf("the index of the worktree changed:\n%s", st)
+		t.Errorf("git status in the worktree got:\n%s\nwant:\n%s",
+			st, " M a.txt\nA  staged.txt\n")
 	}
 }
 
@@ -258,7 +260,8 @@ func TestDetachedHead(t *testing.T) {
 	git(t, dir, "checkout", "-q", "--detach", "main")
 	got := names(changes(t, r, head(t, r), snapshot(t, r)))
 	if got != "A.gitignore Ma.txt Anew.txt" {
-		t.Errorf("Diff(Head, Snapshot) = %s", got)
+		t.Errorf("Diff(Head, Snapshot) = %s, want A.gitignore Ma.txt Anew.txt",
+			got)
 	}
 	if cs, err := r.Commits(ctx, 5); err != nil || len(cs) != 1 || cs[0].Subject != "init" {
 		t.Errorf("Commits = %+v, %v; want init", cs, err)
@@ -290,7 +293,7 @@ func TestGrepIsLiteral(t *testing.T) {
 	for _, tt := range tests {
 		ms, err := r.Grep(ctx, tt.q, 10)
 		if err != nil {
-			t.Errorf("Grep(%q): %v", tt.q, err)
+			t.Errorf("Grep(%q) = %v, want no error", tt.q, err)
 			continue
 		}
 		var got []string

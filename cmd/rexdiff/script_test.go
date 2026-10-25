@@ -19,8 +19,8 @@ func TestMain(m *testing.M) {
 	})
 }
 
-// fakeRex writes its arguments to $WORK/rex.log, so that a script can see
-// what rexdiff asked Rex to do. It fails if $REX_FAIL is set.
+// fakeRex writes its arguments to $WORK/rex.log. A script reads the log to
+// see what rexdiff asks Rex to do. fakeRex fails if $REX_FAIL is set.
 func fakeRex() {
 	log := filepath.Join(os.Getenv("WORK"), "rex.log")
 	f, err := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)

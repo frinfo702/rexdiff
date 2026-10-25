@@ -57,8 +57,8 @@ func foldsOf(p *pane) []int {
 	return out
 }
 
-// TestExpandFold checks that → shows the lines of a fold and scrolls
-// sideways on a line of code.
+// TestExpandFold checks that the right arrow key shows the lines of a fold.
+// On a line of code, the key scrolls sideways.
 func TestExpandFold(t *testing.T) {
 	m := newFoldModel(t)
 	p := &m.changes
@@ -66,13 +66,14 @@ func TestExpandFold(t *testing.T) {
 		t.Fatalf("folds = %v, want [6 13 7]", got)
 	}
 	if !shows(m, "⋯ 13 unmodified lines", "→ show the lines") {
-		t.Fatalf("the screen does not show the fold and its key:\n%s", view(m))
+		t.Fatalf("view got:\n%s\nwant the fold and its key", view(m))
 	}
 	m = press(t, m, "]") // the first change, line 10
 	if shows(m, "→ show the lines") {
-		t.Error("the footer tells about → on a line of code")
+		t.Error("on a line of code: the footer shows the → hint, want no hint")
 	}
-	m = press(t, m, "]", "k", "k", "k", "k") // the second change, then up to its header
+	// Go to the second change, then up to its header.
+	m = press(t, m, "]", "k", "k", "k", "k")
 	if r := m.changes.rows[m.changes.cur]; r.Fold.Lines != 13 || !shows(m, "→ show the lines") {
 		t.Fatalf("the cursor is on %+v, want the middle fold", r)
 	}
@@ -86,10 +87,10 @@ func TestExpandFold(t *testing.T) {
 	}
 	for n := 14; n <= 26; n++ {
 		if p.rowOf(diff.SideNew, n) < 0 {
-			t.Errorf("line %d does not show", n)
+			t.Errorf("line %d is hidden, want it shown", n)
 		}
 	}
-	// On a line of code, → scrolls.
+	// On a line of code, the right arrow key scrolls.
 	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
 	if m.changes.xoff == 0 || !slices.Equal(foldsOf(&m.changes), []int{6, 7}) {
 		t.Errorf("→ on code: xoff %d, folds %v; want a scroll and no change",
@@ -123,7 +124,7 @@ func TestExpandKeepsPlaces(t *testing.T) {
 	m = step(t, m, tea.KeyPressMsg{Text: "line 3", Code: 'l'})
 	m = press(t, m, "enter")
 	if !m.find.active() {
-		t.Fatal("the find has no hits")
+		t.Fatal("the find has no hits, want hits")
 	}
 	m.changes.cur = 0 // the fold at the top
 	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
@@ -135,7 +136,7 @@ func TestExpandKeepsPlaces(t *testing.T) {
 		t.Errorf("the selection starts on %+v, want line 29", r)
 	}
 	if len(m.find.hits) == 0 {
-		t.Error("the find has no hits after the fold shows")
+		t.Error("the find has no hits after the fold shows, want hits")
 	}
 	for _, h := range m.find.hits {
 		if l := strings.ToLower(ansi.Strip(p.lines[h])); !strings.Contains(l, "line 3") {
@@ -224,7 +225,7 @@ func TestClickFold(t *testing.T) {
 			t.Errorf("keys %v: after the click, folds = %v, want [6 13]", keys, got)
 		}
 		if m.changes.rowOf(diff.SideNew, 40) < 0 {
-			t.Errorf("keys %v: line 40 does not show", keys)
+			t.Errorf("keys %v: line 40 is hidden, want it shown", keys)
 		}
 	}
 }
@@ -244,10 +245,10 @@ func TestFoldKeepsComment(t *testing.T) {
 	}
 	m = press(t, m, "b", "u") // the branch scope, then back
 	if m.folds != nil {
-		t.Errorf("a new scope keeps the expanded folds %v", m.folds)
+		t.Errorf("after a new scope, expanded folds = %v, want nil", m.folds)
 	}
 	if m.changes.rowOf(diff.SideNew, 20) < 0 || !shows(m, "why") {
-		t.Errorf("the commented line 20 does not show:\n%s", view(m))
+		t.Errorf("view got:\n%s\nwant the commented line 20", view(m))
 	}
 	if got := foldsOf(&m.changes); !slices.Equal(got, []int{6, 7}) {
 		t.Errorf("folds = %v, want [6 7]", got)

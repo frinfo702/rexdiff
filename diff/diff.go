@@ -23,7 +23,7 @@ const (
 	KindEqual              // a line that is the same on the two sides
 	KindInsert             // a line that only the new side has
 	KindDelete             // a line that only the old side has
-	KindChange             // in the split layout, a deleted line beside an inserted line
+	KindChange             // a deleted line beside an inserted line (split)
 )
 
 // Side identifies one version of a file.
@@ -37,7 +37,7 @@ const (
 // Row tells which source lines one rendered line shows. Old and New are
 // line numbers that start at 1. A value of 0 means that the row has no line
 // on that side. Continued is true if the line continues the source lines of
-// the line above, because [Options.Wrap] wrapped them.
+// the line above, because [Options.Wrap] wraps them.
 //
 // A long run of equal lines folds into the hunk header below it. For a
 // hunk header, Fold is that run.
@@ -48,9 +48,9 @@ type Row struct {
 	Fold      Fold
 }
 
-// Fold is a run of equal lines that hides. Old and New are the line
-// numbers of its first line. Lines is the number of lines. It is 0 if no
-// line hides.
+// Fold is a run of equal lines that the diff hides. Old and New are the
+// line numbers of its first line. Lines is the number of lines. Lines is 0
+// if the diff hides no line.
 type Fold struct {
 	Old, New, Lines int
 }
@@ -83,7 +83,8 @@ type Options struct {
 	Signs bool
 	// Theme sets the colours.
 	Theme Theme
-	// Cache makes a new render of the same lines fast. Nil turns it off.
+	// Cache makes a new render of the same lines fast. If Cache is nil, the
+	// render keeps nothing.
 	Cache *Cache
 }
 

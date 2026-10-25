@@ -137,7 +137,7 @@ func (r *Repo) Files(ctx context.Context) ([]Entry, error) {
 	return es, nil
 }
 
-// Match is a line that [Repo.Grep] found.
+// Match is a line that [Repo.Grep] finds.
 type Match struct {
 	Path string
 	Line int    // the line number, from 1
@@ -148,7 +148,8 @@ type Match struct {
 // that contain the text q. The search ignores case and binary files.
 func (r *Repo) Grep(ctx context.Context, q string, limit int) ([]Match, error) {
 	if strings.Contains(q, "\n") {
-		// git reads each line as a pattern, but no line has a newline.
+		// git reads each line of q as a pattern. A match is one line, so no
+		// match can have the newline of q.
 		return nil, nil
 	}
 	// --no-column overrides the git setting grep.column. That setting adds a
@@ -163,7 +164,7 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int) ([]Match, error) {
 		return nil, err
 	}
 	// Each match is "path NUL line NUL text LF". Only the text ends with a
-	// newline, because the path can have one.
+	// newline, because the path can have a newline.
 	var ms []Match
 	for len(ms) < limit && out != "" {
 		var path, num, text string
