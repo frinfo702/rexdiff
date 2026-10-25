@@ -20,8 +20,9 @@ func watched(t *testing.T) (m model, dir string, pause time.Duration) {
 	start := time.Now()
 	m = step(t, m, tickMsg{})
 	// The pause of the watcher is 20 times its check, which is a part of
-	// the tick.
-	return m, dir, 21 * time.Since(start)
+	// the tick. A check after a change can take longer than the first
+	// check, thus wait twice as long.
+	return m, dir, 42 * time.Since(start)
 }
 
 // TestTickRunsNoGitWhenIdle checks that a tick runs no git process while
