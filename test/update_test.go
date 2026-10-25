@@ -3,6 +3,7 @@ package test
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -59,12 +61,15 @@ func release(t *testing.T, tag, bin string) string {
 // TestUpdate checks that U installs the latest release and starts it in
 // the same terminal, with the comments and the place of the user.
 func TestUpdate(t *testing.T) {
+	// The two builds run at once.
+	var next string
+	var nextErr error
+	var wg sync.WaitGroup
+	nextDir := t.TempDir()
+	wg.Go(func() { next, nextErr = build(nextDir, "0.2.0") })
 	bin, err := build(t.TempDir(), "0.1.0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	next, err := build(t.TempDir(), "0.2.0")
-	if err != nil {
+	wg.Wait()
+	if err = cmp.Or(err, nextErr); err != nil {
 		t.Fatal(err)
 	}
 	latest := release(t, "v0.2.0", next)

@@ -43,15 +43,18 @@ func TestCommentList(t *testing.T) {
 // on a range of lines.
 func TestCommentBox(t *testing.T) {
 	tm := start(t, newRepo(t), opts{})
+	// The drag comes first: the flash of an added comment would hide the
+	// badge of the draft for flashTime.
+	tm.drag(" 1  1 ", " 3  3 ")
+	tm.waitFor("✎ a.go:1-3")
+	tm.keys("esc")
+	tm.waitGone("✎ a.go:1-3")
 	tm.keys("]", "c", "a", "ctrl+j", "b", "enter")
 	tm.waitFor("💬 a", "b")
 	tm.keys("j", "c", "x", "esc")
 	tm.waitGone("💬 x")
 	tm.keys("v", "j", "c", "r", "enter", "l")
 	tm.waitFor("a.go:4-5  r")
-	tm.keys("esc")
-	tm.drag(" 1  1 ", " 3  3 ")
-	tm.waitFor("✎ a.go:1-3")
 }
 
 // TestSend checks that s pastes the review into the agent and gives it
