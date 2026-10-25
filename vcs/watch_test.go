@@ -257,6 +257,9 @@ func TestWatcherUntrackedDir(t *testing.T) {
 		{"only ignored files", "g/ignored.txt", "g/c.txt", true},
 		{"empty below empty", "d/e/", "d/e/c.txt", true},
 		{"ignored below untracked", "u/build/", "u/build/c.txt", false},
+		// A path that starts with ":" is pathspec magic to git.
+		{"colon in the name", ":(x/e/", ":(x/e/c.txt", true},
+		{"colon and exclude", ":!x/e/", ":!x/e/c.txt", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

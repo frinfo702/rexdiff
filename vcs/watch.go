@@ -207,12 +207,14 @@ func (r *Repo) untrackedDirs(ctx context.Context) ([]string, error) {
 	return dirs, nil
 }
 
-// notIgnored returns the paths that git does not ignore.
+// notIgnored returns the paths that git does not ignore. Each path gets
+// the prefix "./", because git reads a path that starts with ":" as
+// pathspec magic. git writes the paths with the prefix.
 func (r *Repo) notIgnored(ctx context.Context, paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
-	in := strings.NewReader(strings.Join(paths, "\x00"))
+	in := strings.NewReader("./" + strings.Join(paths, "\x00./"))
 	out, err := r.runInput(ctx, nil, in, "check-ignore", "-z", "--stdin")
 	if exitedOne(err) {
 		return paths, nil // git ignores none
@@ -222,7 +224,7 @@ func (r *Repo) notIgnored(ctx context.Context, paths []string) ([]string, error)
 	}
 	ignored := strings.Split(out, "\x00")
 	return slices.DeleteFunc(paths, func(p string) bool {
-		return slices.Contains(ignored, p)
+		return slices.Contains(ignored, "./"+p)
 	}), nil
 }
 
