@@ -63,7 +63,8 @@ func TestOverlayClickAboveRows(t *testing.T) {
 	}
 	_, _, y, _ := m.overlayBox()
 	cur := m.overlay.cur
-	m = step(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: m.w / 2, Y: y + 1}) // the title
+	title := tea.MouseClickMsg{Button: tea.MouseLeft, X: m.w / 2, Y: y + 1}
+	m = step(t, m, title)
 	if m.overlay == nil {
 		t.Fatal("a click on the title closes the overlay")
 	}
