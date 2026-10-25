@@ -148,6 +148,7 @@ func TestFileTree(t *testing.T) {
 	if got := rowNames(m); !slices.Contains(got, "a.go") {
 		t.Errorf("after a click on src: rows %q, want its files", got)
 	}
+	m.click = clickChain{} // not a double click
 	m = click(t, m, m.listX()+3, y)
 	if got := rowNames(m); slices.Contains(got, "a.go") {
 		t.Errorf("after a second click on src: rows %q, want it collapsed", got)

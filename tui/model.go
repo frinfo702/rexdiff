@@ -267,6 +267,7 @@ type model struct {
 	grepCancel context.CancelFunc // stops the code search that runs
 	find       findState
 	drag       dragState
+	click      clickChain
 	help       help.Model
 
 	status     string
@@ -569,6 +570,10 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.MouseClickMsg: // these can move the cursor
 		m.changes.free, m.viewer.free, m.prPane.free = false, false, false
+	}
+	switch msg.(type) {
+	case tea.KeyPressMsg, tea.WindowSizeMsg: // these end a chain of clicks
+		m.click = clickChain{}
 	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

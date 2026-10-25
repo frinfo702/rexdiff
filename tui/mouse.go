@@ -1,11 +1,15 @@
 package tui
 
 // The mouse works as in herdr-reviewr. Click or drag on the line numbers to
-// comment on a line or a range. Drag on the code to copy it. Click a file
-// or a tab to open it.
+// comment on a line or a range. Drag on the code to copy it. Double-click
+// to copy a word, and triple-click to copy a line. Click a file or a tab to
+// open it. Double-click a file to copy its path.
 
 import (
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -40,7 +44,13 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	}
 	if m.inList(mouse.X, mouse.Y) {
 		if y := mouse.Y - m.listY(); y >= 1 {
-			m.clickRow(m.listStart(m.listRows()) + y - 1)
+			r := m.listStart(m.listRows()) + y - 1
+			if m.countClick(mouse) >= 2 {
+				if path := m.rowPath(r); path != "" {
+					return m.copyChars(path)
+				}
+			}
+			m.clickRow(r)
 		}
 		return nil
 	}
@@ -54,13 +64,19 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	p := m.cur()
+	x := mouse.X - m.mainX() - gutter
+	if n := m.countClick(mouse); n >= 2 {
+		if text := m.clickText(rowAt[y], x, n); text != "" {
+			return m.copyChars(text)
+		}
+	}
 	m.focusList = false
 	p.cur, p.anchor = p.head(rowAt[y]), -1
 	if m.onFold() {
 		m.expandFold(p.rows[p.cur].Fold)
 		return nil
 	}
-	side, onNumber := p.side(mouse.X - m.mainX() - gutter)
+	side, onNumber := p.side(x)
 	m.drag = dragState{
 		active: true,
 		start:  p.cur,
@@ -104,6 +120,106 @@ func (m *model) onDrag(mouse tea.Mouse) {
 	}
 	p.cur = p.head(p.cur) // the drag moves by source lines
 	m.drag.moved = p.cur != m.drag.start
+	if m.drag.moved {
+		m.click = clickChain{} // a drag is not a click
+	}
+}
+
+// clickWindow is the longest time between the clicks of a double or a
+// triple click, as in herdr-reviewr.
+const clickWindow = 400 * time.Millisecond
+
+// clickChain is the last press of the left button on text.
+type clickChain struct {
+	at   time.Time
+	x, y int
+	n    int // the number of presses in the chain, up to 3
+}
+
+// countClick adds a press to the chain and returns the count. A press on
+// another cell, or after [clickWindow], starts a new chain.
+func (m *model) countClick(mouse tea.Mouse) int {
+	c, now := m.click, time.Now()
+	n := 1
+	if c.n > 0 && c.x == mouse.X && c.y == mouse.Y && now.Sub(c.at) < clickWindow {
+		n = min(c.n+1, 3)
+	}
+	m.click = clickChain{at: now, x: mouse.X, y: mouse.Y, n: n}
+	return n
+}
+
+// rowPath returns the path of row r of the file list, or "".
+func (m *model) rowPath(r int) string {
+	t := m.list()
+	if t == nil || r < 0 || r >= len(t.rows) {
+		return ""
+	}
+	if row := t.rows[r]; row.File >= 0 {
+		return t.entries[row.File].Path
+	}
+	return t.rows[r].Dir
+}
+
+// clickText returns the text that a click of count n copies at column x
+// of line i of the main pane. A double click gives the word under x, and
+// a triple click gives the source line. It returns "" off a word or on an
+// empty line.
+func (m *model) clickText(i, x, n int) string {
+	line, char, ok := m.textAt(i, x)
+	if !ok || n >= 3 {
+		return line
+	}
+	runes := []rune(line)
+	isWord := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' }
+	if char >= len(runes) || !isWord(runes[char]) {
+		return ""
+	}
+	s, e := char, char+1
+	for s > 0 && isWord(runes[s-1]) {
+		s--
+	}
+	for e < len(runes) && isWord(runes[e]) {
+		e++
+	}
+	return string(runes[s:e])
+}
+
+// textAt returns the source line that column x of line i of the main pane
+// shows, and the index of the rune under x. A pane with no source shows
+// its text on the screen.
+func (m *model) textAt(i, x int) (line string, char int, ok bool) {
+	p := m.cur()
+	if i < 0 || i >= len(p.lines) {
+		return "", 0, false
+	}
+	if p.diff == nil {
+		line = strings.TrimRight(ansi.Strip(p.lines[i]), " ")
+		c := 0
+		for _, r := range line {
+			if c += ansi.StringWidth(string(r)); x < c {
+				return line, char, true
+			}
+			char++
+		}
+		return line, char, true
+	}
+	s, n, char, ok := p.diff.Cell(i, x)
+	if !ok {
+		return "", 0, false
+	}
+	if lines := diff.Lines(m.contentFor(p.path, s)); n <= len(lines) {
+		return lines[n-1], char, true
+	}
+	return "", 0, false
+}
+
+// copyChars copies text and then shows the count of its characters, as
+// herdr-reviewr does.
+func (m *model) copyChars(text string) tea.Cmd {
+	if text == "" {
+		return nil
+	}
+	return m.copyText(text, "copied "+plural(utf8.RuneCountInString(text), "char"), nil)
 }
 
 // onRelease ends a drag. A drag on the line numbers opens the comment
@@ -124,8 +240,7 @@ func (m *model) onRelease() tea.Cmd {
 		return m.startComment(d.pref)
 	case d.moved: // a drag on the code copies the range
 		lo, hi := p.span(d.start, p.cur)
-		out := m.sourceLines(lo, hi, d.pref)
-		return m.copyText(strings.Join(out, "\n"), "copied "+plural(len(out), "line"), nil)
+		return m.copyChars(strings.Join(m.sourceLines(lo, hi, d.pref), "\n"))
 	}
 	return nil
 }

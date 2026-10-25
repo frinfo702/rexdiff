@@ -39,6 +39,9 @@ them, run `rexdiff uninstall`.
   command palette. Press it again to close rexdiff.
 - Comment: move to a line and press `c`. For a range, press `v` or drag over
   the line numbers.
+- Copy: drag over the code to copy its lines. Double-click copies a word,
+  triple-click a line. Double-click a file in the file list to copy its path.
+  rexdiff shows "copied 12 chars".
 - Send: press `s`. rexdiff pastes the comments into the agent's input. It does
   not press Enter.
 - Update: when rexdiff shows a new version at the bottom, press `U`. Your

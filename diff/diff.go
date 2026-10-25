@@ -110,6 +110,12 @@ type Diff struct {
 	oldNum   int // width of the old line-number column
 	newNum   int // width of the new line-number column
 	newNumAt int // column where the new line numbers start
+
+	// The fields below are for [Diff.Cell].
+	src    [2]string // the content of each side
+	codeAt [2]int    // column where the code of each side starts
+	offset int       // the sideways scroll, or 0 with wrap
+	wrap   bool
 }
 
 // Render compares the old and the new content of the file at path. The path
@@ -139,7 +145,10 @@ func Render(path, old, new string, o Options) *Diff {
 	dv = o.Theme.apply(dv)
 	out, rows, g := dv.Render()
 
-	d := &Diff{split: o.Split}
+	d := &Diff{split: o.Split, src: [2]string{old, new}, wrap: o.Wrap}
+	if !o.Wrap {
+		d.offset = o.Offset
+	}
 	for _, r := range rows {
 		d.Rows = append(d.Rows, Row{
 			Kind:      kindOf(r.Kind),
@@ -153,6 +162,7 @@ func Render(path, old, new string, o Options) *Diff {
 		d.Lines = strings.Split(out, "\n")
 	}
 	d.oldNum, d.newNum, d.newNumAt = g.BeforeNum, g.AfterNum, g.AfterNumStart
+	d.codeAt = [2]int{g.BeforeCode, g.AfterCode}
 	return d
 }
 

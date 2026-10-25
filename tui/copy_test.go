@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -95,7 +96,7 @@ func TestCopyFromList(t *testing.T) {
 }
 
 // TestDragCopies checks that a drag on the code copies the lines through
-// the clipboard tool.
+// the clipboard tool, and shows the count of the characters.
 func TestDragCopies(t *testing.T) {
 	out := fakeClipboard(t, false)
 	m, _ := newTestModel(t)
@@ -105,9 +106,9 @@ func TestDragCopies(t *testing.T) {
 	m = step(t, m, tea.MouseMotionMsg{Button: tea.MouseLeft, X: x, Y: y0 + 1})
 	m = stepRun(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y0 + 1})
 	got, err := os.ReadFile(out)
-	if err != nil || !strings.HasPrefix(m.status, "copied 2 lines") ||
-		strings.Count(string(got), "\n") != 1 {
-		t.Errorf("after a drag: status %q, clipboard %q (%v); want 2 lines",
-			m.status, got, err)
+	want := "copied " + plural(utf8.RuneCount(got), "char")
+	if err != nil || m.status != want || strings.Count(string(got), "\n") != 1 {
+		t.Errorf("after a drag: status %q, clipboard %q (%v); want %q and 2 lines",
+			m.status, got, err, want)
 	}
 }

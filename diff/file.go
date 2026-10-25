@@ -21,6 +21,7 @@ const lineNumberColor = "8"
 func RenderFile(path, src string, o Options) *Diff {
 	// Chroma makes a lone CR a line break. RenderFile shows a lone CR as a
 	// symbol, so that the lines are the same as [Lines] gives.
+	raw := src
 	src = strings.NewReplacer(
 		"\r\n", "\n",
 		"\r", "\u240d",
@@ -31,7 +32,11 @@ func RenderFile(path, src string, o Options) *Diff {
 	digits := len(strconv.Itoa(len(hl)))
 	numWidth := digits + 2 // a space on each side of the number
 	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(lineNumberColor))
-	d := &Diff{newNum: numWidth}
+	d := &Diff{newNum: numWidth, src: [2]string{raw, raw}, wrap: o.Wrap}
+	d.codeAt = [2]int{numWidth + 1, numWidth + 1}
+	if !o.Wrap {
+		d.offset = o.Offset
+	}
 	code := o.Width - numWidth - 1 // the width after the number and a space
 	blank := strings.Repeat(" ", numWidth+1)
 	for i, l := range hl {
