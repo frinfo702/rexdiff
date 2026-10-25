@@ -312,8 +312,14 @@ type (
 		pr  *vcs.PullRequest
 		err error
 	}
-	eventMsg      rex.Event
-	editorDoneMsg struct{ err error }
+	eventMsg rex.Event
+	// editorDoneMsg tells that the editor of path stops. A window editor
+	// sends it only if it fails.
+	editorDoneMsg struct {
+		path   string
+		err    error
+		window bool
+	}
 )
 
 // requestColors are the commands that ask the terminal for its colours.
@@ -516,10 +522,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case installedMsg:
 		m.onInstalled(msg)
 	case editorDoneMsg:
-		if msg.err != nil {
-			m.flash("editor: " + msg.err.Error())
-		}
-		m.rerender()
+		m.onEditorDone(msg)
 	case tea.MouseClickMsg:
 		return m.onClick(msg.Mouse())
 	case tea.MouseMotionMsg:

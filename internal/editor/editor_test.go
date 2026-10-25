@@ -45,8 +45,30 @@ func TestCommands(t *testing.T) {
 		} else {
 			got = editor.Program(tt.editor, abs, 12)
 		}
-		if want := (editor.Command{Script: tt.script, Window: tt.window}); got != want {
-			t.Errorf("editor %q%q = %+v, want %+v", tt.template, tt.editor, got, want)
+		if got.Script != tt.script || got.Window != tt.window {
+			t.Errorf("editor %q%q = %+v, want script %q, window %v",
+				tt.template, tt.editor, got, tt.script, tt.window)
+		}
+	}
+}
+
+// TestCommandProgram checks the program of a command. An empty word in
+// quotes names no program.
+func TestCommandProgram(t *testing.T) {
+	tests := []struct{ command, want string }{
+		{"nvim", "nvim"},
+		{"  /usr/bin/vim -u NONE", "/usr/bin/vim"},
+		{`"/Apps/VS Code.app/bin/code" -w`, "/Apps/VS Code.app/bin/code"},
+		{`'/my apps/nvim'`, "/my apps/nvim"},
+		{`""`, ""},
+		{"'' vim", ""},
+	}
+	for _, tt := range tests {
+		if got := editor.Program(tt.command, "/a", 1).Program; got != tt.want {
+			t.Errorf("Program(%q).Program = %q, want %q", tt.command, got, tt.want)
+		}
+		if got := editor.Template(tt.command, "/a", 1).Program; got != tt.want {
+			t.Errorf("Template(%q).Program = %q, want %q", tt.command, got, tt.want)
 		}
 	}
 }

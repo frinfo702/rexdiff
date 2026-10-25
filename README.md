@@ -94,7 +94,7 @@ Other settings:
 See [herdr-reviewr] for the values and the action names.
 
 `e` opens the file at the cursor line in `editor`, else in `$VISUAL`, `$EDITOR`, or git's
-`core.editor`. A terminal editor, such as `nvim`, `micro`, or `fresh`, opens in a new pane
+`core.editor`. If none is set, rexdiff shows "no editor" and opens nothing. A terminal editor, such as `nvim`, `micro`, or `fresh`, opens in a new pane
 beside rexdiff. A window editor, such as `code`, opens in its window.
 rexdiff opens an editor that it does not know in a pane. To open such an editor in a window,
 start it with `open`, for example `editor = "open -a Zed {file}"`.

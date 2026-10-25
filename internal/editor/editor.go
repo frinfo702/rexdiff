@@ -13,8 +13,9 @@ import (
 
 // Command is a command that opens a file at a line.
 type Command struct {
-	Script string // the command, for sh -c
-	Window bool   // the editor opens a window and does not draw in the terminal
+	Script  string // the command, for sh -c
+	Program string // the first word of the command, or "" if it has none
+	Window  bool   // the editor opens a window and does not draw in the terminal
 }
 
 // Template returns the command that opens file at line with template,
@@ -27,7 +28,7 @@ func Template(template, file string, line int) Command {
 	if !strings.Contains(template, "{file}") {
 		script += " " + ShellQuote(file)
 	}
-	return Command{script, dialectOf(template).window}
+	return Command{script, program(template), dialectOf(template).window}
 }
 
 // Program returns the command that opens file at line with command, the
@@ -50,7 +51,7 @@ func Program(command, file string, line int) Command {
 	case argFlag:
 		args = "--line " + n + " " + f
 	}
-	return Command{command + " " + args, d.window}
+	return Command{command + " " + args, program(command), d.window}
 }
 
 // ShellQuote quotes s as one word for sh.

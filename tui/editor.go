@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"cmp"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,10 +18,10 @@ import (
 )
 
 // openEditor opens the file at path, at line. It uses the editor of the
-// settings, else $VISUAL, $EDITOR, core.editor, or vi. A terminal editor
-// opens in a new block beside rexdiff in Rex. Outside Rex, a terminal
-// editor takes the screen until the editor stops. A window editor starts in
-// the background.
+// settings, else $VISUAL, $EDITOR, or core.editor. A terminal editor opens
+// in a new block beside rexdiff in Rex. Outside Rex, a terminal editor
+// takes the screen until the editor stops. A window editor starts in the
+// background. The messages are the same as in herdr-reviewr.
 func (m *model) openEditor(path string, line int) tea.Cmd {
 	abs := filepath.Join(m.repo.Root(), path)
 	var ed editor.Command
@@ -30,38 +31,59 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 		e := cmp.Or(
 			strings.TrimSpace(os.Getenv("VISUAL")),
 			strings.TrimSpace(os.Getenv("EDITOR")),
-			m.repo.Editor(m.ctx),
-			"vi",
+			strings.TrimSpace(m.repo.Editor(m.ctx)),
 		)
+		if e == "" {
+			m.flash("no editor: set `editor` in rexdiff.lua, $EDITOR, or git's core.editor")
+			return nil
+		}
 		ed = editor.Program(e, abs, line)
+	}
+	if ed.Program == "" {
+		m.flash("the editor command names no program")
+		return nil
+	}
+	// The editor makes the file again when it saves, so do not open a
+	// file that is not on disk.
+	if fi, err := os.Stat(abs); err != nil || !fi.Mode().IsRegular() {
+		m.flash(path + " is gone")
+		return nil
+	}
+	if _, err := exec.LookPath(ed.Program); err != nil {
+		m.flash("editor not found: " + ed.Program)
+		return nil
 	}
 	m.log.Debug("editor", "command", ed.Script, "window", ed.Window)
 	if ed.Window {
-		return runWindowEditor(ed.Script)
+		return m.runWindowEditor(path, ed.Script)
 	}
 	if m.rex != nil {
 		err := m.rex.Split(m.ctx, m.repo.Root(), "sh", "-c", ed.Script)
 		if err == nil {
+			m.flash("opened " + path)
 			return nil
 		}
 		m.log.Debug("editor split", "err", err)
 	}
-	done := func(err error) tea.Msg { return editorDoneMsg{err} }
-	return tea.ExecProcess(exec.Command("sh", "-c", ed.Script), done)
+	return tea.ExecProcess(exec.Command("sh", "-c", ed.Script), func(err error) tea.Msg {
+		return editorDoneMsg{path: path, err: err}
+	})
 }
 
-// runWindowEditor starts a window editor. The editor gets its own session
-// and no terminal, so that it cannot read the keys of rexdiff. If the
-// editor fails, the returned command gives the error and the last line of
-// the stderr of the editor.
-func runWindowEditor(script string) tea.Cmd {
+// runWindowEditor starts a window editor for path. The editor gets its
+// own session and no terminal, so that it cannot read the keys of rexdiff.
+// If the editor fails, the returned command gives the error and the last
+// line of the stderr of the editor.
+func (m *model) runWindowEditor(path, script string) tea.Cmd {
 	cmd := exec.Command("sh", "-c", script)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
-		return func() tea.Msg { return editorDoneMsg{err} }
+		m.flash("editor failed: " + err.Error())
+		return nil
 	}
+	m.flash("opened " + path)
 	return func() tea.Msg {
 		err := cmd.Wait()
 		if err == nil {
@@ -71,8 +93,23 @@ func runWindowEditor(script string) tea.Cmd {
 		if last := lines[len(lines)-1]; last != "" {
 			err = fmt.Errorf("%w: %s", err, last)
 		}
-		return editorDoneMsg{err}
+		return editorDoneMsg{window: true, err: err}
 	}
+}
+
+// onEditorDone shows how the editor stops. A terminal editor that stops
+// with an error code can still save the file.
+func (m *model) onEditorDone(msg editorDoneMsg) {
+	exit, isExit := errors.AsType[*exec.ExitError](msg.err)
+	switch {
+	case msg.err == nil:
+		m.flash("edited " + msg.path)
+	case !msg.window && isExit:
+		m.flash("editor exited with " + exit.Error())
+	default:
+		m.flash("editor failed: " + msg.err.Error())
+	}
+	m.rerender()
 }
 
 // openURL opens url with the URL opener of the settings, else with
