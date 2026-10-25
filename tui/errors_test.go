@@ -79,13 +79,14 @@ func TestSearchError(t *testing.T) {
 // TestTurnSnapshotErrorLogs checks that a failed snapshot at the start of
 // a turn goes to the log.
 func TestTurnSnapshotErrorLogs(t *testing.T) {
-	m, _ := newTestModel(t)
+	m, dir := newTestModel(t)
 	var buf bytes.Buffer
 	m.log = slog.New(slog.NewTextHandler(&buf, nil))
+	m = step(t, m, sample("block:agent", "pi", dir))
 	noGit(t)
 	m = step(t, m, status("block:agent", "pi", rex.StateWorking))
-	if m.turn != nil {
-		t.Errorf("turn = %+v, want none", m.turn)
+	if m.turn != nil || m.pending != nil {
+		t.Errorf("turn = %+v, pending %+v, want none", m.turn, m.pending)
 	}
 	if !strings.Contains(buf.String(), "turn snapshot failed") {
 		t.Errorf("log got:\n%s\nwant \"turn snapshot failed\"", buf.String())

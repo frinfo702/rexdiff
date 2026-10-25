@@ -128,6 +128,13 @@ func status(block, app string, state rex.State) eventMsg {
 	return eventMsg{Block: block, Status: rex.Status{App: app, State: state}}
 }
 
+// sample returns the first list of the agents: the agent app in block,
+// in dir, at rest.
+func sample(block, app, dir string) agentsMsg {
+	a := rex.Agent{Block: block, Cwd: dir, Status: rex.Status{App: app, State: rex.StateIdle}}
+	return agentsMsg{agents: []rex.Agent{a}}
+}
+
 // paths returns the paths of the files in the Changes tab.
 func paths(m model) []string {
 	var ps []string
@@ -169,9 +176,10 @@ func TestScopes(t *testing.T) {
 
 	// The turn scope shows only the changes of the turn of an agent.
 	m = press(t, m, "t")
-	if !strings.Contains(m.changes.note, "no agent turn") {
+	if m.changes.note != "waiting for the first turn" {
 		t.Errorf("turn scope before a turn: note %q, want a note that no turn ran", m.changes.note)
 	}
+	m = step(t, m, sample("block:agent", "pi", dir))
 	m = step(t, m, status("block:agent", "pi", rex.StateWorking))
 	write(t, dir, "c.go", "package a\n")
 	m = step(t, m, status("block:agent", "pi", rex.StateIdle))
@@ -811,8 +819,14 @@ func TestHostileText(t *testing.T) {
 	raw("the status after a send", m)
 	m = step(t, m, sentMsg{err: errors.New("Rex" + osc)})
 	raw("the status after an error", m)
+	m = step(t, m, sample("b", "pi"+osc, dir))
 	m = step(t, m, status("b", "pi"+osc, rex.StateWorking))
+	write(t, dir, "turn.go", "x\n")
+	m = step(t, m, status("b", "pi"+osc, rex.StateIdle))
 	m = press(t, m, "t")
+	if m.turn == nil {
+		t.Fatal("no turn after the agent writes a file")
+	}
 	raw("the turn in the header", m)
 }
 

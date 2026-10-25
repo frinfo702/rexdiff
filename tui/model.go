@@ -16,6 +16,7 @@ import (
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/internal/termtext"
+	"github.com/rednafi/rexdiff/internal/turn"
 	"github.com/rednafi/rexdiff/rex"
 	"github.com/rednafi/rexdiff/update"
 	"github.com/rednafi/rexdiff/vcs"
@@ -121,11 +122,11 @@ type changed struct {
 	adds, dels int
 }
 
-// turnState is the latest turn of an agent. It keeps a snapshot of the
-// working tree from the start of the turn.
+// turnState is a turn of the agents in the repository. It keeps a
+// snapshot of the working tree from the start of the turn.
 type turnState struct {
-	block   string
-	app     string // the name of the agent, for example "pi"
+	block   string // the first agent that works in the turn
+	app     string // the name of that agent, for example "pi"
 	tree    string // the snapshot at the start of the turn
 	running bool
 	at      time.Time // the start of the turn
@@ -158,9 +159,10 @@ type prState struct {
 
 // agentState is what the program knows about the agent in a block.
 type agentState struct {
-	state  rex.State // "" after the block closes
-	cwd    string    // the working directory, or "" if unknown
-	hasCwd bool      // the program has asked Rex for cwd
+	app    string    // the name of the agent, for example "pi"
+	state  rex.State // "" if the program sends no status
+	cwd    string    // the working directory, or "" if Rex does not know it
+	hasCwd bool      // the program has the answer of Rex for cwd
 }
 
 // model is the state of the program. It implements tea.Model.
@@ -211,7 +213,19 @@ type model struct {
 	baseFlag bool
 	from     string // the commits scope: the oldest commit that the user picks
 	to       string // the commits scope: the newest commit that the user picks
-	turn     *turnState
+
+	// turn is the last turn that changes a file, or nil. The last-turn
+	// scope compares with it. pending is a turn that starts but changes
+	// no file yet, or nil.
+	turn, pending *turnState
+	tracker       turn.Tracker
+	// sampled is true after the first list of the agents. An edge before
+	// it can be wrong, so the tracker gets no states before it.
+	sampled bool
+	// agentsHere tells if an agent works in the repository, or is nil if
+	// the program does not know.
+	agentsHere *bool
+	memberDirs map[string]bool // the working directories of the members
 
 	files      []changed // the Changes tab
 	changeSel  int
@@ -407,7 +421,7 @@ func (m *model) trees() (from, to, note string, err error) {
 		return from, to, "", err
 	case ScopeLastTurn:
 		if m.turn == nil {
-			return "", "", "no agent turn seen yet: the next turn's changes will show here", nil
+			return "", "", m.turnWaitMessage(), nil
 		}
 		from = m.turn.tree
 	case ScopeBranch:
@@ -708,6 +722,9 @@ func (m *model) changed() vcs.Change {
 func (m *model) onTick() tea.Cmd {
 	m.ticks++
 	ch := m.changed()
+	if ch.Files && m.pending != nil {
+		m.checkTurn()
+	}
 	m.reloadOwed = m.reloadOwed || ch.Files || ch.Refs
 	m.filesOwed = m.filesOwed || ch.Files
 	now := time.Now()

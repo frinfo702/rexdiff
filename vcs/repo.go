@@ -508,6 +508,25 @@ func (r *Repo) Contains(dir string) bool {
 	return dir == root || strings.HasPrefix(dir, root+string(filepath.Separator))
 }
 
+// Owns reports whether dir is in the working tree of r, and not in another
+// repository or worktree below the root. As in herdr-reviewr, only an
+// absolute dir can be in it. Owns runs git only for a dir below the root.
+// An error tells that git cannot run, so the answer is not known.
+func (r *Repo) Owns(ctx context.Context, dir string) (bool, error) {
+	if !filepath.IsAbs(dir) || !r.Contains(dir) {
+		return false, nil
+	}
+	out, err := command(ctx, r.root, nil, nil, "git", "-C", dir, "rev-parse", "--show-toplevel")
+	if _, ok := errors.AsType[*exec.ExitError](err); ok {
+		return false, nil // dir is in no working tree
+	}
+	if err != nil {
+		return false, err
+	}
+	top := strings.TrimSuffix(out, "\n")
+	return top != "" && evalSymlinks(top) == evalSymlinks(r.root), nil
+}
+
 // evalSymlinks returns p with its symbolic links resolved, or p if that
 // fails.
 func evalSymlinks(p string) string {

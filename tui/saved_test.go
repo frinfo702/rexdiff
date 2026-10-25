@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/rednafi/rexdiff/rex"
@@ -58,17 +59,23 @@ func TestBaseFlagWins(t *testing.T) {
 // TestSavedTurn checks that a restart keeps the tree at the start of the
 // last turn.
 func TestSavedTurn(t *testing.T) {
-	m, _ := newTestModel(t)
+	m, dir := newTestModel(t)
+	m = step(t, m, sample("block:agent", "pi", dir))
 	m = step(t, m, status("block:agent", "pi", rex.StateWorking))
+	if m.repo.SavedTurn(t.Context()) != "" {
+		t.Error("a turn with no change saves its tree")
+	}
+	write(t, dir, "c.go", "package a\n")
+	m = step(t, m, status("block:agent", "pi", rex.StateIdle))
 	if m.turn == nil {
-		t.Fatal("no turn after the agent starts to work")
+		t.Fatal("no turn after the agent changes a file")
 	}
 	m2 := reopen(t, m, "")
 	if m2.turn == nil || m2.turn.tree != m.turn.tree {
 		t.Fatalf("after a restart, turn = %+v, want the tree %s", m2.turn, m.turn.tree)
 	}
 	m2.setScope(ScopeLastTurn)
-	if !shows(m2, "turn from an earlier run") {
-		t.Errorf("view got:\n%s\nwant the saved turn", view(m2))
+	if got := paths(m2); !slices.Equal(got, []string{"c.go"}) {
+		t.Errorf("the saved turn shows %v, want [c.go]", got)
 	}
 }

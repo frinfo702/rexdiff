@@ -132,7 +132,9 @@ func (m *model) headerScopes(l *headerLine) {
 	case scopeCommits:
 		l.add(m.commitsLabel(), headerCommits)
 	case ScopeLastTurn:
-		l.add(m.turnLabel(), headerNone)
+		if label := m.turnLabel(); label != "" {
+			l.add(label, headerNone)
+		}
 	}
 }
 
@@ -151,14 +153,12 @@ func (m *model) commitsLabel() string {
 // shortSHA returns the first 7 characters of a commit hash.
 func shortSHA(s string) string { return s[:min(len(s), 7)] }
 
-// turnLabel returns the text about the last turn of an agent, for the
-// header.
+// turnLabel returns the text about the last turn, for the header. As in
+// herdr-reviewr, a saved turn from an earlier run has no label. With no
+// turn, the Changes tab tells why, so the header shows nothing.
 func (m *model) turnLabel() string {
-	if m.turn == nil {
-		return dimStyle.Render("waiting for a turn")
-	}
-	if m.turn.at.IsZero() {
-		return dimStyle.Render("turn from an earlier run") // a saved turn
+	if m.turn == nil || m.turn.at.IsZero() {
+		return ""
 	}
 	ago := time.Since(m.turn.at).Round(time.Second)
 	app := termtext.Quote(m.turn.app) // the app name comes from the agent

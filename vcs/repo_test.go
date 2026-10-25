@@ -364,6 +364,43 @@ func TestWorktree(t *testing.T) {
 	}
 }
 
+// TestOwns checks which directories are in the working tree, as in
+// herdr-reviewr: a subdirectory is, a nested repository and a relative or
+// outside path are not, and without git the answer is an error.
+func TestOwns(t *testing.T) {
+	r, dir := newRepo(t)
+	nested := filepath.Join(dir, "build", "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(t, nested, "init", "-q")
+	tests := []struct {
+		dir  string
+		want bool
+	}{
+		{dir, true},
+		{filepath.Join(dir, "build"), true},
+		{nested, false},
+		{"build", false}, // relative
+		{"", false},
+		{filepath.Dir(dir), false},
+		{filepath.Join(dir, "gone"), false},
+	}
+	for _, tt := range tests {
+		if got, err := r.Owns(t.Context(), tt.dir); got != tt.want || err != nil {
+			t.Errorf("Owns(%q) = %v, %v, want %v, nil", tt.dir, got, err, tt.want)
+		}
+	}
+	t.Setenv("PATH", t.TempDir())
+	if _, err := r.Owns(t.Context(), dir); err == nil {
+		t.Error("Owns without git gives no error")
+	}
+	// No git runs for a path outside the root.
+	if got, err := r.Owns(t.Context(), filepath.Dir(dir)); got || err != nil {
+		t.Errorf("Owns(outside) without git = %v, %v, want false, nil", got, err)
+	}
+}
+
 // TestRefs checks Branches, DefaultBase, and Resolve.
 func TestRefs(t *testing.T) {
 	r, _ := newRepo(t)
