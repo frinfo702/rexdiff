@@ -141,6 +141,7 @@ func (m *model) startComment(pref diff.Side) tea.Cmd {
 	)
 	c.Anchor = m.anchor()
 	m.draft = &draft{Comment: c, listRow: -1}
+	m.sizeEditor()
 	m.editor.SetValue("")
 	m.mode = modeComment
 	// Put the cursor on the last line of the range, so that the box opens
@@ -153,10 +154,18 @@ func (m *model) startComment(pref diff.Side) tea.Cmd {
 // the comment list opens at listRow, if listRow is 0 or more.
 func (m *model) editComment(c *diff.Comment, listRow int) tea.Cmd {
 	m.draft = &draft{Comment: *c, editID: c.ID, listRow: listRow}
+	m.sizeEditor()
 	m.editor.SetValue(c.Text)
 	m.mode = modeComment
 	cursorToLine(m.cur(), c.Side, c.End)
 	return m.editor.Focus()
+}
+
+// showsLine reports whether the current pane shows the last line of c,
+// with the anchor of c.
+func (m *model) showsLine(c *diff.Comment) bool {
+	p := m.cur()
+	return m.anchor() == c.Anchor && p.path == c.Path && p.rowOf(c.Side, c.End) >= 0
 }
 
 // updateComment handles a key while the comment box is open.
@@ -189,6 +198,7 @@ func (m *model) updateComment(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
+	m.ensureVisible()
 	return cmd
 }
 

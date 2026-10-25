@@ -600,7 +600,6 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
-		m.editor.SetWidth(max(m.mainWidth()-8, 20))
 		m.rerender()
 	case tea.FocusMsg:
 		m.focused = true
@@ -644,7 +643,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case tea.MouseMotionMsg:
 		m.onDrag(msg.Mouse())
 	case tea.MouseReleaseMsg:
-		return m.onRelease()
+		cmd = m.onRelease() // the comment box can open below the screen
 	case tea.MouseWheelMsg:
 		m.onWheel(msg.Mouse())
 	case tea.PasteMsg:

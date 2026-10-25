@@ -615,6 +615,10 @@ func (m *model) updateCommentList(msg tea.KeyPressMsg) tea.Cmd {
 		m.closeOverlay()
 		m.jumpToComment(c)
 		m.focusList = false
+		if !m.showsLine(c) {
+			m.flash("the line of the comment does not show")
+			return nil
+		}
 		m.ensureVisible()
 		return m.editComment(c, row)
 	case key.Matches(msg, k.Delete) && it != nil:

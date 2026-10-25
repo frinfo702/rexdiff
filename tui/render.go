@@ -90,6 +90,7 @@ func (m *model) codeWidth() int { return m.mainWidth() - gutter }
 // their source lines. A cursor on a header stays above the first line
 // below the header.
 func (m *model) rerender() {
+	m.sizeEditor()
 	p := m.cur()
 	next := p.cur
 	for next < len(p.rows) && m.target(next, diff.SideNew) == nil {
@@ -116,6 +117,9 @@ func (m *model) rerender() {
 		}
 	}
 }
+
+// sizeEditor fits the comment box to the width of the main pane.
+func (m *model) sizeEditor() { m.editor.SetWidth(max(m.mainWidth()-8, 20)) }
 
 // splitMinWidth is the narrowest code width that shows the split layout.
 // It is the same as in herdr-reviewr: two halves of 60 columns, each with
