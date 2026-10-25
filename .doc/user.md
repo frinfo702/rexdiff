@@ -173,7 +173,8 @@ fetch. Switching branches clears it until the new pull request loads.
 
 A turn starts when an agent in this repository starts to work and ends when all of them
 rest. `t` shows the changes since the start of the last turn that changed a file. Before
-the first turn it shows "waiting for the first turn", or "no agent works here".
+the first turn it shows "waiting for the first turn", or "no agent works here". If a file
+changes just as a turn starts, rexdiff cannot tell what the turn changed, and says so.
 
 ### Comments
 

@@ -90,6 +90,20 @@ func TestLastTurn(t *testing.T) {
 	tm.waitFor("Changes (1)", "turn.go", "pi")
 }
 
+// TestTurnRaced checks that a turn whose start comes right after a write
+// is not known, because its start snapshot can have the write. The scope
+// tells so, as herdr-reviewr does.
+func TestTurnRaced(t *testing.T) {
+	repo := newRepo(t)
+	rex := newRex(t, repo)
+	tm := start(t, repo, opts{rex: rex})
+	tm.keys("t")
+	tm.waitFor("waiting for the first turn", "send → 1 agent")
+	testgit.WriteFile(t, repo, "turn.go", "package a\n")
+	rex.setState(t, "working")
+	tm.waitFor("the last turn started before rexdiff could snapshot it")
+}
+
 // TestPR checks that the PR tab shows the pull request of the branch from
 // gh, with its checks and comments, and that o opens it.
 func TestPR(t *testing.T) {

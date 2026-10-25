@@ -1,6 +1,6 @@
 These files are the output of a real rex (0.0.1792787366-g623b2d). The
 fake rex of the tests prints them. Each {{NAME}} is a value that a test
-fills in: a block ID, a label, a path, an app, or a state.
+fills in: a block ID, a label, a path, an app, a state, or a time.
 
 - block.json: one block of `rex api call -s S session.list_blocks {}`
 - session.json: `rex session inspect S --json`, without the layout

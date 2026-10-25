@@ -30,10 +30,11 @@ type Watcher struct {
 	next           time.Time        // no check before this time
 
 	started bool
-	listed  bool     // files and dirs are from the last list
-	files   []string // the absolute paths that git lists
-	dirs    []string // the root and each directory above a listed path
-	shown   []string // the absolute paths of the ignored dirs that show
+	since   time.Time // the start of the watch
+	listed  bool      // files and dirs are from the last list
+	files   []string  // the absolute paths that git lists
+	dirs    []string  // the root and each directory above a listed path
+	shown   []string  // the absolute paths of the ignored dirs that show
 
 	// The sums of the last check.
 	list, refs, index, dirSum, fileSum, shownSum uint64
@@ -57,7 +58,14 @@ func (r *Repo) Watch(ctx context.Context) (*Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Watcher{r: r, gitDir: gitDir, common: common, now: time.Now}, nil
+	w := &Watcher{r: r, gitDir: gitDir, common: common, now: time.Now, since: time.Now()}
+	// The list is ready at once, for LastWrite.
+	w.index = w.sumIndex()
+	if w.list, err = w.relist(ctx); err != nil {
+		return nil, err
+	}
+	w.dirSum = sumPaths(w.dirs)
+	return w, nil
 }
 
 // Show sets the paths that show and that git does not list: the ignored
@@ -127,6 +135,24 @@ func (w *Watcher) Changed(ctx context.Context) (Change, error) {
 		w.shownSum, ch.Files = shown, true
 	}
 	return ch, nil
+}
+
+// LastWrite returns the newest modification time of the listed files and
+// of their directories, as they are now. A new or a removed file changes
+// the time of its directory. LastWrite returns the zero time if no such
+// time is after the start of the watch. It does not change
+// what the next call to Changed reports.
+func (w *Watcher) LastWrite() time.Time {
+	var last time.Time
+	for _, p := range slices.Concat(w.files, w.dirs) {
+		if fi, err := os.Lstat(p); err == nil && fi.ModTime().After(last) {
+			last = fi.ModTime()
+		}
+	}
+	if !last.After(w.since) {
+		return time.Time{}
+	}
+	return last
 }
 
 // relist reads the list of the files and their directories again. It

@@ -101,6 +101,24 @@ func TestWatcher(t *testing.T) {
 	}
 }
 
+// TestWatcherLastWrite checks that LastWrite sees a new file after the
+// start of the watch, and that the change still shows in Changed.
+func TestWatcherLastWrite(t *testing.T) {
+	t.Parallel()
+	r, dir := newRepo(t)
+	w := newWatcher(t, r)
+	if got := w.LastWrite(); !got.IsZero() {
+		t.Errorf("LastWrite before a write = %v, want zero", got)
+	}
+	testgit.WriteFile(t, dir, "c.txt", "c\n")
+	if w.LastWrite().IsZero() {
+		t.Error("LastWrite after a write is zero")
+	}
+	if got := changed(t, w); !got.Files {
+		t.Errorf("Changed after LastWrite: %+v, want Files", got)
+	}
+}
+
 // TestWatcherNewDirectory checks that an edit in a new untracked directory
 // is a change.
 func TestWatcherNewDirectory(t *testing.T) {

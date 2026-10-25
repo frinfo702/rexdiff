@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -64,7 +65,7 @@ func (m *model) onEvent(e rex.Event) tea.Cmd {
 		app, state := e.Status.App, e.Status.State
 		m.log.Debug("status", "block", e.Block, "app", app, "state", state)
 		a := m.agent(e.Block)
-		a.app, a.state = app, state
+		a.app, a.state, a.since = app, state, cmp.Or(e.Status.At, time.Now())
 	}
 	m.observeTurn()
 	return nil
@@ -74,6 +75,7 @@ func (m *model) onEvent(e rex.Event) tea.Cmd {
 type member struct {
 	block, app string
 	state      rex.State
+	since      time.Time // when Rex got the state
 }
 
 // members returns the agents that work in the repository, in the order
@@ -104,7 +106,7 @@ func (m *model) members() ([]member, bool) {
 			return nil, false
 		}
 		if in {
-			out = append(out, member{block, a.app, a.state})
+			out = append(out, member{block, a.app, a.state, a.since})
 		}
 	}
 	return out, true
@@ -128,11 +130,6 @@ func (m *model) owns(dir string) (bool, error) {
 
 // observeTurn gives the state of the repository to the tracker, and
 // follows the start and the end of a turn.
-//
-// herdr-reviewr also drops a turn whose first write can be in its start
-// snapshot. That needs the time of each write, and the watcher has no
-// such times. Thus a write just before the snapshot does not show in the
-// turn.
 func (m *model) observeTurn() {
 	if !m.sampled {
 		return
@@ -164,14 +161,23 @@ func (m *model) observeTurn() {
 // turnWaitMessage tells why the last-turn scope has no turn. The messages
 // come from herdr-reviewr.
 func (m *model) turnWaitMessage() string {
+	if m.raced {
+		return "the last turn started before rexdiff could snapshot it"
+	}
 	if m.agentsHere != nil && !*m.agentsHere {
 		return "no agent works here"
 	}
 	return "waiting for the first turn"
 }
 
+// raceBefore is how long before Rex gets the working state the agent can
+// already write, as in herdr-reviewr.
+const raceBefore = time.Second
+
 // startTurn takes a snapshot of the working tree at the start of a turn
-// of the members ms. The turn stays pending until it changes a file.
+// of the members ms. The turn stays pending until it changes a file. As in
+// herdr-reviewr, a write from raceBefore the start to the snapshot can be
+// in the snapshot. Then the turn is not known, and the scope says so.
 func (m *model) startTurn(ms []member) {
 	m.pending = nil
 	tree, err := m.repo.Snapshot(m.ctx)
@@ -179,7 +185,16 @@ func (m *model) startTurn(ms []member) {
 		m.log.Warn("turn snapshot failed", "err", err)
 		return
 	}
+	snapped := time.Now()
 	i := slices.IndexFunc(ms, func(a member) bool { return a.state == rex.StateWorking })
+	if m.watch != nil {
+		w := m.watch.LastWrite()
+		if !w.Before(ms[i].since.Add(-raceBefore)) && !w.After(snapped) {
+			m.log.Debug("turn raced", "block", ms[i].block, "write", w)
+			m.dropTurn()
+			return
+		}
+	}
 	m.log.Debug("turn start", "block", ms[i].block, "tree", tree)
 	m.pending = &turnState{
 		block:   ms[i].block,
@@ -203,9 +218,21 @@ func (m *model) checkTurn() {
 	}
 }
 
+// dropTurn forgets the last turn, because a new turn starts that is not
+// known.
+func (m *model) dropTurn() {
+	m.turn, m.raced = nil, true
+	if err := m.repo.SaveTurn(m.ctx, ""); err != nil {
+		m.log.Warn("turn baseline ref delete failed", "err", err)
+	}
+	if m.scope == ScopeLastTurn {
+		m.reload()
+	}
+}
+
 // promote makes the pending turn the last turn, and saves its tree.
 func (m *model) promote() {
-	m.turn, m.pending = m.pending, nil
+	m.turn, m.pending, m.raced = m.pending, nil, false
 	if err := m.repo.SaveTurn(m.ctx, m.turn.tree); err != nil {
 		m.log.Warn("turn baseline ref write failed", "err", err)
 	}
@@ -236,6 +263,7 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 		*m.agent(a.Block) = agentState{
 			app:    a.Status.App,
 			state:  a.Status.State,
+			since:  cmp.Or(a.Status.At, time.Now()),
 			cwd:    a.Cwd,
 			hasCwd: true,
 		}

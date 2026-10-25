@@ -1,1 +1,1 @@
-{"records": [{"state": "{{STATE}}", "app": "{{APP}}", "effective_app": "{{APP}}", "updated_at": "2026-10-25T21:11:03.076057+01:00", "owner": {"pid": 61344, "name": "bash"}}]}
+{"records": [{"state": "{{STATE}}", "app": "{{APP}}", "effective_app": "{{APP}}", "updated_at": "{{AT}}", "owner": {"pid": 61344, "name": "bash"}}]}

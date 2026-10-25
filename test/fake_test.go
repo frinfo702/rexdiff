@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rednafi/rexdiff/internal/testgit"
 )
@@ -111,7 +112,8 @@ func (r *fakeRex) addBlock(t *testing.T, block, label string) {
 func (r *fakeRex) addAgent(t *testing.T, block, label, app string) {
 	t.Helper()
 	r.addBlock(t, block, label)
-	r.write(t, "status."+block, recorded(t, "status.json", "{{STATE}}", "idle", "{{APP}}", app))
+	r.write(t, "status."+block, recorded(t, "status.json", "{{STATE}}", "idle", "{{APP}}", app,
+		"{{AT}}", time.Now().Format(time.RFC3339Nano)))
 }
 
 // write writes content to the file name of the fake.
@@ -136,7 +138,10 @@ func (r *fakeRex) calls(t *testing.T) string {
 // change.
 func (r *fakeRex) setState(t *testing.T, state string) {
 	t.Helper()
-	values := []string{"{{ID}}", "block:pi", "{{STATE}}", state, "{{APP}}", "pi"}
+	values := []string{
+		"{{ID}}", "block:pi", "{{STATE}}", state, "{{APP}}", "pi",
+		"{{AT}}", time.Now().Format(time.RFC3339Nano),
+	}
 	r.write(t, "status.block:pi", recorded(t, "status.json", values...))
 	f, err := os.OpenFile(filepath.Join(r.dir, "events"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {

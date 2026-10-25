@@ -126,6 +126,7 @@ func (c *Client) request(ctx context.Context, method string, args, reply any) er
 type Status struct {
 	App   string // the name of the program, for example "pi" or "claude-code"
 	State State
+	At    time.Time // when Rex got the status, or zero if Rex does not tell
 }
 
 // State tells what a program does. The zero State means that the program
@@ -150,13 +151,16 @@ type statusEntry struct {
 	App   string `json:"app"`
 	// EffectiveApp is the name that Rex shows. It can differ from App.
 	EffectiveApp string `json:"effective_app"`
+	UpdatedAt    string `json:"updated_at"` // RFC 3339
 }
 
 // status returns the entry as a Status, with the name that Rex shows.
 func (e statusEntry) status() Status {
+	at, _ := time.Parse(time.RFC3339Nano, e.UpdatedAt) // zero if bad
 	return Status{
 		App:   cmp.Or(e.EffectiveApp, e.App),
 		State: e.State,
+		At:    at,
 	}
 }
 

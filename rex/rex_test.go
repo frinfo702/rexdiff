@@ -162,13 +162,14 @@ func blockEvent(block, name, payload string) string {
 }
 
 // TestWatch checks that Watch reports only the changes of the status of
-// the program, and closed blocks. The fake rex stops after the events, so
+// the program, with the time of Rex, and closed blocks. The fake rex stops after the events, so
 // Watch reports a reconnect and then the events again.
 func TestWatch(t *testing.T) {
 	c, dir := fakeRex(t)
 	events := strings.Join([]string{
 		blockEvent("block:pi", "program_status_changed", `{"id":"",`+
-			`"record":{"state":"working","kind":"","app":"x","effective_app":"pi"},`+
+			`"record":{"state":"working","kind":"","app":"x","effective_app":"pi",`+
+			`"updated_at":"2026-10-25T21:11:03.5Z"},`+
 			`"reason":"report"}`),
 		blockEvent("block:pi", "program_status_changed",
 			`{"id":"sub","record":{"state":"idle"}}`),
@@ -186,8 +187,9 @@ func TestWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	at := time.Date(2026, 10, 25, 21, 11, 3, 5e8, time.UTC)
 	once := []rex.Event{
-		{Block: "block:pi", Status: rex.Status{App: "pi", State: rex.StateWorking}},
+		{Block: "block:pi", Status: rex.Status{App: "pi", State: rex.StateWorking, At: at}},
 		{Block: "block:pi"},
 		{Block: "block:pi", Closed: true},
 	}

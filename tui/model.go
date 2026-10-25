@@ -165,6 +165,7 @@ type prState struct {
 type agentState struct {
 	app    string    // the name of the agent, for example "pi"
 	state  rex.State // "" if the program sends no status
+	since  time.Time // when Rex got the state
 	cwd    string    // the working directory, or "" if Rex does not know it
 	hasCwd bool      // the program has the answer of Rex for cwd
 }
@@ -226,7 +227,10 @@ type model struct {
 	// scope compares with it. pending is a turn that starts but changes
 	// no file yet, or nil.
 	turn, pending *turnState
-	tracker       turn.Tracker
+	// raced is true if the last turn starts too close to a write. Then
+	// its start snapshot can have the write, and the scope shows no turn.
+	raced   bool
+	tracker turn.Tracker
 	// sampled is true after the first list of the agents. An edge before
 	// it can be wrong, so the tracker gets no states before it.
 	sampled bool
