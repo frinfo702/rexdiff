@@ -886,8 +886,8 @@ func (m *model) reloadDue() {
 		m.reloadAt = time.Now().Add(budgetFactor * time.Since(now))
 	case m.tab == tabFiles && m.filesOwed:
 		m.reloadFiles() // reloadFiles renders the file too
-	case m.tab == tabFiles:
-		m.refreshViewer()
+	case m.tab == tabFiles && m.watch == nil:
+		m.refreshViewer() // without a watcher, each tick reads the file
 	}
 }
 

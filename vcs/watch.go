@@ -59,14 +59,15 @@ func (r *Repo) Watch(ctx context.Context) (*Watcher, error) {
 	return &Watcher{r: r, gitDir: gitDir, common: common, now: time.Now}, nil
 }
 
-// Show sets the ignored directories that the user expands. dirs are
-// relative to the root. Git does not list the paths in an ignored
-// directory, thus Changed also reports a file that a shown directory gets
-// or loses. A new set reports no change.
-func (w *Watcher) Show(dirs []string) {
-	abs := make([]string, len(dirs))
-	for i, d := range dirs {
-		abs[i] = filepath.Join(w.r.root, filepath.FromSlash(d))
+// Show sets the ignored paths that show: the directories that the user
+// expands and the open file. paths are relative to the root. Git does not
+// list ignored paths, thus Changed also reports an edit of a shown file,
+// and a file that a shown directory gets or loses. A new set reports no
+// change.
+func (w *Watcher) Show(paths []string) {
+	abs := make([]string, len(paths))
+	for i, p := range paths {
+		abs[i] = filepath.Join(w.r.root, filepath.FromSlash(p))
 	}
 	if !slices.Equal(abs, w.shown) {
 		w.shown, w.shownSum = abs, sumPaths(abs)

@@ -190,19 +190,25 @@ func (m *model) withIgnored(es []vcs.Entry) []vcs.Entry {
 	return es
 }
 
-// shownIgnored returns the ignored directories that the user expands in
-// the Files tab, when that tab shows. The watcher reports their changes.
+// shownIgnored returns the ignored paths that the Files tab shows, when
+// that tab shows. They are the directories that the user expands and the
+// open file. The watcher reports their changes, as in herdr-reviewr.
 func (m *model) shownIgnored() []string {
 	if m.tab != tabFiles {
 		return nil
 	}
-	var dirs []string
+	var paths []string
 	for _, e := range m.allFiles {
 		if dir, ok := m.openIgnored(e); ok {
-			dirs = append(dirs, dir)
+			paths = append(paths, dir)
 		}
 	}
-	return dirs
+	if m.allSel < len(m.allFiles) {
+		if e := m.allFiles[m.allSel]; e.Ignored && !strings.HasSuffix(e.Path, "/") {
+			paths = append(paths, e.Path)
+		}
+	}
+	return paths
 }
 
 // openIgnored returns the path of e without the last "/", and reports
