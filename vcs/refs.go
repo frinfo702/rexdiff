@@ -2,6 +2,7 @@ package vcs
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -189,4 +190,74 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int) ([]Match, error) {
 		ms = append(ms, Match{Path: path, Line: n, Text: strings.TrimSpace(text)})
 	}
 	return ms, nil
+}
+
+// The refs that keep the choices of rexdiff. git keeps a ref under
+// refs/worktree/ for each worktree.
+const (
+	baseRef = "refs/worktree/rexdiff/base-pick"
+	turnRef = "refs/worktree/rexdiff/turn-base"
+)
+
+// SavedBase returns the base that [Repo.SaveBase] keeps for this worktree,
+// or "" if there is none.
+func (r *Repo) SavedBase(ctx context.Context) string {
+	out, err := r.run(ctx, nil, "cat-file", "blob", baseRef)
+	name := strings.TrimSpace(out)
+	if err != nil || !refShaped(name) {
+		return ""
+	}
+	return name
+}
+
+// refShaped reports whether s is one line of printable text that is not a
+// git option, as herdr-reviewr checks a saved base.
+func refShaped(s string) bool {
+	return s != "" && !strings.HasPrefix(s, "-") &&
+		!strings.ContainsFunc(s, func(c rune) bool { return c <= ' ' || c == 0x7f })
+}
+
+// SaveBase keeps name as the base of this worktree. For the default branch
+// ([Repo.DefaultBase]), it deletes the saved base.
+func (r *Repo) SaveBase(ctx context.Context, name string) error {
+	if name == r.DefaultBase(ctx) {
+		return r.deleteRef(ctx, baseRef)
+	}
+	if !refShaped(name) {
+		return fmt.Errorf("bad base %q", name)
+	}
+	blob, err := r.runInput(ctx, nil, strings.NewReader(name),
+		"hash-object", "-w", "--stdin")
+	if err != nil {
+		return err
+	}
+	_, err = r.run(ctx, nil, "update-ref", baseRef, strings.TrimSpace(blob))
+	return err
+}
+
+// SavedTurn returns the tree that [Repo.SaveTurn] keeps for this worktree,
+// or "" if there is none.
+func (r *Repo) SavedTurn(ctx context.Context) string {
+	tree, err := r.Resolve(ctx, turnRef)
+	if err != nil {
+		return ""
+	}
+	return tree
+}
+
+// SaveTurn keeps tree as the tree at the start of the last turn in this
+// worktree. The ref keeps the tree from git gc. An empty tree deletes the
+// saved tree.
+func (r *Repo) SaveTurn(ctx context.Context, tree string) error {
+	if tree == "" {
+		return r.deleteRef(ctx, turnRef)
+	}
+	_, err := r.run(ctx, nil, "update-ref", turnRef, tree)
+	return err
+}
+
+// deleteRef deletes ref. A missing ref is no error.
+func (r *Repo) deleteRef(ctx context.Context, ref string) error {
+	_, err := r.run(ctx, nil, "update-ref", "-d", ref)
+	return err
 }

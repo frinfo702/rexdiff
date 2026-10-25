@@ -157,6 +157,9 @@ func (m *model) turnLabel() string {
 	if m.turn == nil {
 		return dimStyle.Render("waiting for a turn")
 	}
+	if m.turn.at.IsZero() {
+		return dimStyle.Render("turn from an earlier run") // a saved turn
+	}
 	ago := time.Since(m.turn.at).Round(time.Second)
 	app := termtext.Quote(m.turn.app) // the app name comes from the agent
 	if m.turn.running {

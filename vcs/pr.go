@@ -150,7 +150,7 @@ func (r *Repo) decode(
 	name string,
 	args ...string,
 ) error {
-	out, err := command(ctx, r.root, env, name, args...)
+	out, err := command(ctx, r.root, env, nil, name, args...)
 	if err != nil {
 		return err
 	}

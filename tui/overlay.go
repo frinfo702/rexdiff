@@ -232,8 +232,12 @@ func (m *model) openAgentPicker(agents []rex.Agent) {
 }
 
 // openBasePicker lets the user pick the base of the branch scope. The
-// current base has a tag.
+// current base has a tag. As in herdr-reviewr, it does nothing if the base
+// comes from the flag.
 func (m *model) openBasePicker() {
+	if m.baseFlag {
+		return
+	}
 	ov := newOverlay(overlayBase, "base branch for the branch scope (or type any ref)")
 	branches, err := m.repo.Branches(m.ctx)
 	if err != nil {
@@ -558,6 +562,10 @@ func (m *model) chooseOverlay() tea.Cmd {
 		m.closeOverlay()
 		if !ok {
 			m.flash("no such ref: " + ref)
+			return nil
+		}
+		if err := m.repo.SaveBase(m.ctx, ref); err != nil {
+			m.flash(err.Error())
 			return nil
 		}
 		m.base = ref

@@ -1,0 +1,106 @@
+package vcs_test
+
+import (
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/rednafi/rexdiff/vcs"
+)
+
+// TestSavedBase checks that SaveBase keeps a base, and that the default
+// branch deletes it.
+func TestSavedBase(t *testing.T) {
+	r, dir := newRepo(t)
+	ctx := t.Context()
+	if got := r.SavedBase(ctx); got != "" {
+		t.Errorf("SavedBase before a save = %q, want \"\"", got)
+	}
+	if err := r.SaveBase(ctx, "feat"); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.SavedBase(ctx); got != "feat" {
+		t.Errorf("SavedBase = %q, want feat", got)
+	}
+	if err := r.SaveBase(ctx, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.SavedBase(ctx); got != "" {
+		t.Errorf("SavedBase after a save of the default = %q, want \"\"", got)
+	}
+	// A value that is not a base is not read.
+	for _, bad := range []string{"-x", "a b", "a\x7f"} {
+		if err := r.SaveBase(ctx, bad); err == nil {
+			t.Errorf("SaveBase(%q): no error, want an error", bad)
+		}
+	}
+	blob := hashObject(t, dir, "--upload-pack=x")
+	git(t, dir, "update-ref", "refs/worktree/rexdiff/base-pick", blob)
+	if got := r.SavedBase(ctx); got != "" {
+		t.Errorf("SavedBase of an option = %q, want \"\"", got)
+	}
+}
+
+// hashObject writes s as a blob in the repository dir and returns its ID.
+func hashObject(t *testing.T, dir, s string) string {
+	t.Helper()
+	cmd := exec.Command("git", "hash-object", "-w", "--stdin")
+	cmd.Dir, cmd.Stdin = dir, strings.NewReader(s)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestSavedTurn checks that SaveTurn keeps a tree, also after git gc, and
+// that "" deletes it.
+func TestSavedTurn(t *testing.T) {
+	r, dir := newRepo(t)
+	ctx := t.Context()
+	tree := snapshot(t, r) // a tree that no commit has
+	if err := r.SaveTurn(ctx, tree); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "gc", "-q", "--prune=now")
+	if got := r.SavedTurn(ctx); got != tree {
+		t.Errorf("SavedTurn = %q, want %q", got, tree)
+	}
+	if _, err := r.Diff(ctx, tree, head(t, r)); err != nil {
+		t.Errorf("the tree after gc: %v", err)
+	}
+	for range 2 { // a second delete is no error
+		if err := r.SaveTurn(ctx, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := r.SavedTurn(ctx); got != "" {
+		t.Errorf("SavedTurn after the delete = %q, want \"\"", got)
+	}
+}
+
+// TestSavedPerWorktree checks that each worktree has its own saved base
+// and turn.
+func TestSavedPerWorktree(t *testing.T) {
+	r, dir := newRepo(t)
+	ctx := t.Context()
+	other := filepath.Join(t.TempDir(), "wt")
+	git(t, dir, "worktree", "add", "-q", other, "main")
+	r2, err := vcs.Open(ctx, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SaveBase(ctx, "feat"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SaveTurn(ctx, snapshot(t, r)); err != nil {
+		t.Fatal(err)
+	}
+	if got := r2.SavedBase(ctx); got != "" {
+		t.Errorf("SavedBase in the other worktree = %q, want \"\"", got)
+	}
+	if got := r2.SavedTurn(ctx); got != "" {
+		t.Errorf("SavedTurn in the other worktree = %q, want \"\"", got)
+	}
+}

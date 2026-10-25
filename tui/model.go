@@ -206,9 +206,12 @@ type model struct {
 	// folds has the folds that the user expands in the Changes tab, by path.
 	folds map[string]*openFolds
 	base  string
-	from  string // the commits scope: the oldest commit that the user picks
-	to    string // the commits scope: the newest commit that the user picks
-	turn  *turnState
+	// baseFlag is true if the base comes from the flag. Then the user
+	// cannot pick another.
+	baseFlag bool
+	from     string // the commits scope: the oldest commit that the user picks
+	to       string // the commits scope: the newest commit that the user picks
+	turn     *turnState
 
 	files      []changed // the Changes tab
 	changeSel  int
@@ -262,26 +265,39 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	ta.KeyMap.InsertNewline.SetKeys(defaultKeys().Newline.Keys()...)
 
 	m := model{
-		ctx:     ctx,
-		repo:    o.Repo,
-		rex:     o.Rex,
-		log:     o.Log,
-		notice:  o.Notice,
-		updater: o.Updater,
-		w:       120,
-		h:       40,
-		focused: true,
-		base:    o.Base,
-		wrap:    o.Wrap,
-		editor:  ta,
-		help:    newHelp(),
-		agents:  map[string]*agentState{},
+		ctx:      ctx,
+		repo:     o.Repo,
+		rex:      o.Rex,
+		log:      o.Log,
+		notice:   o.Notice,
+		updater:  o.Updater,
+		w:        120,
+		h:        40,
+		focused:  true,
+		base:     o.Base,
+		baseFlag: o.Base != "",
+		wrap:     o.Wrap,
+		editor:   ta,
+		help:     newHelp(),
+		agents:   map[string]*agentState{},
 	}
 	if m.log == nil {
 		m.log = slog.New(slog.DiscardHandler)
 	}
+	// As in herdr-reviewr, the flag wins over the saved base, and a saved
+	// base that does not resolve does not count.
+	if m.base == "" {
+		if b := o.Repo.SavedBase(ctx); b != "" {
+			if _, err := o.Repo.Resolve(ctx, b); err == nil {
+				m.base = b
+			}
+		}
+	}
 	if m.base == "" {
 		m.base = o.Repo.DefaultBase(ctx)
+	}
+	if tree := o.Repo.SavedTurn(ctx); tree != "" {
+		m.turn = &turnState{tree: tree}
 	}
 	if o.Rex != nil && o.Agent != "" {
 		// If Rex does not know the agent, the picker selects no agent

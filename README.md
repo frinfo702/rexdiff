@@ -83,6 +83,9 @@ Side by side needs 135 columns. A narrower pane shows one column.
 
 An edit with blank text keeps the comment as it was.
 
+rexdiff keeps the base pick and the last turn in `refs/worktree/rexdiff/`, so
+they stay after a restart. With `--base`, the base picker does not open.
+
 The commit picker lists the branch's own commits (first parent only), or the last 50 on
 the base branch.
 

@@ -74,7 +74,17 @@ func (r *Repo) Root() string { return r.root }
 // run runs git in the root directory and returns its standard output. env
 // adds to the environment of the process.
 func (r *Repo) run(ctx context.Context, env []string, args ...string) (string, error) {
-	out, err := command(ctx, r.root, env, "git", args...)
+	return r.runInput(ctx, env, nil, args...)
+}
+
+// runInput is like run. git reads its standard input from in.
+func (r *Repo) runInput(
+	ctx context.Context,
+	env []string,
+	in io.Reader,
+	args ...string,
+) (string, error) {
+	out, err := command(ctx, r.root, env, in, "git", args...)
 	if err != nil {
 		return out, fmt.Errorf("git %s: %w", args[0], err)
 	}
@@ -82,18 +92,20 @@ func (r *Repo) run(ctx context.Context, env []string, args ...string) (string, e
 }
 
 // command runs the program name in dir and returns its standard output.
-// env adds to the environment of the process. The error has the first line
+// env adds to the environment of the process, and stdin is its standard
+// input, or nil for none. The error has the first line
 // of the standard error. It wraps the error of the process, so callers can
 // check its exit code.
 func command(
 	ctx context.Context,
 	dir string,
 	env []string,
+	stdin io.Reader,
 	name string,
 	args ...string,
 ) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
+	cmd.Dir, cmd.Stdin = dir, stdin
 	if env != nil {
 		cmd.Env = append(os.Environ(), env...)
 	}
