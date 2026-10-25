@@ -55,6 +55,13 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		}
 		return nil
 	}
+	return m.clickMain(mouse)
+}
+
+// clickMain handles a press of the left button on the main pane. A click
+// moves the cursor and starts a drag. A double or a triple click copies
+// the text.
+func (m *model) clickMain(mouse tea.Mouse) tea.Cmd {
 	h := m.mainHeight()
 	y := mouse.Y - m.mainY()
 	if y < 0 || y >= h || mouse.X < m.mainX() || mouse.X >= m.mainX()+m.mainWidth() {
