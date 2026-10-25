@@ -182,8 +182,7 @@ func (m *model) withIgnored(es []vcs.Entry) []vcs.Entry {
 	// The loop also reads the entries that it adds, for the directories
 	// in an ignored directory.
 	for i := 0; i < len(es); i++ {
-		dir, isDir := strings.CutSuffix(es[i].Path, "/")
-		if isDir && es[i].Ignored && m.fileTree.toggled[dir] {
+		if dir, ok := m.openIgnored(es[i]); ok {
 			es = append(es, m.repo.IgnoredDir(dir)...)
 		}
 	}
@@ -199,12 +198,18 @@ func (m *model) shownIgnored() []string {
 	}
 	var dirs []string
 	for _, e := range m.allFiles {
-		dir, isDir := strings.CutSuffix(e.Path, "/")
-		if isDir && e.Ignored && m.fileTree.toggled[dir] {
+		if dir, ok := m.openIgnored(e); ok {
 			dirs = append(dirs, dir)
 		}
 	}
 	return dirs
+}
+
+// openIgnored returns the path of e without the last "/", and reports
+// whether e is an ignored directory that the user expands in the Files tab.
+func (m *model) openIgnored(e vcs.Entry) (string, bool) {
+	dir, isDir := strings.CutSuffix(e.Path, "/")
+	return dir, isDir && e.Ignored && m.fileTree.toggled[dir]
 }
 
 // onDir reports whether the file list has the focus and its cursor is on
