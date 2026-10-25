@@ -527,40 +527,37 @@ func (m *model) crossTarget(d int) int {
 }
 
 // stepComment moves the cursor to the next (d = 1) or previous (d = -1)
-// comment, by file and line. It wraps around.
+// comment of the open file, by row. It wraps around in the file. As in
+// herdr-reviewr, n and N step only through the comments on the rows that
+// show.
 func (m *model) stepComment(d int) {
-	// As in herdr-reviewr, n and N step only through the comments that
-	// the view shows.
+	p := m.cur()
 	a := m.anchor()
-	cs := slices.DeleteFunc(m.comments.All(), func(c *diff.Comment) bool {
-		return c.Anchor != a || (a.InDiff && m.stale(c))
-	})
-	if len(cs) == 0 {
+	var stops []int // the first row of each comment
+	for _, c := range m.comments.All() {
+		if c.Anchor != a || c.Path != p.path || p.path == "" {
+			continue
+		}
+		if r := p.rowOf(c.Side, c.Start); r >= 0 {
+			stops = append(stops, r)
+		}
+	}
+	if len(stops) == 0 {
 		return
 	}
-	p := m.cur()
-	curPath, curLine := p.path, 0
-	if t := m.target(p.cur, diff.SideNew); t != nil {
-		curLine = t.line
+	slices.Sort(stops)
+	k := slices.IndexFunc(stops, func(r int) bool { return r > p.cur })
+	if k < 0 {
+		k = 0
 	}
-	idx := -1
-	for i, c := range cs {
-		after := c.Path > curPath || (c.Path == curPath && c.Start > curLine)
-		if d > 0 && after {
-			idx = i
-			break
-		}
-		if d < 0 && !after && !(c.Path == curPath && c.Start == curLine) {
-			idx = i
+	if d < 0 {
+		k = len(stops) - 1
+		if i := slices.IndexFunc(stops, func(r int) bool { return r >= p.cur }); i > 0 {
+			k = i - 1
 		}
 	}
-	if idx < 0 {
-		idx = len(cs) - 1
-		if d > 0 {
-			idx = 0
-		}
-	}
-	m.jumpToComment(cs[idx])
+	m.focusList = false
+	p.cur, p.anchor = stops[k], -1
 }
 
 // jumpToComment shows comment c in the tab of its anchor.

@@ -225,8 +225,15 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	for _, a := range msg.agents {
 		*m.agent(a.Block) = agentState{app: a.App, state: a.State, cwd: a.Cwd, hasCwd: true}
 	}
-	if !msg.send && msg.err == nil {
+	switch {
+	case msg.err == nil:
 		m.sampled = true
+	case !m.sampled && !msg.send:
+		// Without a list, the turns do not start. Thus list again later.
+		m.log.Warn("agent list failed", "err", msg.err)
+		wait := max(m.sampleWait, retryFirst)
+		m.sampleWait = min(2*wait, retryMax)
+		m.sampleAt = time.Now().Add(wait)
 	}
 	m.observeTurn()
 	if !msg.send {

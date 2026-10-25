@@ -191,6 +191,22 @@ func (m *model) withIgnored(es []vcs.Entry) []vcs.Entry {
 	return es
 }
 
+// shownIgnored returns the ignored directories that the user expands in
+// the Files tab, when that tab shows. The watcher reports their changes.
+func (m *model) shownIgnored() []string {
+	if m.tab != tabFiles {
+		return nil
+	}
+	var dirs []string
+	for _, e := range m.allFiles {
+		dir, isDir := strings.CutSuffix(e.Path, "/")
+		if isDir && e.Ignored && m.fileTree.toggled[dir] {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
+
 // onDir reports whether the file list has the focus and its cursor is on
 // a directory.
 func (m *model) onDir() bool {

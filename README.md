@@ -58,7 +58,8 @@ until the new pull request loads.
 Last turn shows the changes since the start of the last agent turn that
 changed a file. A turn starts when an agent in this repository starts to work,
 and ends when all of them rest. Until then it shows "waiting for the first
-turn", or "no agent works here".
+turn", or "no agent works here". If Rex cannot list the agents, rexdiff asks
+again after 1 s, then waits twice as long each time, up to a minute.
 
 A long run of unchanged lines folds into one row. Three lines show beside each
 change.
@@ -80,6 +81,7 @@ that show.
 | `c` | new comment, also on a line that has one |
 | `e` | edit the comment at the cursor, else open the file in the editor |
 | `d` | delete the comment at the cursor |
+| `n` `N` | next or previous comment in the file |
 | `l` | list the comments: `e` edit, `d` delete, `s` send, `y` copy, enter jump |
 | `s` | send the comments to the agent |
 | `y` | copy the comments and clear them, as a send does |
@@ -102,7 +104,8 @@ The preview below the results shows the file, with the match in the middle.
 
 The file list is a tree. Directories start expanded in the changes and
 collapsed in all files. There, a collapsed directory with a change has a dot.
-Ignored directories are dim and read their files when you expand them.
+Ignored directories are dim and read their files when you expand them. An
+expanded one shows new and removed files.
 
 At a side, the file list takes 15% to 60% of the width. Above or below, it takes
 a quarter of the rows, and `<` `>` change that from 15% to 50%.

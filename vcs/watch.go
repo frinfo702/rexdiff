@@ -32,9 +32,10 @@ type Watcher struct {
 	listed  bool     // files and dirs are from the last list
 	files   []string // the absolute paths that git lists
 	dirs    []string // the root and each directory above a listed path
+	shown   []string // the absolute paths of the ignored dirs that show
 
 	// The sums of the last check.
-	list, refs, index, dirSum, fileSum uint64
+	list, refs, index, dirSum, fileSum, shownSum uint64
 }
 
 // Change tells what can have changed since the last call to
@@ -56,6 +57,20 @@ func (r *Repo) Watch(ctx context.Context) (*Watcher, error) {
 		return nil, err
 	}
 	return &Watcher{r: r, gitDir: gitDir, common: common, now: time.Now}, nil
+}
+
+// Show sets the ignored directories that the user expands. dirs are
+// relative to the root. Git does not list the paths in an ignored
+// directory, thus Changed also reports a file that a shown directory gets
+// or loses. A new set reports no change.
+func (w *Watcher) Show(dirs []string) {
+	abs := make([]string, len(dirs))
+	for i, d := range dirs {
+		abs[i] = filepath.Join(w.r.root, filepath.FromSlash(d))
+	}
+	if !slices.Equal(abs, w.shown) {
+		w.shown, w.shownSum = abs, sumPaths(abs)
+	}
 }
 
 // gitPath returns the absolute path that rev-parse gives for flag.
@@ -89,7 +104,7 @@ func (w *Watcher) Changed(ctx context.Context) (Change, error) {
 		}
 		dirs, listed = sumPaths(w.dirs), true
 	}
-	files := sumFiles(w.files)
+	files, shown := sumFiles(w.files), sumPaths(w.shown)
 	ch := Change{
 		Files: index != w.index || list != w.list || files != w.fileSum,
 		Refs:  refs != w.refs,
@@ -106,6 +121,9 @@ func (w *Watcher) Changed(ctx context.Context) (Change, error) {
 		w.started, ch = true, Change{Files: true, Refs: true}
 	}
 	w.list, w.refs, w.index, w.dirSum, w.fileSum = list, refs, index, dirs, files
+	if shown != w.shownSum {
+		w.shownSum, ch.Files = shown, true
+	}
 	return ch, nil
 }
 

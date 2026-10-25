@@ -122,6 +122,36 @@ func TestWatcherUnignore(t *testing.T) {
 	}
 }
 
+// TestWatcherShown checks that a file that an expanded ignored directory
+// gets or loses is a change, as in herdr-reviewr.
+func TestWatcherShown(t *testing.T) {
+	r, dir := newRepo(t)
+	w := newWatcher(t, r)
+	write(t, dir, "build/new", "x\n")
+	if got := changed(t, w); got.Files {
+		t.Errorf("a new file in a hidden build: %+v, want no Files", got)
+	}
+	w.Show([]string{"build"})
+	if got := changed(t, w); got.Files {
+		t.Errorf("after Show: %+v, want no Files", got)
+	}
+	write(t, dir, "build/more", "x\n")
+	if got := changed(t, w); !got.Files {
+		t.Errorf("a new file in a shown build: %+v, want Files", got)
+	}
+	if err := os.Remove(filepath.Join(dir, "build", "more")); err != nil {
+		t.Fatal(err)
+	}
+	if got := changed(t, w); !got.Files {
+		t.Errorf("a removed file in a shown build: %+v, want Files", got)
+	}
+	w.Show(nil)
+	write(t, dir, "build/more", "x\n")
+	if got := changed(t, w); got.Files {
+		t.Errorf("a new file after Show(nil): %+v, want no Files", got)
+	}
+}
+
 // TestWatcherNested checks that a commit in a nested repository or in a
 // submodule is a change.
 func TestWatcherNested(t *testing.T) {

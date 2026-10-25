@@ -184,3 +184,21 @@ func listLine(m model, text string) string {
 	}
 	return ""
 }
+
+// TestShownIgnored checks that the watcher gets the expanded ignored
+// directories of the Files tab, as in herdr-reviewr.
+func TestShownIgnored(t *testing.T) {
+	m, _ := newTreeModel(t)
+	m = press(t, m, "2")
+	if got := m.shownIgnored(); len(got) != 0 {
+		t.Errorf("collapsed: %q, want none", got)
+	}
+	m.fileTree.cur = 0
+	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight}) // expand out
+	if got := m.shownIgnored(); !slices.Equal(got, []string{"out"}) {
+		t.Errorf("out expanded: %q, want [out]", got)
+	}
+	if m = press(t, m, "1"); len(m.shownIgnored()) != 0 {
+		t.Errorf("in the Changes tab: %q, want none", m.shownIgnored())
+	}
+}

@@ -223,6 +223,10 @@ type model struct {
 	// sampled is true after the first list of the agents. An edge before
 	// it can be wrong, so the tracker gets no states before it.
 	sampled bool
+	// After a failed list, a tick lists the agents again at sampleAt.
+	// Each failure doubles the wait, as in herdr-reviewr.
+	sampleAt   time.Time
+	sampleWait time.Duration // the wait after the next failure, or 0
 	// agentsHere tells if an agent works in the repository, or is nil if
 	// the program does not know.
 	agentsHere *bool
@@ -749,6 +753,7 @@ func (m *model) changed() vcs.Change {
 	if m.watch == nil {
 		return all
 	}
+	m.watch.Show(m.shownIgnored())
 	start := time.Now()
 	ch, err := m.watch.Changed(m.ctx)
 	m.log.Debug("watch", "took", time.Since(start), "files", ch.Files, "refs", ch.Refs)
@@ -788,6 +793,10 @@ func (m *model) onTick() tea.Cmd {
 	// the poll reads the pull request.
 	if ch.Refs && m.watch != nil {
 		cmds = append(cmds, m.refsChanged())
+	}
+	if m.rex != nil && !m.sampled && !m.sampleAt.IsZero() && !now.Before(m.sampleAt) {
+		m.sampleAt = time.Time{} // one list at a time
+		cmds = append(cmds, m.listAgents(agentsMsg{}))
 	}
 	if m.tab == tabPR && time.Since(m.prf.polled) >= prPoll {
 		cmds = append(cmds, m.requestPR(false))

@@ -123,3 +123,35 @@ func TestCommentListCopy(t *testing.T) {
 			m.overlay, m.comments.Len(), m.status)
 	}
 }
+
+// TestStepCommentInFile checks that n and N step only through the
+// comments of the open file and wrap around in it, as in herdr-reviewr.
+func TestStepCommentInFile(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = press(t, m, "b") // the branch changes a.go and adds b.go
+	if len(m.files) != 2 || shownPath(m) != "a.go" {
+		t.Fatalf("branch: %d files, shows %s; want 2, a.go", len(m.files), shownPath(m))
+	}
+	m = press(t, m, "]", "c", "x", "enter", "j", "j", "c", "y", "enter")
+	m = press(t, m, "f", "j", "c", "z", "enter", "F")
+	if m.comments.Len() != 3 || shownPath(m) != "a.go" {
+		t.Fatalf("%d comments, shows %s; want 3, a.go", m.comments.Len(), shownPath(m))
+	}
+	var rows []int
+	for _, c := range m.comments.All() {
+		if c.Path == "a.go" {
+			rows = append(rows, m.cur().rowOf(c.Side, c.Start))
+		}
+	}
+	m.cur().cur = 0
+	for i, want := range []int{rows[0], rows[1], rows[0]} {
+		if m = press(t, m, "n"); m.cur().cur != want || shownPath(m) != "a.go" {
+			t.Errorf("n %d: row %d in %s, want row %d in a.go", i+1, m.cur().cur, shownPath(m), want)
+		}
+	}
+	for i, want := range []int{rows[1], rows[0], rows[1]} {
+		if m = press(t, m, "N"); m.cur().cur != want || shownPath(m) != "a.go" {
+			t.Errorf("N %d: row %d in %s, want row %d in a.go", i+1, m.cur().cur, shownPath(m), want)
+		}
+	}
+}

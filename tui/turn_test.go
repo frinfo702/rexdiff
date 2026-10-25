@@ -3,6 +3,9 @@ package tui
 import (
 	"slices"
 	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/rednafi/rexdiff/rex"
 )
@@ -160,5 +163,54 @@ func TestTurnUnknownCwdHolds(t *testing.T) {
 	m = step(t, m, eventMsg{Block: "q", Closed: true})
 	if m.turn == nil {
 		t.Error("the turn does not end after the unknown agent closes")
+	}
+}
+
+// tickAgents runs a tick of m and returns the agent lists that its
+// commands give.
+func tickAgents(t *testing.T, m *model) []agentsMsg {
+	t.Helper()
+	batch, _ := m.onTick()().(tea.BatchMsg)
+	var out []agentsMsg
+	for _, c := range batch {
+		got := make(chan tea.Msg, 1)
+		go func() { got <- c() }()
+		select {
+		case msg := <-got:
+			if a, ok := msg.(agentsMsg); ok {
+				out = append(out, a)
+			}
+		case <-time.After(300 * time.Millisecond): // the next tick
+		}
+	}
+	return out
+}
+
+// TestSampleRetry checks that a failed first list of the agents is
+// tried again after a wait that doubles, as in herdr-reviewr. Without
+// the list, the turns do not start.
+func TestSampleRetry(t *testing.T) {
+	m, dir := newTestModel(t)
+	logRex(t, &m) // its output is no list
+	m = step(t, m, m.listAgents(agentsMsg{})())
+	if m.sampled || m.sampleAt.IsZero() || m.sampleWait != 2*time.Second {
+		t.Fatalf("after a failed list: sampled %v, at %v, wait %v; want a retry",
+			m.sampled, m.sampleAt, m.sampleWait)
+	}
+	if got := tickAgents(t, &m); len(got) != 0 {
+		t.Errorf("a tick before the wait lists %d times, want 0", len(got))
+	}
+	m.sampleAt = time.Now().Add(-time.Millisecond)
+	got := tickAgents(t, &m)
+	if len(got) != 1 || got[0].err == nil {
+		t.Fatalf("a tick after the wait lists %d times, want 1 that fails", len(got))
+	}
+	if m = step(t, m, got[0]); m.sampleWait != 4*time.Second {
+		t.Errorf("after a second failure: wait %v, want 4s", m.sampleWait)
+	}
+	m = step(t, m, sample("p", "pi", dir))
+	m.sampleAt = time.Now().Add(-time.Millisecond)
+	if !m.sampled || len(tickAgents(t, &m)) != 0 {
+		t.Errorf("after a good list: sampled %v, want true and no more lists", m.sampled)
 	}
 }
