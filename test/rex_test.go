@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 // realRex runs rex in the session of a test with a real Rex.
@@ -21,7 +20,9 @@ type realRex struct {
 // fails.
 func (r *realRex) run(args ...string) string {
 	r.t.Helper()
-	out, err := exec.CommandContext(r.t.Context(), r.bin, args...).Output()
+	cmd := exec.CommandContext(r.t.Context(), r.bin, append([]string{"--autostart=false"}, args...)...)
+	cmd.Env = append(os.Environ(), "HOME="+home) // the socket of Rex is in HOME
+	out, err := cmd.Output()
 	if err != nil {
 		r.t.Fatalf("rex %s: %v", strings.Join(args, " "), err)
 	}
@@ -61,21 +62,16 @@ func (r *realRex) write(block, data string) {
 // waitFor waits until the screen of block shows each of texts.
 func (r *realRex) waitFor(block string, texts ...string) {
 	r.t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
-	for {
-		s := r.run("capture", "-s", r.session, "-b", block)
-		ok := true
+	var s string
+	eventually(r.t, func() bool {
+		s = r.run("capture", "-s", r.session, "-b", block)
 		for _, text := range texts {
-			ok = ok && strings.Contains(s, text)
+			if !strings.Contains(s, text) {
+				return false
+			}
 		}
-		if ok {
-			return
-		}
-		if time.Now().After(deadline) {
-			r.t.Fatalf("block %s does not show %q. It shows:\n%s", block, texts, s)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		return true
+	}, func() string { return "block " + block + " does not show " + strings.Join(texts, ", ") + ":\n" + s })
 }
 
 // TestRealRex runs rexdiff in a pane of a real Rex, beside a shell that
@@ -92,7 +88,9 @@ func TestRealRex(t *testing.T) {
 	r := &realRex{t: t, bin: bin, session: "rexdiff-test-" + strconv.Itoa(os.Getpid())}
 	r.run("new", r.session, "--cwd", repo, "--", "sh")
 	t.Cleanup(func() {
-		_ = exec.Command(bin, "kill", r.session).Run() //nolint:noctx // t.Context is done
+		kill := exec.Command(bin, "--autostart=false", "kill", r.session) //nolint:noctx // t.Context is done
+		kill.Env = append(os.Environ(), "HOME="+home)
+		_ = kill.Run()
 	})
 	shell := r.blocks()["shell"]
 	r.run("block", "rename", shell, "agent", "-s", r.session)
@@ -101,16 +99,14 @@ func TestRealRex(t *testing.T) {
 	r.run("split", "-s", r.session, "-b", shell, "--cwd", repo, "--shell=none",
 		"--", binary(t), "-config", `{"focus_agent_after_send": false}`, repo)
 	var pane string
-	for deadline := time.Now().Add(15 * time.Second); pane == ""; {
+	eventually(t, func() bool {
 		for label, id := range r.blocks() {
 			if label != "agent" {
 				pane = id
 			}
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("rexdiff does not start in a pane")
-		}
-	}
+		return pane != ""
+	}, func() string { return "rexdiff does not start in a pane" })
 	r.waitFor(pane, "Changes (2)")
 	r.write(pane, "]")
 	r.write(pane, "c")

@@ -12,7 +12,6 @@ import (
 // rexdiff.lua, keeps the settings, and reloads Rex. Without the line above
 // the code, it changes nothing and tells why.
 func TestUpgradeAtStart(t *testing.T) {
-	t.Parallel()
 	repo := newRepo(t)
 	rex := newRex(t, repo)
 	config := filepath.Join(t.TempDir(), "init.lua")

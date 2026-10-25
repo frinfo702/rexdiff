@@ -9,24 +9,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
-
-// build builds rexdiff with version into dir, and returns its path.
-func build(t *testing.T, dir, version string) string {
-	t.Helper()
-	bin := filepath.Join(dir, "rexdiff")
-	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", bin,
-		"-ldflags", "-X main.version="+version, "../cmd/rexdiff")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
-	}
-	return bin
-}
 
 // release serves the latest release tag with the binary at bin, as GitHub
 // does. It returns the address of the latest release.
@@ -73,25 +59,25 @@ func release(t *testing.T, tag, bin string) string {
 // TestUpdate checks that U installs the latest release and starts it in
 // the same terminal, with the comments and the place of the user.
 func TestUpdate(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	bin := build(t, dir, "0.1.0")
-	latest := release(t, "v0.2.0", build(t, t.TempDir(), "0.2.0"))
+	bin, err := build(t.TempDir(), "0.1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := build(t.TempDir(), "0.2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest := release(t, "v0.2.0", next)
 	tm := startBin(t, bin, newRepo(t), opts{env: []string{"REXDIFF_LATEST_URL=" + latest}})
 	tm.waitFor("rexdiff v0.2.0 is out: press U or click here to update")
 	comment(tm, "hi")
 	tm.keys("U")
-	deadline := time.Now().Add(10 * time.Second)
-	for {
+	var version string
+	eventually(t, func() bool {
 		out, _ := exec.CommandContext(t.Context(), bin, "-version").Output()
-		if strings.TrimSpace(string(out)) == "v0.2.0" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("rexdiff -version = %q, want v0.2.0. The screen shows:\n%s", out, tm.screen())
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+		version = strings.TrimSpace(string(out))
+		return version == "v0.2.0"
+	}, func() string { return "rexdiff -version is " + version + ", want v0.2.0" })
 	// The new rexdiff is the latest, so it shows no update. It has the
 	// comment, but not the message of the old one.
 	tm.waitUntil(func(s string) bool {

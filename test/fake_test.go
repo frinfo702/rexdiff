@@ -86,8 +86,8 @@ esac
 	return r
 }
 
-// recorded returns the file name of testdata/rex, with each pair of
-// old and new values replaced.
+// recorded returns the content of the file name in testdata/rex, with
+// each pair of old and new values replaced.
 func recorded(t *testing.T, name string, oldNew ...string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("testdata", "rex", name))
@@ -148,12 +148,27 @@ func (r *fakeRex) setState(t *testing.T, state string) {
 	}
 }
 
-// tool writes a fake program name with body to dir, and returns dir.
-func tool(t *testing.T, dir, name, body string) string {
+// tools writes a fake program for each name in bodies, with its body, to
+// a new directory. It returns the directory, for opts.path.
+func tools(t *testing.T, bodies map[string]string) string {
 	t.Helper()
-	testgit.Script(t, dir, name, body)
+	dir := t.TempDir()
+	for name, body := range bodies {
+		testgit.Script(t, dir, name, body)
+	}
 	return dir
 }
+
+// clipboard returns a directory with a fake pbcopy and wl-copy, for
+// opts.path. Each writes what it gets to the file clip in the directory.
+func clipboard(t *testing.T) string {
+	t.Helper()
+	const body = `cat > "${0%/*}/clip"` + "\n"
+	return tools(t, map[string]string{"pbcopy": body, "wl-copy": body})
+}
+
+// clipEnv makes rexdiff take the fake clipboard on Linux too.
+var clipEnv = []string{"WAYLAND_DISPLAY=w"}
 
 // lines returns the lines of s that contain text.
 func lines(s, text string) []string {

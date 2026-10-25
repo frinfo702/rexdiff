@@ -23,7 +23,6 @@ echo 'config reloaded'
 // $WORK/rex.log, and fails if $REX_FAIL is set. If Rex is installed,
 // $REALREX is its rex, and the condition [realrex] is true.
 func TestScripts(t *testing.T) {
-	t.Parallel()
 	bin := filepath.Dir(binary(t))
 	realRex := filepath.Join(os.Getenv("REX_BIN_DIR"), "rex")
 	_, err := os.Stat(realRex)
@@ -45,14 +44,11 @@ func TestScripts(t *testing.T) {
 			env.Setenv("HOME", env.WorkDir)
 			env.Setenv("XDG_CONFIG_HOME", "")
 			env.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-			env.Setenv("REX_BIN_DIR", fake)
-			env.Setenv("REALREX", realRex)
-			for _, k := range []string{
-				"REX_CONFIG", "REX_SESSION", "REX_BLOCK",
-				"REX_AGENT_BLOCK", "REXDIFF_LOG", "REXDIFF_RESUME",
-			} {
+			for _, k := range userEnv {
 				env.Setenv(k, "")
 			}
+			env.Setenv("REX_BIN_DIR", fake)
+			env.Setenv("REALREX", realRex)
 			for _, kv := range testgit.Env() {
 				k, v, _ := strings.Cut(kv, "=")
 				env.Setenv(k, v)

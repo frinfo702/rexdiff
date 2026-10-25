@@ -1,16 +1,18 @@
 package test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // TestChanges checks the Changes tab: the file list with its counts, the
-// diff of a file, the next file, and a fold that opens.
+// diff of a file, the next and the previous file, and a fold that opens.
 func TestChanges(t *testing.T) {
-	t.Parallel()
 	tm := start(t, newRepo(t), opts{})
 	tm.waitFor("Changes (2)", "M a.go", "+2 -1", "M long.txt", "+2 -2",
 		"return 1", "x := 2", "not in Rex")
@@ -23,9 +25,29 @@ func TestChanges(t *testing.T) {
 	tm.waitFor("x := 2")
 }
 
-// TestScopes checks that each scope shows its changes.
+// TestMove checks the keys that move the cursor: the next and the
+// previous change, a page, half a page, and : for a line.
+func TestMove(t *testing.T) {
+	tm := start(t, newRepo(t), opts{height: 16})
+	tm.keys("f", "j", "j", "j", "j", "j", "j", "right") // all of long.txt
+	tm.waitFor("line 10")
+	tm.keys("]", "]")
+	tm.waitCursor("line 40")
+	tm.keys("[")
+	tm.waitCursor("line 1")
+	for _, keys := range [][2]string{{"pgdown", "pgup"}, {"ctrl+d", "ctrl+u"}} {
+		tm.keys(keys[0], keys[0], keys[0])
+		tm.waitGone(" first")
+		tm.keys(keys[1], keys[1], keys[1])
+		tm.waitFor(" first")
+	}
+	tm.keys(":", "3", "3", "enter")
+	tm.waitCursor("line 33")
+}
+
+// TestScopes checks that each scope shows its changes, and the pickers of
+// the commits and the base.
 func TestScopes(t *testing.T) {
-	t.Parallel()
 	tm := start(t, newRepo(t), opts{})
 	tm.keys("b")
 	tm.waitFor("vs main", "Changes (3)", "A b.go")
@@ -38,16 +60,38 @@ func TestScopes(t *testing.T) {
 	tm.waitFor("commits · 1 over main", "add b")
 	tm.keys("enter")
 	tm.waitFor("Changes (1)", "A b.go", "var B = 2")
-	tm.keys("u", "B")
+	tm.keys("G")
+	tm.waitFor("commits · 1 over main")
+	tm.keys("esc", "u", "B")
 	tm.waitFor("base branch for the branch scope")
-	tm.keys("f", "e", "a", "t", "enter")
+	tm.typed("feat")
+	tm.keys("enter")
 	tm.waitFor("vs feat", "Changes (2)")
+}
+
+// TestFlags checks that -scope, -base, and -layout set the start, and that
+// -log writes a log.
+func TestFlags(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "log")
+	tm := start(t, newRepo(t), opts{width: 220, args: []string{
+		"-scope", "branch", "-base", "main", "-layout", "split", "-log", log,
+	}})
+	s := tm.waitFor("vs main", "Changes (3)")
+	if ls := lines(s, "return 1"); len(ls) != 1 || !strings.Contains(ls[0], "x := 2") {
+		t.Errorf("lines %q, want return 1 beside x := 2", ls)
+	}
+	tm.keys("q")
+	if err := tm.exited(); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(log); err != nil || len(b) == 0 {
+		t.Errorf("the log has %d bytes (%v), want a log", len(b), err)
+	}
 }
 
 // TestSplit checks that | shows the old and the new lines side by side
 // on a wide screen, and tells why it does not on a narrow one.
 func TestSplit(t *testing.T) {
-	t.Parallel()
 	tm := start(t, newRepo(t), opts{width: 220})
 	tm.keys("|")
 	tm.waitUntil(func(s string) bool {
@@ -67,7 +111,6 @@ func TestSplit(t *testing.T) {
 // TestWrap checks that rexdiff wraps a long line, that w cuts it, and
 // that → scrolls to its end.
 func TestWrap(t *testing.T) {
-	t.Parallel()
 	repo := newRepo(t)
 	long := "var long = \"" + strings.Repeat("ab", 60) + "end\"\n"
 	testgit.WriteFile(t, repo, "b.go", "package a\n\n"+long)
@@ -76,39 +119,34 @@ func TestWrap(t *testing.T) {
 	tm.waitFor("end\"")
 	tm.keys("w")
 	tm.waitGone("end\"")
-	for i := 0; !strings.Contains(tm.screen(), "end\""); i++ {
-		if i == 30 {
-			t.Fatalf("→ does not scroll to the end. The screen shows:\n%s", tm.screen())
-		}
+	eventually(t, func() bool {
 		tm.keys("right")
-	}
+		return strings.Contains(tm.screen(), "end\"")
+	}, func() string { return "→ does not scroll to the end:\n" + tm.screen() })
 }
 
-// TestFileList checks that p moves the file list, z hides it, and > and
-// < change its width.
+// column returns the column of text in the first line of s that has it,
+// or -1.
+func column(s, text string) int {
+	for _, l := range lines(s, text) {
+		before, _, _ := strings.Cut(l, text)
+		return utf8.RuneCountInString(before)
+	}
+	return -1
+}
+
+// TestFileList checks that < and > change the width of the file list, p
+// moves it, z hides it, and tab shows it again.
 func TestFileList(t *testing.T) {
-	t.Parallel()
 	tm := start(t, newRepo(t), opts{})
-	col := func() int {
-		ls := lines(tm.screen(), "Changes (2)")
-		if len(ls) == 0 {
-			return -1
-		}
-		return strings.Index(ls[0], "Changes (2)")
-	}
-	right := col()
-	tm.keys(">")
-	if c := col(); c <= right {
-		t.Errorf("after >, the list starts at column %d, want after %d", c, right)
-	}
-	tm.keys("<", "<")
-	if c := col(); c >= right {
-		t.Errorf("after <, the list starts at column %d, want before %d", c, right)
-	}
+	right := column(tm.waitFor("Changes (2)"), "Changes (2)")
+	tm.keys("<")
+	tm.waitUntil(func(s string) bool { return column(s, "Changes (2)") < right }, "widen the list")
+	tm.keys(">", ">")
+	tm.waitUntil(func(s string) bool { return column(s, "Changes (2)") > right }, "narrow the list")
 	tm.keys("p") // bottom
 	tm.waitUntil(func(s string) bool {
-		ls := strings.Split(s, "\n")
-		for i, l := range ls {
+		for i, l := range strings.Split(s, "\n") {
 			if strings.Contains(l, "Changes (2)") {
 				return i > 10
 			}
@@ -117,13 +155,12 @@ func TestFileList(t *testing.T) {
 	}, "show the list at the bottom")
 	tm.keys("z")
 	tm.waitGone("Changes (2)")
-	tm.keys("z")
+	tm.keys("tab") // the focus shows a hidden list
 	tm.waitFor("Changes (2)")
 }
 
 // TestKeys checks that ? shows all the keys.
 func TestKeys(t *testing.T) {
-	t.Parallel()
 	tm := start(t, newRepo(t), opts{})
 	tm.keys("?")
 	tm.waitFor("search files & code", "pick commits", "move file list")
@@ -131,65 +168,60 @@ func TestKeys(t *testing.T) {
 	tm.waitGone("pick commits")
 }
 
-// TestGotoLine checks that : moves the cursor to a line of the new file.
-func TestGotoLine(t *testing.T) {
-	t.Parallel()
-	tm := start(t, newRepo(t), opts{})
-	tm.keys("f", ":", "3", "3", "enter")
-	tm.waitUntil(func(s string) bool {
-		for _, l := range lines(s, "▶") {
-			if strings.Contains(l, "line 33") {
-				return true
-			}
-		}
-		return false
-	}, "put the cursor on line 33")
-}
-
 // TestFind checks that ctrl+f counts the lines with a text, and that
 // enter moves to a hit.
 func TestFind(t *testing.T) {
-	t.Parallel()
 	tm := start(t, newRepo(t), opts{})
-	tm.keys("f", "ctrl+f", "l", "i", "n", "e", " ", "3")
+	tm.keys("f", "ctrl+f")
+	tm.typed("line 3")
 	tm.waitFor("find line 3", " 11") // line 3, and line 30 to line 39
 	tm.keys("enter")
-	tm.waitUntil(func(s string) bool {
-		for _, l := range lines(s, "▶") {
-			if strings.Contains(l, "line 3") {
-				return true
-			}
-		}
-		return false
-	}, "put the cursor on a hit")
+	tm.waitCursor("line 3")
 }
 
 // TestSettings checks that the settings change the layout, the marks of
-// the changed lines, the place of the file list, and the keys.
+// the changed lines, the place and the width of the file list, the
+// scope, and the keys.
 func TestSettings(t *testing.T) {
-	t.Parallel()
 	tm := start(t, newRepo(t), opts{width: 220, args: []string{
 		"-config",
 		`{"layout": "split", "diff_signs": true, "file_list": "left",` +
+			` "file_list_width": 50, "default_scope": "branch",` +
 			` "keybindings": {"next-file": ["x"]}}`,
 	}})
-	s := tm.waitFor("4 -     return 1", "4 +     x := 2", "x next/prev file")
+	s := tm.waitFor("vs main", "4 -     return 1", "4 +     x := 2", "x next/prev file")
 	for _, l := range lines(s, "return 1") {
 		if !strings.Contains(l, "x := 2") {
 			t.Errorf("line %q, want the old and the new line side by side", l)
 		}
 	}
-	if ls := lines(s, "Changes (2)"); len(ls) == 0 || strings.Index(ls[0], "Changes (2)") > 5 {
-		t.Errorf("the list starts at %q, want it at the left", ls)
+	if c := column(s, "Changes (3)"); c < 0 || c > 5 {
+		t.Errorf("the list starts at column %d, want it at the left", c)
+	}
+	if ls := lines(s, "M a.go"); len(ls) == 0 || column(ls[0], "│") < 48 || column(ls[0], "│") > 52 {
+		t.Errorf("the list rows %q, want a width of 50", ls)
 	}
 	tm.keys("x")
-	tm.waitFor("first")
+	tm.waitFor("var B = 2")
+}
+
+// TestReviewPrefix checks that review_prefix comes before the review.
+func TestReviewPrefix(t *testing.T) {
+	bin := clipboard(t)
+	tm := start(t, newRepo(t), opts{path: bin, env: clipEnv, args: []string{
+		"-config",
+		`{"review_prefix": "Please fix:"}`,
+	}})
+	comment(tm, "hi")
+	tm.keys("y")
+	waitFile(t, filepath.Join(bin, "clip"), func(s string) bool {
+		return s == "Please fix:\n\n"+review
+	})
 }
 
 // TestTinyScreen checks that rexdiff draws and takes keys in a small
 // terminal.
 func TestTinyScreen(t *testing.T) {
-	t.Parallel()
 	tm := start(t, newRepo(t), opts{width: 40, height: 8})
 	tm.keys("f", "j", "2", "/", "esc", "?", "esc", "1")
 	tm.waitFor("1 Changes")
@@ -198,7 +230,6 @@ func TestTinyScreen(t *testing.T) {
 // TestHostileText checks that the escape codes in a file show as text, so
 // a file cannot change the terminal.
 func TestHostileText(t *testing.T) {
-	t.Parallel()
 	repo := newRepo(t)
 	testgit.WriteFile(t, repo, "evil.txt", "a\x1b[2Jb\x1b]0;title\x07c\n")
 	tm := start(t, repo, opts{})
