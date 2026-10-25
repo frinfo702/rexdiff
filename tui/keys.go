@@ -305,11 +305,15 @@ func (h helpKeys) ShortHelp() []key.Binding {
 	case h.mode == modeComment:
 		return []key.Binding{k.Save, k.Newline, k.Cancel}
 	case h.armed > 0:
-		return []key.Binding{hint(k.NextHunk, firstKey(k.NextHunk), "next file"),
-			k.Comment, k.Send, k.Keys, k.Quit}
+		return []key.Binding{
+			hint(k.NextHunk, firstKey(k.NextHunk), "next file"),
+			k.Comment, k.Send, k.Keys, k.Quit,
+		}
 	case h.armed < 0:
-		return []key.Binding{hint(k.PrevHunk, firstKey(k.PrevHunk), "prev file"),
-			k.Comment, k.Send, k.Keys, k.Quit}
+		return []key.Binding{
+			hint(k.PrevHunk, firstKey(k.PrevHunk), "prev file"),
+			k.Comment, k.Send, k.Keys, k.Quit,
+		}
 	case h.visual:
 		return []key.Binding{
 			k.Comment,

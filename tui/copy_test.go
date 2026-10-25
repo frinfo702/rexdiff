@@ -62,8 +62,10 @@ func TestCopyFails(t *testing.T) {
 		setup func(t *testing.T)
 		want  string
 	}{
-		{"no tool", func(t *testing.T) { t.Setenv("PATH", t.TempDir()) },
-			"copy failed: install wl-clipboard, xclip, or xsel"},
+		{
+			"no tool", func(t *testing.T) { t.Setenv("PATH", t.TempDir()) },
+			"copy failed: install wl-clipboard, xclip, or xsel",
+		},
 		{"exit 1", func(t *testing.T) { fakeClipboard(t, true) }, "copy failed"},
 	}
 	for _, tt := range tests {

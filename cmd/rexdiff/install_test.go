@@ -94,8 +94,10 @@ func TestUpgrade(t *testing.T) {
 	}
 	write(noMark)
 	n := upgrade(ctx, bin)
-	for _, want := range []string{"cannot upgrade rexdiff.lua", lua, codeMark,
-		"cannot tell your settings from its code", "Put that line back"} {
+	for _, want := range []string{
+		"cannot upgrade rexdiff.lua", lua, codeMark,
+		"cannot tell your settings from its code", "Put that line back",
+	} {
 		if !strings.Contains(n, want) {
 			t.Errorf("notice = %q, want %q in it", n, want)
 		}

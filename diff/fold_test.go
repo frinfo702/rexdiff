@@ -135,11 +135,15 @@ func TestFoldEdges(t *testing.T) {
 	}{
 		// Changes at 10 and 18 leave line 14 alone between the margins. The
 		// line shows, because a fold of one line saves no row.
-		{"one line", numbered(21), numbered(21, 10, 18),
-			"@1/1+6 7:7 8:8 9:9 10:0 0:10 11:11 12:12 13:13 14:14 15:15 16:16 17:17 18:0 0:18 19:19 20:20 21:21"},
+		{
+			"one line", numbered(21), numbered(21, 10, 18),
+			"@1/1+6 7:7 8:8 9:9 10:0 0:10 11:11 12:12 13:13 14:14 15:15 16:16 17:17 18:0 0:18 19:19 20:20 21:21",
+		},
 		// After an insert, the old and the new numbers of a fold differ.
-		{"insert at the top", numbered(12), "new\n" + numbered(12),
-			"@0/0+0 0:1 1:2 2:3 3:4 @4/5+9"},
+		{
+			"insert at the top", numbered(12), "new\n" + numbered(12),
+			"@0/0+0 0:1 1:2 2:3 3:4 @4/5+9",
+		},
 		// A file without equal lines has no fold.
 		{"all new", "", "a\nb\n", "@0/0+0 0:1 0:2"},
 	}

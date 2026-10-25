@@ -96,7 +96,8 @@ func (n *node) child(name string) *node {
 
 // flatten adds the rows of the children of dir at path prefix.
 func flatten(rows *[]Row, dir *node, prefix string, depth int, toggled map[string]bool,
-	expanded bool, entries []Entry) {
+	expanded bool, entries []Entry,
+) {
 	for _, name := range slices.Sorted(maps.Keys(dir.dirs)) {
 		display, path, n := compress(name, join(prefix, name), dir.dirs[name])
 		if fname, i, ok := loneFile(n); ok {
