@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -16,8 +17,8 @@ type targetLine struct {
 }
 
 // target returns the line that a comment on row i of the current pane
-// attaches to, or nil. If the row changes a line on side pref, it uses
-// that side. Else it prefers the new side. So a comment on an unchanged
+// attaches to, or nil. If the row changes a line on side pref, target uses
+// that side. Else target uses the new side. Thus a comment on an unchanged
 // line is on the new side.
 func (m *model) target(i int, pref diff.Side) *targetLine {
 	p := m.cur()
@@ -52,7 +53,8 @@ func (m *model) contentFor(path string, s diff.Side) string {
 		}
 		return f.New
 	}
-	content, _ := m.repo.ReadFile(path) // an unreadable file gives a comment no code
+	// An unreadable file gives a comment with no code.
+	content, _ := m.repo.ReadFile(path)
 	return content
 }
 
@@ -149,6 +151,23 @@ func (m *model) closeComment() {
 	m.editor.Blur()
 }
 
+// newLineNear returns the new line of row i. A row with no new line, such
+// as a deleted line, gives the next new line below it. If there is none, it
+// gives the last new line above it. If there is none, it gives 1.
+func newLineNear(rows []diff.Row, i int) int {
+	for _, r := range rows[i:] {
+		if r.New > 0 {
+			return r.New
+		}
+	}
+	for _, r := range slices.Backward(rows[:i]) {
+		if r.New > 0 {
+			return r.New
+		}
+	}
+	return 1
+}
+
 // editOrOpen edits the comment at the cursor. If there is no comment, it
 // opens the file in an editor at the cursor line.
 func (m *model) editOrOpen() tea.Cmd {
@@ -159,9 +178,5 @@ func (m *model) editOrOpen() tea.Cmd {
 	if p.path == "" {
 		return nil
 	}
-	line := 1
-	if t := m.target(p.cur, diff.SideNew); t != nil && t.side == diff.SideNew {
-		line = t.line
-	}
-	return m.openEditor(p.path, line)
+	return m.openEditor(p.path, newLineNear(p.rows, p.cur))
 }

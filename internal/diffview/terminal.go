@@ -27,14 +27,14 @@ func mix(a, b color.Color, t float64) color.Color {
 	br, bg, bb, _ := b.RGBA()
 	// RGBA has 16 bits for each channel. Divide by 257 to get 8 bits.
 	f := func(x, y uint32) uint8 { return uint8((float64(x)*(1-t) + float64(y)*t) / 257) }
-	return color.RGBA{f(ar, br), f(ag, bg), f(ab, bb), 255}
+	return color.RGBA{R: f(ar, br), G: f(ag, bg), B: f(ab, bb), A: 255}
 }
 
 // The amounts that TerminalStyle mixes into the background.
 const (
 	tintDark     = 0.16 // inserted and deleted lines on a dark background
 	tintLight    = 0.13 // inserted and deleted lines on a light background
-	tintNumber   = 1.7  // multiplies the tint for the line numbers of those lines
+	tintNumber   = 1.7  // multiplies the tint for the numbers of those lines
 	shadeDivider = 0.07 // the hunk headers, toward the foreground
 	shadeMissing = 0.03 // the empty side of a split row, toward the foreground
 )
@@ -45,7 +45,7 @@ const (
 	fallbackRed   = "#f85149"
 )
 
-// TerminalStyle makes a diff style from the terminal colours: the
+// TerminalStyle makes a diff style from the terminal colours. These are the
 // background, the foreground, and the ANSI green and red. The text colours
 // are ANSI palette indices, so the terminal selects the real colours.
 // TerminalStyle mixes the tints of inserted and deleted lines from the

@@ -8,54 +8,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/rex"
 )
-
-// TestEditorCommands checks the command and the kind of each editor.
-func TestEditorCommands(t *testing.T) {
-	const abs = "/r/a b.go"
-	tests := []struct {
-		template, editor string
-		script           string
-		window           bool
-	}{
-		// The editor of the settings gets the placeholders.
-		{"/opt/homebrew/bin/nvim +{line} {file}", "", `/opt/homebrew/bin/nvim +12 '/r/a b.go'`, false},
-		{"code -g {file}:{line}", "", `code -g '/r/a b.go':12`, true},
-		{"zed {file}:{line}", "", `zed '/r/a b.go':12`, true},
-		{"open -a Zed {file}", "", `open -a Zed '/r/a b.go'`, true},
-		{"myeditor --at {line}", "", `myeditor --at 12 '/r/a b.go'`, false},
-		// The editor of the environment gets the line as it expects it.
-		{"", "nvim", `nvim +12 '/r/a b.go'`, false},
-		{"", "/usr/bin/vim -u NONE", `/usr/bin/vim -u NONE +12 '/r/a b.go'`, false},
-		{"", "micro", `micro +12 '/r/a b.go'`, false},
-		{"", "hx", `hx '/r/a b.go:12'`, false},
-		{"", "fresh", `fresh '/r/a b.go:12'`, false},
-		{"", "code --wait", `code --wait -g '/r/a b.go:12'`, true},
-		{"", "subl", `subl '/r/a b.go:12'`, true},
-		{"", "idea", `idea --line 12 '/r/a b.go'`, true},
-		{"", "mvim", `mvim +12 '/r/a b.go'`, true},
-		// A path in quotes can have spaces.
-		{"", `"/Apps/VS Code.app/bin/code" -w`, `"/Apps/VS Code.app/bin/code" -w -g '/r/a b.go:12'`, true},
-		{"", `'/my apps/nvim'`, `'/my apps/nvim' +12 '/r/a b.go'`, false},
-		// An unknown editor gets +line, and draws in the terminal.
-		{"", "vim.basic", `vim.basic +12 '/r/a b.go'`, false},
-		// A wait flag tells that an unknown editor has a window.
-		{"", "myeditor --wait", `myeditor --wait +12 '/r/a b.go'`, true},
-	}
-	for _, tt := range tests {
-		var got editorCommand
-		if tt.template != "" {
-			got = templateCommand(tt.template, abs, 12)
-		} else {
-			got = envCommand(tt.editor, abs, 12)
-		}
-		if got.script != tt.script || got.window != tt.window {
-			t.Errorf("editor %q%q = %q, window %v; want %q, window %v",
-				tt.template, tt.editor, got.script, got.window, tt.script, tt.window)
-		}
-	}
-}
 
 // writeScript writes an executable sh script with body to dir/name, and
 // returns its path.
@@ -115,7 +70,7 @@ func TestTerminalEditorInRex(t *testing.T) {
 			t.Setenv("EDITOR", tt.env)
 			log := logRex(t, &m)
 			if _, cmd := pressE(t, m); cmd != nil {
-				t.Errorf("e returned a command %T, want none", cmd)
+				t.Errorf("e returns a command %T, want none", cmd)
 			}
 			b, err := os.ReadFile(log)
 			if err != nil {
@@ -142,10 +97,10 @@ func TestWindowEditor(t *testing.T) {
 	log := logRex(t, &m)
 	m, cmd := pressE(t, m)
 	if cmd == nil {
-		t.Fatal("e returned no command")
+		t.Fatal("e returns no command, want a command")
 	}
 	if msg := cmd(); msg != nil {
-		t.Fatalf("the editor failed: %v", msg)
+		t.Fatalf("the editor command = %v, want nil", msg)
 	}
 	b, err := os.ReadFile(out)
 	if err != nil {
@@ -156,11 +111,12 @@ func TestWindowEditor(t *testing.T) {
 		t.Errorf("the editor got\n%q\nwant\n%q", b, want)
 	}
 	if _, err := os.Stat(log); err == nil {
-		t.Error("a window editor opened a Rex block")
+		t.Errorf("rex log %s exists, want no Rex block for a window editor",
+			log)
 	}
 }
 
-// TestEditorError checks that the footer tells why an editor failed.
+// TestEditorError checks that the footer tells why an editor fails.
 func TestEditorError(t *testing.T) {
 	code := writeScript(t, t.TempDir(), "code", "echo 'code: no such file' >&2\nexit 3\n")
 	tests := []struct {
@@ -176,11 +132,31 @@ func TestEditorError(t *testing.T) {
 			t.Setenv("PATH", tt.path)
 			m, cmd := pressE(t, m)
 			if cmd == nil {
-				t.Fatal("e returned no command")
+				t.Fatal("e returns no command, want a command")
 			}
 			if m = step(t, m, cmd()); !strings.Contains(view(m), tt.want) {
-				t.Errorf("the footer does not show %q:\n%s", tt.want, view(m))
+				t.Errorf("view got:\n%s\nwant %q in the footer", view(m), tt.want)
 			}
 		})
+	}
+}
+
+// TestNewLineNear checks the line that the editor opens for each kind of
+// row.
+func TestNewLineNear(t *testing.T) {
+	rows := []diff.Row{
+		{Kind: diff.KindHunk},
+		{Kind: diff.KindEqual, Old: 1, New: 1},
+		{Kind: diff.KindDelete, Old: 2},
+		{Kind: diff.KindInsert, New: 2},
+		{Kind: diff.KindDelete, Old: 3},
+	}
+	for i, want := range []int{1, 1, 2, 2, 2} {
+		if got := newLineNear(rows, i); got != want {
+			t.Errorf("newLineNear(row %d) = %d, want %d", i, got, want)
+		}
+	}
+	if got := newLineNear(rows[2:3], 0); got != 1 {
+		t.Errorf("newLineNear(a lone deleted line) = %d, want 1", got)
 	}
 }

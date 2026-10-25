@@ -130,8 +130,8 @@ type overlayKeyMap struct {
 	Quit, Stay key.Binding
 }
 
-// overlayKeys is the keys of the overlays. The settings do not change
-// them.
+// overlayKeys has the keys of the overlays. The settings do not change
+// these keys.
 var overlayKeys = overlayKeyMap{
 	Choose:   key.NewBinding(key.WithKeys("enter")),
 	Close:    key.NewBinding(key.WithKeys("esc")),

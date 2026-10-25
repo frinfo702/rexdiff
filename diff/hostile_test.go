@@ -78,7 +78,8 @@ func TestWrapWideText(t *testing.T) {
 		}
 		got := strings.Join(strings.Fields(text.String()), "")
 		if !strings.Contains(got, line) {
-			t.Errorf("split %v: the wrapped lines lose text: %q", o.Split, got)
+			t.Errorf("split %v: the wrapped lines = %q, want all of %q",
+				o.Split, got, line)
 		}
 	}
 }
@@ -124,22 +125,6 @@ func TestRenderFileNarrow(t *testing.T) {
 	}
 }
 
-// TestQuote checks that Quote quotes only the paths that are not safe.
-func TestQuote(t *testing.T) {
-	tests := []struct{ in, want string }{
-		{"a.go", "a.go"},
-		{"日本.go", "日本.go"},
-		{"a\x1b]0;x\x07.go", `"a\x1b]0;x\a.go"`},
-		{"a\n.go", `"a\n.go"`},
-		{"a\x9b31m.go", `"a\x9b31m.go"`},
-	}
-	for _, tt := range tests {
-		if got := diff.Quote(tt.in); got != tt.want {
-			t.Errorf("Quote(%q) = %s, want %s", tt.in, got, tt.want)
-		}
-	}
-}
-
 // TestReviewHostileComment checks that Review quotes a hostile path and
 // removes the control characters from the code and the text.
 func TestReviewHostileComment(t *testing.T) {
@@ -162,7 +147,7 @@ func TestBlackTint(t *testing.T) {
 	d := diff.Render("a.txt", "x\ny\nx\n", "y\nx\n", diff.Options{Theme: th})
 	for i, r := range d.Rows {
 		if r.Kind == diff.KindEqual && strings.Contains(d.Lines[i], "48;2;0;0;0mx") {
-			t.Errorf("equal line %d has the background of a deleted line: %q",
+			t.Errorf("equal line %d = %q, want no background of a deleted line",
 				r.New, d.Lines[i])
 		}
 	}

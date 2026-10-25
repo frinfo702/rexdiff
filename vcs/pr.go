@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/rednafi/rexdiff/internal/termtext"
 )
 
 var (
@@ -92,7 +94,8 @@ type Comment struct {
 // PullRequest returns the pull request of the current branch. It selects the
 // forge from the URL of the remote "upstream", or else "origin". Then it runs
 // the command-line tool of the forge: gh, glab, or az. The tool must be
-// installed and signed in.
+// installed and signed in. The text of the pull request has no control
+// characters.
 func (r *Repo) PullRequest(ctx context.Context, h Hosts) (*PullRequest, error) {
 	remote := strings.ToLower(r.remoteURL(ctx)) // host names ignore case
 	has := func(host string) bool {
@@ -112,10 +115,30 @@ func (r *Repo) PullRequest(ctx context.Context, h Hosts) (*PullRequest, error) {
 	default:
 		return nil, errUnsupported
 	}
-	if err == nil && pr.Title == "" {
+	if err != nil {
+		return nil, err
+	}
+	if pr.Title == "" {
 		return nil, ErrNotFound
 	}
-	return pr, err
+	cleanPR(pr)
+	return pr, nil
+}
+
+// cleanPR removes the control characters from the text of pr, because the
+// text comes from other users.
+func cleanPR(pr *PullRequest) {
+	texts := []*string{&pr.Title, &pr.URL, &pr.Author, &pr.Head, &pr.Base, &pr.Body}
+	for i := range pr.Checks {
+		texts = append(texts, &pr.Checks[i].Name)
+	}
+	for i := range pr.Comments {
+		c := &pr.Comments[i]
+		texts = append(texts, &c.Author, &c.When, &c.Body)
+	}
+	for _, s := range texts {
+		*s = termtext.Plain(*s)
+	}
 }
 
 // decode runs a forge tool in the root directory and decodes its JSON

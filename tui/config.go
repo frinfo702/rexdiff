@@ -27,7 +27,7 @@ type Scope string
 const (
 	ScopeUncommitted Scope = "uncommitted" // HEAD
 	ScopeBranch      Scope = "branch"      // the base branch
-	ScopeLastTurn    Scope = "last-turn"   // the start of the last turn of the agent
+	ScopeLastTurn    Scope = "last-turn"   // the start of the last agent turn
 )
 
 // markdownView tells how the program shows a Markdown file.
@@ -70,7 +70,8 @@ type config struct {
 	MarkdownView markdownView `json:"markdown_view"`
 	// FileList is the side of the screen that shows the list of files.
 	FileList position `json:"file_list"`
-	// FileListWidth is in columns, minListWidth or more.
+	// FileListWidth is the width of the file list in columns. It is
+	// minListWidth or more.
 	FileListWidth int `json:"file_list_width"`
 	// DiffSigns marks a changed line with + or -, in place of a bar.
 	DiffSigns bool `json:"diff_signs"`

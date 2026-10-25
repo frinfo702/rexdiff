@@ -11,8 +11,8 @@ import (
 	"github.com/rednafi/rexdiff/internal/diffview"
 )
 
-// lineNumberColor is the ANSI palette colour of the line numbers: bright
-// black.
+// lineNumberColor is the ANSI palette colour of the line numbers. Colour 8
+// is bright black.
 const lineNumberColor = "8"
 
 // RenderFile shows src, the content of the file at path, with line numbers
@@ -26,13 +26,13 @@ func RenderFile(path, src string, o Options) *Diff {
 		"\r", "\u240d",
 		"\t", strings.Repeat(" ", tabWidth),
 	).Replace(src)
-	hl := strings.Split(highlight(path, src), "\n")
-	hl = hl[:min(len(hl), len(Lines(src)))] // chroma can add a line break at the end
+	hl := strings.Split(o.Cache.fileColours(path, src), "\n")
+	hl = hl[:min(len(hl), len(Lines(src)))] // chroma can add a final newline
 	digits := len(strconv.Itoa(len(hl)))
 	numWidth := digits + 2 // a space on each side of the number
 	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(lineNumberColor))
 	d := &Diff{newNum: numWidth}
-	code := o.Width - numWidth - 1 // the width that the number and a space leave
+	code := o.Width - numWidth - 1 // the width after the number and a space
 	blank := strings.Repeat(" ", numWidth+1)
 	for i, l := range hl {
 		for k, p := range fileLineParts(l, code, o) {
@@ -74,9 +74,22 @@ func fileLineParts(l string, code int, o Options) []string {
 	return []string{ansi.TruncateLeft(l, o.Offset, "")}
 }
 
-// highlight colours the whole file at once, so that tokens that span lines
-// get the correct colour. If it cannot highlight src, it returns src with
-// its control characters replaced.
+// fileColours returns highlight(path, src), and keeps it for the next
+// call. A nil c keeps nothing.
+func (c *Cache) fileColours(path, src string) string {
+	if c == nil {
+		return highlight(path, src)
+	}
+	f := &c.file
+	if f.path != path || f.src != src {
+		f.path, f.src, f.out = path, src, highlight(path, src)
+	}
+	return f.out
+}
+
+// highlight colours src, the whole file at path, at once, so that tokens
+// that span lines get the correct colour. If it cannot highlight src, it
+// returns src with its control characters replaced.
 func highlight(path, src string) string {
 	it, err := diffview.Lexer(path, src).Tokenise(nil, src)
 	if err != nil {

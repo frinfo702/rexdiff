@@ -23,7 +23,7 @@ type fakeUpdater struct {
 	newer      bool
 	err        error    // the error of Latest
 	installErr error    // the error of Install
-	installed  []string // the tags that Install got
+	installed  []string // the tags that Install gets
 }
 
 func (f *fakeUpdater) Latest(context.Context) (update.Release, bool, error) {
@@ -55,7 +55,7 @@ func lastLine(m model) string {
 func run(t *testing.T, m model, cmd tea.Cmd) (model, tea.Cmd) {
 	t.Helper()
 	if cmd == nil {
-		t.Fatal("no command")
+		t.Fatal("run: no command, want a command")
 	}
 	next, cmd := m.Update(cmd())
 	return *next.(*model), cmd
@@ -71,7 +71,7 @@ func TestUpdate(t *testing.T) {
 		t.Fatalf("footer = %q, want %q", got, prompt)
 	}
 
-	// The key U starts the install, and the footer tells about it.
+	// The key U starts the install. The footer shows the install.
 	next, cmd := m.Update(tea.KeyPressMsg{Code: 'U', Text: "U"})
 	m = *next.(*model)
 	if got := lastLine(m); !strings.Contains(got, "updating rexdiff to v0.2.0…") {
@@ -84,12 +84,13 @@ func TestUpdate(t *testing.T) {
 		t.Fatalf("Install got %v, want v0.2.0", u.installed)
 	}
 	if restart != nil || m.restartState != "" {
-		t.Fatal("rexdiff restarts while the user writes a comment")
+		t.Fatal("rexdiff restarts while the user writes a comment, " +
+			"want no restart")
 	}
 	// The restart waits until the user saves the comment.
 	m = press(t, m, "f", "i", "x", "enter")
 	if m.restartState == "" {
-		t.Fatal("no restart after the comment")
+		t.Fatal("no restart after the comment, want a restart")
 	}
 	t.Cleanup(func() { os.Remove(m.restartState) })
 
@@ -99,7 +100,7 @@ func TestUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(m.restartState); !errors.Is(err, fs.ErrNotExist) {
-		t.Error("loadState did not remove the file")
+		t.Errorf("after loadState: Stat = %v, want fs.ErrNotExist", err)
 	}
 	m2 := newModel(t.Context(), Options{Repo: m.repo}, defaultConfig())
 	m2.restoreSettings(saved)
@@ -113,7 +114,7 @@ func TestUpdate(t *testing.T) {
 			m2.changes.cur, m2.scope, m2.tab, m.changes.cur, m.scope, m.tab)
 	}
 	if got, want := m2.comments.Review(""), m.comments.Review(""); got != want {
-		t.Errorf("the review after the restart:\n%s\nwant:\n%s", got, want)
+		t.Errorf("the review after the restart got:\n%s\nwant:\n%s", got, want)
 	}
 }
 
@@ -133,7 +134,7 @@ func TestUpdateClick(t *testing.T) {
 	next, cmd := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: m.h - 1})
 	m = *next.(*model)
 	if cmd == nil || m.phase != phaseInstalling {
-		t.Fatal("a click on the footer did not start the install")
+		t.Fatal("a click on the footer: no install, want the install")
 	}
 }
 
@@ -149,13 +150,13 @@ func TestUpdateFails(t *testing.T) {
 	next, cmd := m.Update(tea.KeyPressMsg{Code: 'U', Text: "U"})
 	m, restart := run(t, *next.(*model), cmd)
 	if restart != nil || m.restartState != "" {
-		t.Fatal("rexdiff restarts after a failed install")
+		t.Fatal("rexdiff restarts after a failed install, want no restart")
 	}
 	if !strings.Contains(lastLine(m), "update failed: brew: exit status 1: Error: another brew is running") {
 		t.Errorf("footer = %q, want the reason", lastLine(m))
 	}
 	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'U', Text: "U"}); cmd == nil {
-		t.Error("U does not try again")
+		t.Error("U after a failed install: no command, want a new install")
 	}
 }
 
@@ -171,12 +172,13 @@ func TestNoUpdate(t *testing.T) {
 			t.Errorf("updater %+v: footer %q, want no release", u, lastLine(m))
 		}
 		if _, cmd := m.Update(tea.KeyPressMsg{Code: 'U', Text: "U"}); cmd != nil {
-			t.Errorf("updater %+v: U started a command", u)
+			t.Errorf("updater %+v: U returns a command, want none", u)
 		}
 	}
 	m, _ := newTestModel(t)
 	if cmd := m.Init(); m.updater != nil || cmd == nil {
-		t.Error("the test model has an updater")
+		t.Errorf("updater = %v, Init returns a command %v; want nil, true",
+			m.updater, cmd != nil)
 	}
 }
 
@@ -210,25 +212,25 @@ func TestRestartWaits(t *testing.T) {
 	m.sends = 1 // a send runs while the install ends
 	m = step(t, m, installedMsg{})
 	if m.restartState != "" {
-		t.Fatal("restart while a send runs")
+		t.Fatal("restart while a send runs, want no restart")
 	}
 	m = step(t, m, sentMsg{agent: rex.Agent{Name: "pi"}})
 	if m.restartState == "" {
-		t.Fatal("no restart after the send")
+		t.Fatal("no restart after the send, want a restart")
 	}
 	os.Remove(m.restartState)
 
-	// In the PR tab, the key r returns the command that loads the PR. Thus
-	// r does not restart, but a message without a command does.
+	// In the PR tab, the key r returns the command that loads the PR. So r
+	// does not restart. A message without a command starts the restart.
 	m = updaterModel(t, u)
 	m.tab = tabPR
 	m.phase = phaseInstalled
 	if next, cmd := m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"}); cmd == nil || next.(*model).restartState != "" {
-		t.Fatal("restart on a message with a command")
+		t.Fatal("restart on a message with a command, want no restart")
 	}
 	m = step(t, m, tea.FocusMsg{})
 	if m.restartState == "" {
-		t.Fatal("no restart on a message without a command")
+		t.Fatal("no restart on a message without a command, want a restart")
 	}
 	os.Remove(m.restartState)
 }
@@ -256,15 +258,15 @@ func TestUpdateClickRule(t *testing.T) {
 	m := updaterModel(t, u)
 	rule := bodyY + m.bodyHeight()
 	if got := step(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: rule}); got.phase == phaseInstalling {
-		t.Error("a click on the rule started the install")
+		t.Error("a click on the rule starts the install, want no install")
 	}
 	if got := step(t, m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 3, Y: rule + 1}); got.phase != phaseInstalling {
-		t.Error("a click on the footer did not start the install")
+		t.Error("a click on the footer: no install, want the install")
 	}
 }
 
 // TestRestartSaveFails checks that a failed save of the state tells the
-// user and stops the restart, so that rexdiff continues with the old version.
+// user and stops the restart. Then rexdiff continues with the old version.
 func TestRestartSaveFails(t *testing.T) {
 	u := &fakeUpdater{latest: update.Release{Tag: "v0.2.0"}, newer: true}
 	m := updaterModel(t, u)
@@ -294,7 +296,7 @@ func TestRestartOnTick(t *testing.T) {
 	next, cmd := m.Update(tickMsg{})
 	m = *next.(*model)
 	if m.restartState == "" || cmd == nil {
-		t.Fatal("no restart on a tick")
+		t.Fatal("no restart on a tick, want a restart")
 	}
 	os.Remove(m.restartState)
 }
@@ -352,9 +354,9 @@ func TestRunChecksOptions(t *testing.T) {
 	}
 }
 
-// TestSendKeepsEdits checks that a comment edited while its send runs
-// stays after the send, whether the user saved the edit before the send
-// ended or after it.
+// TestSendKeepsEdits checks that a comment that the user edits while its
+// send runs stays after the send. The user can save the edit before or after
+// the send ends.
 func TestSendKeepsEdits(t *testing.T) {
 	for _, saveFirst := range []bool{true, false} {
 		m, _ := newTestModel(t)
@@ -373,7 +375,7 @@ func TestSendKeepsEdits(t *testing.T) {
 			t.Errorf("save first %v: comments after the send = %q, want the edited comment", saveFirst, got)
 		}
 	}
-	// The send removes a comment that the user did not change.
+	// The send removes a comment that the user does not change.
 	m, _ := newTestModel(t)
 	m = press(t, m, "j", "j", "j", "j", "c", "x", "enter")
 	m.sends = 1

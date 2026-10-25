@@ -10,9 +10,9 @@ import (
 // longer run of equal lines folds into one row, as in herdr-reviewr.
 const foldMargin = 3
 
-// Fold is a run of equal lines that hides. Before and After are the line
-// numbers of its first line. Lines is the number of lines. It is 0 if no
-// line hides.
+// Fold is a run of equal lines that the view hides. Before and After are
+// the line numbers of its first line. Lines is the number of lines. Lines
+// is 0 if the view hides no line.
 type Fold struct {
 	Before, After, Lines int
 }

@@ -90,11 +90,13 @@ func TestRenderRowsFollowLines(t *testing.T) {
 				}
 			}
 			if len(d.Lines) != len(d.Rows) {
-				t.Fatalf("%s: %d lines for %d rows", name, len(d.Lines), len(d.Rows))
+				t.Fatalf("%s: %d lines for %d rows, want one line for each row",
+					name, len(d.Lines), len(d.Rows))
 			}
 			for i, l := range d.Lines {
 				if w := ansi.StringWidth(l); w > width {
-					t.Errorf("%s: line %d is %d cells wide", name, i, w)
+					t.Errorf("%s: line %d is %d cells wide, want %d or fewer",
+						name, i, w, width)
 				}
 			}
 		}
@@ -114,31 +116,31 @@ func TestRenderSameContentIsEmpty(t *testing.T) {
 func TestRenderTabsAndOffset(t *testing.T) {
 	d := diff.Render("x.go", "", "\tx := 1\n", diff.Options{Width: 80})
 	if got := ansi.Strip(d.Lines[1]); !strings.Contains(got, "▌     x := 1") {
-		t.Errorf("tab: line = %q", got)
+		t.Errorf("tab: line = %q, want %q in it", got, "▌     x := 1")
 	}
 	d = diff.Render("x.go", "", "\tx := 1\n", diff.Options{Width: 80, Offset: 6})
 	got := ansi.Strip(d.Lines[1])
 	if strings.Contains(got, "x :=") || !strings.Contains(got, "= 1") {
-		t.Errorf("offset 6: line = %q", got)
+		t.Errorf("offset 6: line = %q, want \"= 1\" and no \"x :=\"", got)
 	}
 }
 
 // TestMarks checks the mark at the start of the code of each line, in the two
 // layouts.
 func TestMarks(t *testing.T) {
-	const old, new = "a\nb\nc\n", "a\nB\nc\n"
+	const before, after = "a\nb\nc\n", "a\nB\nc\n"
 	// By default a bar marks a changed line, as in herdr-reviewr. Signs gives
 	// + and -. The mark takes two cells in both cases, so the columns do not
 	// move.
 	theme := diff.Theme{
 		Background: color.Black,
-		Green:      color.RGBA{0, 0xff, 0, 0xff},
-		Red:        color.RGBA{0xff, 0, 0, 0xff},
+		Green:      color.RGBA{G: 0xff, A: 0xff},
+		Red:        color.RGBA{R: 0xff, A: 0xff},
 	}
 	tests := []struct {
 		name  string
 		o     diff.Options
-		lines []string // the screen lines under the hunk header, without colours
+		lines []string // lines under the hunk header, no colours
 	}{
 		{"unified bar", diff.Options{Width: 40}, []string{
 			" 1  1   a", " 2    ▌ b", "    2 ▌ B", " 3  3   c",
@@ -159,7 +161,7 @@ func TestMarks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		tt.o.Theme = theme
-		d := diff.Render("x.txt", old, new, tt.o)
+		d := diff.Render("x.txt", before, after, tt.o)
 		if len(d.Lines) != 1+len(tt.lines) {
 			t.Fatalf("%s: %d lines, want %d", tt.name, len(d.Lines), 1+len(tt.lines))
 		}
@@ -182,8 +184,8 @@ func TestMarks(t *testing.T) {
 	}
 	// The review text of a comment uses + and - for both kinds of mark.
 	for _, signs := range []bool{false, true} {
-		d := diff.Render("x.txt", old, new, diff.Options{Width: 40, Signs: signs})
-		got := snippet(d.Rows[2:5], old, new)
+		d := diff.Render("x.txt", before, after, diff.Options{Width: 40, Signs: signs})
+		got := snippet(d.Rows[2:5], before, after)
 		if want := []string{"-b", "+B", " c"}; !slices.Equal(got, want) {
 			t.Errorf("signs %v: snippet = %q, want %q", signs, got, want)
 		}
@@ -275,18 +277,19 @@ func TestRenderFile(t *testing.T) {
 		t.Fatalf("got %d lines and %d rows, want 5", len(d.Lines), len(d.Rows))
 	}
 	if d.Rows[3] != (diff.Row{Kind: diff.KindEqual, Old: 4, New: 4}) {
-		t.Errorf("row 3 = %+v", d.Rows[3])
+		t.Errorf("row 3 = %+v, want %+v",
+			d.Rows[3], diff.Row{Kind: diff.KindEqual, Old: 4, New: 4})
 	}
 	if got := ansi.Strip(d.Lines[2]); got != " 3  func f() {" {
-		t.Errorf("line 2 = %q", got)
+		t.Errorf("line 2 = %q, want %q", got, " 3  func f() {")
 	}
 	if got := ansi.Strip(d.Lines[0]); got != " 1  package x" {
-		t.Errorf("line 0 = %q", got)
+		t.Errorf("line 0 = %q, want %q", got, " 1  package x")
 	}
 	// Control characters must not reach the terminal.
 	d = diff.RenderFile("x.txt", "a\x1b[31mb\n", diff.Options{})
 	if strings.Contains(ansi.Strip(d.Lines[0]), "\x1b") {
-		t.Errorf("line 0 = %q, has an escape", d.Lines[0])
+		t.Errorf("line 0 = %q, want no escape", d.Lines[0])
 	}
 }
 
@@ -322,7 +325,8 @@ func TestWrap(t *testing.T) {
 		var text strings.Builder
 		for i, l := range d.Lines {
 			if w := ansi.StringWidth(l); w > width {
-				t.Errorf("%s: line %d is %d cells wide", name, i, w)
+				t.Errorf("%s: line %d is %d cells wide, want %d or fewer",
+					name, i, w, width)
 			}
 			r := d.Rows[i]
 			if r.New == 2 {
@@ -332,19 +336,50 @@ func TestWrap(t *testing.T) {
 			prev := d.Rows[max(i-1, 0)]
 			sameLines := prev.Old == r.Old && prev.New == r.New
 			if r.Continued && !sameLines {
-				t.Errorf("%s: continued row %d = %+v, the row above = %+v",
+				t.Errorf("%s: continued row %d = %+v, want the lines of %+v",
 					name, i, r, prev)
 			}
 		}
 		noSpace := func(s string) string { return strings.Join(strings.Fields(s), "") }
 		if !strings.Contains(noSpace(text.String()), noSpace(long)) {
-			t.Errorf("%s: the wrapped lines do not show all of the line:\n%s",
-				name, text.String())
+			t.Errorf("%s: the wrapped lines got:\n%s\nwant all of:\n%s",
+				name, text.String(), long)
 		}
 		// Wrap does not change the snippet of a comment.
 		got, want := snippet(d.Rows, old, new), snippet(cut.Rows, old, new)
 		if !slices.Equal(got, want) {
-			t.Errorf("%s: snippet with wrap %q, without %q", name, got, want)
+			t.Errorf("%s: snippet with wrap = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// TestCache checks that a shared [diff.Cache] gives the same lines as no
+// cache. It tries other offsets, other languages, and new content.
+func TestCache(t *testing.T) {
+	const src = "def f(): # a comment\n\treturn 1\n"
+	renders := []struct {
+		path, old, new string
+		file           bool // RenderFile, of new
+		offset         int
+	}{
+		{path: "a.go", old: src, new: src + "x\n"},
+		{path: "a.go", old: src, new: src + "x\n", offset: 4},
+		{path: "a.py", old: src, new: src + "x\n"},
+		{path: "a.py", new: src, file: true},
+		{path: "a.py", new: src + "y\n", file: true},
+		{path: "a.go", new: src + "y\n", file: true},
+	}
+	var c diff.Cache
+	for _, r := range renders {
+		render := func(c *diff.Cache) []string {
+			o := diff.Options{Width: 40, Offset: r.offset, Cache: c}
+			if r.file {
+				return diff.RenderFile(r.path, r.new, o).Lines
+			}
+			return diff.Render(r.path, r.old, r.new, o).Lines
+		}
+		if got, want := render(&c), render(nil); !slices.Equal(got, want) {
+			t.Errorf("%+v: with the cache got:\n%q\nwant:\n%q", r, got, want)
 		}
 	}
 }

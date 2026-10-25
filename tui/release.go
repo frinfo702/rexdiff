@@ -31,7 +31,7 @@ const (
 	phaseInstalled              // rexdiff restarts when the user is ready
 )
 
-// installedMsg tells that the install of the release ended.
+// installedMsg reports the end of the install of the release.
 type installedMsg struct{ err error }
 
 // checkRelease returns a command that asks for the latest release. Its
@@ -69,7 +69,7 @@ func (m *model) install() tea.Cmd {
 	return func() tea.Msg { return installedMsg{u.Install(ctx, r)} }
 }
 
-// onInstalled prepares the restart, or tells why the install failed. After
+// onInstalled prepares the restart, or tells why the install fails. After
 // a failure, the user can try again.
 func (m *model) onInstalled(msg installedMsg) {
 	if msg.err != nil {

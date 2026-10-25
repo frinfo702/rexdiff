@@ -32,8 +32,8 @@ func (m *model) listAgents(msg agentsMsg) tea.Cmd {
 // counts as in the repository.
 func (m *model) inRepo(dir string) bool { return dir == "" || m.repo.Contains(dir) }
 
-// agent returns the state of the agent in block. It adds the block if it is
-// new.
+// agent returns the state of the agent in block. If the block is new, agent
+// adds it.
 func (m *model) agent(block string) *agentState {
 	a := m.agents[block]
 	if a == nil {
@@ -103,7 +103,7 @@ func (m *model) startTurn(block, app string) {
 	}
 }
 
-// onAgents keeps the states of the agents. For a send, it sends the
+// onAgents keeps the states of the agents. For a send, onAgents sends the
 // review to the agent, or lets the user pick one.
 func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	for _, a := range msg.agents {
@@ -117,7 +117,8 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 		m.flashCopy(msg.err.Error())
 		return nil
 	}
-	// Prefer the agents in this repository. Else use all of the session.
+	// Prefer the agents in this repository. Else use all the agents of the
+	// session.
 	var here []rex.Agent
 	for _, a := range msg.agents {
 		if m.inRepo(a.Cwd) {
@@ -135,7 +136,7 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 		return m.deliver(here[0])
 	case m.mode != modeNormal:
 		// The user can open the comment box or an overlay while the agents
-		// load. A picker on top would hide the box and lose the comment.
+		// load. A picker on top can hide the box and lose the comment.
 		m.flash("several agents: close the box, then press s to pick one")
 		return nil
 	}
@@ -148,8 +149,8 @@ func (m *model) reviewText() string {
 	return m.comments.Review(m.cfg.ReviewPrefix)
 }
 
-// deliver returns a command that pastes the review into agent a. Before
-// the paste, it checks the agent again. A prompt of the agent would take
+// deliver returns a command that pastes the review into agent a. It checks
+// the agent again before the paste, because a prompt of the agent can take
 // the text.
 func (m *model) deliver(a rex.Agent) tea.Cmd {
 	m.sends++
@@ -176,14 +177,15 @@ func (m *model) deliver(a rex.Agent) tea.Cmd {
 			return sentMsg{agent: a, err: err}
 		}
 		if focus {
-			_ = c.Focus(ctx, a.Block) // ignore the error, because the paste worked
+			// Ignore the error, because the paste works.
+			_ = c.Focus(ctx, a.Block)
 		}
 		return sentMsg{agent: a, ids: ids}
 	}
 }
 
 // onSent removes the sent comments if the send worked. The comments that
-// the user added or changed during the send stay. A saved edit gives a
+// the user adds or changes during the send stay. A saved edit gives a
 // comment a new ID, and msg does not have that ID.
 func (m *model) onSent(msg sentMsg) {
 	m.sends--

@@ -98,9 +98,9 @@ func TestFolds(t *testing.T) {
 		}
 	}
 
-	// The header tells how many lines hide. A fold at the end has no hunk
-	// header. In the split layout, the header goes on across the right
-	// side. No line is wider than the screen.
+	// The header gives the number of hidden lines. A fold at the end has no
+	// hunk header. In the split layout, the header continues across the
+	// right side. No line is wider than the screen.
 	for _, tt := range []struct {
 		o    diff.Options
 		want string
@@ -114,11 +114,13 @@ func TestFolds(t *testing.T) {
 	} {
 		d := diff.Render("f.txt", old, new, tt.o)
 		if got := headers(d); got != tt.want {
-			t.Errorf("split %v: headers:\n%s\nwant:\n%s", tt.o.Split, got, tt.want)
+			t.Errorf("split %v: headers got:\n%s\nwant:\n%s",
+				tt.o.Split, got, tt.want)
 		}
 		for i, l := range d.Lines {
 			if w := ansi.StringWidth(l); w > tt.o.Width {
-				t.Errorf("split %v: line %d is %d cells wide", tt.o.Split, i, w)
+				t.Errorf("split %v: line %d is %d cells wide, want %d or fewer",
+					tt.o.Split, i, w, tt.o.Width)
 			}
 		}
 	}

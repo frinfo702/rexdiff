@@ -11,13 +11,13 @@ const (
 	RowEqual                 // a line that is the same in the two versions
 	RowInsert                // an inserted line
 	RowDelete                // a deleted line
-	RowChange                // in the split layout, a deleted line beside an inserted line
+	RowChange                // a deleted line beside an inserted line (split)
 )
 
 // Row tells which source lines one rendered line shows. Before and After are
 // line numbers from 1, or 0 if the row has no line on that side. Continued
 // is true for the second and the next screen lines of a wrapped line.
-// For a hunk header, Fold is the run of lines that hides above it.
+// For a hunk header, Fold is the run of lines that hides above the header.
 type Row struct {
 	Kind          RowKind
 	Before, After int
@@ -121,8 +121,7 @@ func splitKind(l *splitLine) RowKind {
 }
 
 // Geometry gives the columns of the line numbers in the output of
-// [View.Render].
-// Use it to tell a line number from the code.
+// [View.Render]. Use it to tell a line number from the code.
 type Geometry struct {
 	BeforeNum     int // the width of the old line-number column, in cells
 	AfterNum      int // the width of the new line-number column, in cells

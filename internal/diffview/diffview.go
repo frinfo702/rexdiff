@@ -23,8 +23,9 @@ const (
 	ellipsis           = "…" // shows where a line is cut
 )
 
-// The symbols at the start of the code of a line. A bar in the colour of the line
-// marks each changed line. [View.Signs] shows + and - in place of the bar.
+// These symbols are at the start of the code of a line. A bar in the colour
+// of the line marks each changed line. [View.Signs] shows + and - in place
+// of the bar.
 const (
 	symNone   = "  " // an equal line, a missing line, or a continued line
 	symBar    = "▌ "
@@ -71,25 +72,62 @@ type View struct {
 	afterNumDigits  int
 	heights         []int // the number of screen lines of each row, for rows
 
-	// The View keeps the lexer, because to match a file name is slow.
-	cachedLexer chroma.Lexer
+	cache *Cache
+}
 
-	// syntaxCache keeps the highlighted lines, so that the View highlights
-	// each equal line once.
-	syntaxCache map[syntaxKey]string
+// Cache keeps highlighted lines, so that chroma highlights each line once.
+// Views that share a Cache reuse its lines and its last lexer. The zero
+// value is an empty Cache. A Cache is not safe for concurrent use.
+type Cache struct {
+	lines map[syntaxKey]string
+	size  int // the bytes of the lines and their sources
+
+	// lexer keeps the last lexer, because to select a lexer from the
+	// content is slow.
+	lexer struct {
+		path, content string
+		l             chroma.Lexer
+	}
+}
+
+// maxCacheSize limits the bytes of the lines and the sources in a Cache.
+// If a put goes above this size, put empties the Cache first.
+const maxCacheSize = 32 << 20
+
+// put keeps the highlighted line s for key k.
+func (c *Cache) put(k syntaxKey, s string) {
+	// k.source is a part of the file string. A copy lets the cache keep
+	// the line without the whole file.
+	k.source = strings.Clone(k.source)
+	n := len(k.source) + len(s)
+	if c.lines == nil || c.size+n > maxCacheSize {
+		c.lines, c.size = make(map[syntaxKey]string), 0
+	}
+	c.lines[k] = s
+	c.size += n
 }
 
 // New returns a View with the unified layout and a tab width of 8.
 func New() *View {
 	return &View{
-		layout:      layoutUnified,
-		tabWidth:    defaultTabWidth,
-		syntaxCache: make(map[syntaxKey]string),
+		layout:   layoutUnified,
+		tabWidth: defaultTabWidth,
+		cache:    &Cache{},
 	}
 }
 
-// Split sets the split layout: the old lines on the left, the new lines on
-// the right.
+// Cache makes v keep its highlighted lines in c. A nil c gives v a new
+// Cache.
+func (v *View) Cache(c *Cache) *View {
+	if c == nil {
+		c = &Cache{}
+	}
+	v.cache = c
+	return v
+}
+
+// Split sets the split layout. The old lines are on the left and the new
+// lines are on the right.
 func (v *View) Split() *View {
 	v.layout = layoutSplit
 	return v
@@ -109,11 +147,8 @@ func (v *View) After(path, content string) *View {
 	return v
 }
 
-// clearCaches clears the lexer, the syntax cache, and the diff. Call it when
-// the content changes.
+// clearCaches clears the diff. Call it when the content changes.
 func (v *View) clearCaches() {
-	v.cachedLexer = nil
-	clear(v.syntaxCache)
 	v.isComputed = false
 }
 
@@ -322,8 +357,8 @@ func (v *View) resizeCodeWidth() {
 	v.fullCodeWidth = v.codeWidth + leadingSymbolsSize
 }
 
-// renderUnified renders the unified layout: the old and the new line
-// numbers, then the code.
+// renderUnified renders the unified layout. Each line has the old and the
+// new line numbers, then the code.
 func (v *View) renderUnified() string {
 	var b strings.Builder
 	nums := func(ls lineStyle, before, after any) string {
@@ -364,8 +399,8 @@ func (v *View) unifiedHeader(i int) string {
 		div.code.Width(v.fullCodeWidth).Render(header)
 }
 
-// renderSplit renders the split layout: the old lines on the left, the new
-// lines on the right.
+// renderSplit renders the split layout. The old lines are on the left and
+// the new lines are on the right.
 func (v *View) renderSplit() string {
 	var b strings.Builder
 	afterWidth := v.codeWidth + btoi(v.extraColOnAfter)
@@ -404,8 +439,8 @@ func (v *View) splitHeader(i int) string {
 }
 
 // splitSide renders line l on one side of the split layout, one string for
-// each screen line. l is nil if that side has no line, and n is its line
-// number. The fill function renders an empty screen line. Use it when the
+// each screen line. l is nil if that side has no line. n is the line number
+// of l. The fill function renders an empty screen line. Use fill when the
 // other side has more screen lines.
 func (v *View) splitSide(
 	l *udiff.Line,
@@ -467,7 +502,7 @@ func (v *View) lineNum(ls lineStyle, n any, digits int) string {
 	return ls.lineNumber.Render(pad(n, digits))
 }
 
-// codeLines renders one source line: nums, sym, and the code in width
+// codeLines renders one source line with nums, sym, and the code in width
 // cells. It cuts a long line. With wrap, the line continues on more screen
 // lines, which show blank in place of nums and no sym.
 func (v *View) codeLines(
@@ -482,7 +517,8 @@ func (v *View) codeLines(
 		w := max(width, 1)
 		parts = strings.Split(ansi.Hardwrap(lipgloss.Wrap(code, w, ""), w, true), "\n")
 		for i, p := range parts {
-			parts[i] = ansi.Truncate(p, w, "") // a wide character can be wider than w
+			// A wide character can be wider than w.
+			parts[i] = ansi.Truncate(p, w, "")
 		}
 	} else {
 		code = ansi.GraphemeWidth.Cut(code, v.xOffset, len(code))
@@ -526,16 +562,18 @@ func hunkLineCounts(h *udiff.Hunk) (before, after int) {
 }
 
 // highlightCode returns source with syntax colours on the background
-// bgColor. The syntax cache keeps the result, so highlightCode highlights
-// each equal line once. If chroma fails, it returns source as it is.
+// bgColor. The cache keeps the result. If chroma fails, highlightCode
+// returns source as it is.
 func (v *View) highlightCode(source string, bgColor color.Color) string {
-	// Chroma makes a lone CR a line break, so show it as a symbol first.
+	// Chroma makes a lone CR a line break. Thus show each CR as a symbol
+	// first.
 	source = strings.ReplaceAll(source, "\r", "\u240d")
-	key := newSyntaxKey(source, bgColor)
-	if cached, ok := v.syntaxCache[key]; ok {
+	lexer := v.chromaLexer()
+	key := newSyntaxKey(lexer.Config().Name, source, bgColor)
+	if cached, ok := v.cache.lines[key]; ok {
 		return cached
 	}
-	it, err := v.chromaLexer().Tokenise(nil, source)
+	it, err := lexer.Tokenise(nil, source)
 	if err != nil {
 		return source
 	}
@@ -545,22 +583,23 @@ func (v *View) highlightCode(source string, bgColor color.Color) string {
 		return source
 	}
 	out := b.String()
-	v.syntaxCache[key] = out
+	v.cache.put(key, out)
 	return out
 }
 
-// syntaxKey is the key of the syntax cache: the source and its background
-// colour. noColor is true for no background, because lipgloss.NoColor has
-// the same RGBA value as black.
+// syntaxKey is the key of a [Cache]. It has the lexer, the source, and the
+// background colour of the source. noColor is true for no background, because
+// lipgloss.NoColor has the same RGBA value as black.
 type syntaxKey struct {
-	source     string
-	noColor    bool
-	r, g, b, a uint32
+	lexer, source string
+	noColor       bool
+	r, g, b, a    uint32
 }
 
-// newSyntaxKey returns the cache key of source on the background bgColor.
-func newSyntaxKey(source string, bgColor color.Color) syntaxKey {
-	k := syntaxKey{source: source}
+// newSyntaxKey returns the key of source for the lexer named lexer, on
+// bgColor.
+func newSyntaxKey(lexer, source string, bgColor color.Color) syntaxKey {
+	k := syntaxKey{lexer: lexer, source: source}
 	if _, none := bgColor.(lipgloss.NoColor); bgColor == nil || none {
 		k.noColor = true
 		return k
@@ -569,12 +608,15 @@ func newSyntaxKey(source string, bgColor color.Color) syntaxKey {
 	return k
 }
 
-// chromaLexer returns the lexer of the old file, and keeps it.
+// chromaLexer returns the lexer of the old file, and keeps it in the
+// cache.
 func (v *View) chromaLexer() chroma.Lexer {
-	if v.cachedLexer == nil {
-		v.cachedLexer = Lexer(v.before.path, v.before.content)
+	lx := &v.cache.lexer
+	if lx.l == nil || lx.path != v.before.path || lx.content != v.before.content {
+		lx.path, lx.content = v.before.path, v.before.content
+		lx.l = Lexer(lx.path, lx.content)
 	}
-	return v.cachedLexer
+	return lx.l
 }
 
 // Lexer returns the coalesced lexer for the file at path. If no lexer
@@ -593,7 +635,8 @@ func Lexer(path, content string) chroma.Lexer {
 }
 
 // processChromaValue escapes the text of a token for the terminal. A code
-// line has no line break, so it removes the trailing ones.
+// line has no line break. Thus processChromaValue removes the trailing line
+// breaks.
 func processChromaValue(value string) string {
 	return Escape(strings.TrimRight(value, "\n"))
 }

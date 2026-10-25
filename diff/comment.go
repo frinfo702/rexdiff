@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/rednafi/rexdiff/internal/termtext"
 )
 
 // Comment is a review note on a range of lines on one side of a file. Use
 // [NewComment] to make one. A comment keeps the text of its lines, for
 // [Comments.Relocate], and its diff rows, for [Comments.Review].
 type Comment struct {
-	ID   int // set by [Comments.Add]
+	ID   int // [Comments.Add] sets it
 	Path string
 	Side Side
 	// Start and End are the first and the last line of the range. They
@@ -55,10 +57,10 @@ func NewComment(path string, s Side, rows []Row, old, new string) Comment {
 }
 
 // Location returns the path and the lines of c, for example "a.go:3-4".
-// A comment on the old side has " (removed)" at the end. The path is
-// quoted with [Quote].
+// A comment on the old side has " (removed)" at the end. [termtext.Quote]
+// quotes the path.
 func (c *Comment) Location() string {
-	loc := fmt.Sprintf("%s:%d", Quote(c.Path), c.Start)
+	loc := fmt.Sprintf("%s:%d", termtext.Quote(c.Path), c.Start)
 	if c.End != c.Start {
 		loc += fmt.Sprintf("-%d", c.End)
 	}
@@ -78,7 +80,7 @@ type Comments struct {
 // Len returns the number of comments.
 func (cs *Comments) Len() int { return len(cs.items) }
 
-// Add adds a copy of c with a new ID, and returns the copy.
+// Add adds c with a new ID, and returns the comment in the set.
 func (cs *Comments) Add(c Comment) *Comment {
 	cs.last++
 	c.ID = cs.last
@@ -149,8 +151,8 @@ func (cs *Comments) Count(path string) int {
 // one. If the version does not have the text, the comment stays and
 // becomes stale.
 func (cs *Comments) Relocate(path, old, new string) {
-	// The lines of each side. Relocate splits a side only if a comment
-	// needs it.
+	// lines has the lines of each side. Relocate splits a side only if a
+	// comment needs that side.
 	var lines [2][]string
 	for _, c := range cs.items {
 		if c.Path != path || len(c.code) == 0 {

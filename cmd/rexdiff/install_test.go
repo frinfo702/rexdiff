@@ -21,7 +21,7 @@ func fakeRexDir(t *testing.T, log string) string {
 }
 
 // TestUpgrade checks that upgrade replaces the code of rexdiff.lua if it
-// differs from the code of the binary, and keeps the settings.
+// differs from the code of the binary. It keeps the settings.
 func TestUpgrade(t *testing.T) {
 	dir := t.TempDir()
 	reloads := filepath.Join(dir, "reloads")
@@ -51,7 +51,7 @@ func TestUpgrade(t *testing.T) {
 		t.Fatalf("upgrade without rexdiff.lua = %q, want no notice", n)
 	}
 	if _, err := os.Stat(lua); err == nil {
-		t.Fatal("upgrade made a rexdiff.lua")
+		t.Fatal("upgrade without rexdiff.lua: the file exists, want no file")
 	}
 
 	// If the file has old code for the same binary, upgrade replaces the
@@ -62,7 +62,8 @@ func TestUpgrade(t *testing.T) {
 		t.Fatalf("upgrade = %q, want no notice", n)
 	}
 	if got := read(); got != settings+luaCode(bin) {
-		t.Errorf("rexdiff.lua after upgrade:\n%s\nwant the settings and the new code", got)
+		t.Errorf("rexdiff.lua after upgrade got:\n%s\nwant:\n%s",
+			got, settings+luaCode(bin))
 	}
 	if b, _ := os.ReadFile(reloads); string(b) != "config reload\n" {
 		t.Errorf("rex calls = %q, want one config reload", b)
@@ -89,23 +90,24 @@ func TestUpgrade(t *testing.T) {
 	// tells what is wrong and what to do.
 	noMark := strings.Replace(settings+old, codeMark+"\n", "", 1)
 	if !strings.Contains(noMark, luaQuote(bin)) {
-		t.Fatal("the test file does not run bin")
+		t.Fatalf("the test file has no %s, want it", luaQuote(bin))
 	}
 	write(noMark)
 	n := upgrade(ctx, bin)
 	for _, want := range []string{"cannot upgrade rexdiff.lua", lua, codeMark,
 		"cannot tell your settings from its code", "Put that line back"} {
 		if !strings.Contains(n, want) {
-			t.Errorf("notice %q does not have %q", n, want)
+			t.Errorf("notice = %q, want %q in it", n, want)
 		}
 	}
-	if read() != noMark {
-		t.Error("upgrade changed rexdiff.lua without the line above the code")
+	if got := read(); got != noMark {
+		t.Errorf("rexdiff.lua without the line above the code, after upgrade "+
+			"got:\n%s\nwant:\n%s", got, noMark)
 	}
 }
 
-// TestLuaQuote checks that a path that Go would escape stays the same in
-// Lua 5.1, which knows only a few escapes.
+// TestLuaQuote checks that a path that Go escapes stays the same in Lua 5.1.
+// Lua 5.1 knows only a few escapes.
 func TestLuaQuote(t *testing.T) {
 	got := luaQuote("/a\u200bb/\"x\"\\y\nz")
 	want := "\"/a\u200bb/\\\"x\\\"\\\\y\\nz\""

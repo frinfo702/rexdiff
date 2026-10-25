@@ -59,8 +59,8 @@ const (
 )
 
 // Release is a release of rexdiff on GitHub. Get one from [Updater.Latest].
-// A Release that you make yourself has no files. Install can give it to
-// Homebrew or go install, but it cannot download it.
+// A Release that you make yourself has no files. Install can install such a
+// Release with Homebrew or go install. Install cannot download it.
 type Release struct {
 	Tag    string // for example "v0.2.0"
 	assets []asset
@@ -107,8 +107,8 @@ func Version(stamped string) string {
 // rexdiff. If bin links into a Caskroom, it uses Homebrew. If stamped is ""
 // and the version comes from go install, it uses go install. Else it
 // downloads the release. If REXDIFF_LATEST_URL is set, the Updater gets the
-// latest release from that address. Use it to test a release before it is
-// out.
+// latest release from that address. Set it to test a release before it
+// is public.
 func Detect(bin, stamped string) *Updater {
 	return detect(bin, Version(stamped), stamped == "")
 }
@@ -160,10 +160,10 @@ func (u *Updater) Latest(ctx context.Context) (Release, bool, error) {
 	return r, newer(r.Tag, u.version), nil
 }
 
-// Install installs the release r, and checks that the binary of rexdiff is
-// then the version of r. Install does not stop the running rexdiff. A
-// cancel of ctx does not stop an install that runs, because a stopped brew
-// can leave a broken cask. Install stops after five minutes.
+// Install installs the release r. Then it checks that the binary of rexdiff
+// has the version of r. Install does not stop the running rexdiff. Install
+// ignores a cancel of ctx, because a brew that stops early can leave a broken
+// cask. Install stops after five minutes.
 func (u *Updater) Install(ctx context.Context, r Release) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), installTimeout)
 	defer cancel()
@@ -229,9 +229,10 @@ func (u *Updater) command(ctx context.Context, env []string, name string, args .
 	return out, fmt.Errorf("%s: %w", filepath.Base(name), err)
 }
 
-// tool returns the path of the program name in dirs. Else it returns name,
-// and exec looks for it in PATH. tool looks in dirs first, because Rex
-// starts panes with a PATH without Homebrew or Go.
+// tool returns the path of the program name in dirs. If dirs do not have
+// the program, tool returns name, and exec looks for name in PATH. tool
+// looks in dirs first, because Rex starts panes with a PATH without
+// Homebrew or Go.
 func tool(name string, dirs ...string) string {
 	for _, dir := range dirs {
 		path := filepath.Join(dir, name)

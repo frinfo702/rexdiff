@@ -38,3 +38,6 @@
     which lines a hunk header hides
   - the syntax cache key tells "no background" from black, so a black tint does not
     leak onto equal lines
+  - the syntax cache is a `Cache` that views can share (`View.Cache`), so that a new
+    render does not highlight the same lines again; its key has the lexer name, it keeps
+    the last lexer, and a `Cache` empties before its lines go above 32 MB

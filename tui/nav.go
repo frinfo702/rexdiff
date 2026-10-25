@@ -12,10 +12,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
-// Steps of the keys that move or resize, in columns.
+// These are the steps of the keys that move or resize, in columns.
 const (
 	scrollStep    = 8 // the sideways scroll
 	listWidthStep = 4 // the width of the file list
@@ -77,7 +78,7 @@ func (m *model) actionKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 // scopeKey handles a key that changes the tab or the scope. It reports
-// whether it took the key.
+// whether it takes the key.
 func (m *model) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k := m.keys
 	switch {
@@ -109,7 +110,7 @@ func (m *model) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // moveKey handles a key that moves the cursor, the file selection, or
 // the sideways scroll. The wrap is here because it ends the sideways
-// scroll. moveKey reports whether it took the key.
+// scroll. moveKey reports whether it takes the key.
 func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k, p := m.keys, m.cur()
 	last := max(len(p.lines)-1, 0)
@@ -166,7 +167,7 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 }
 
 // commentKey handles a key that adds, changes, or sends comments. It
-// reports whether it took the key.
+// reports whether it takes the key.
 func (m *model) commentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k, p := m.keys, m.cur()
 	switch {
@@ -201,7 +202,7 @@ func (m *model) commentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 }
 
 // viewKey handles a key that searches, changes the view, or opens or
-// reloads something. It reports whether it took the key.
+// reloads something. It reports whether it takes the key.
 func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k := m.keys
 	switch {
@@ -295,11 +296,11 @@ func (m *model) onFold() bool {
 	return m.tab == tabChanges && p.cur < len(p.rows) && p.rows[p.cur].Fold.Lines > 0
 }
 
-// openFolds has the folds that the user expanded in one file, as ranges of
+// openFolds has the folds that the user expands in one file, as ranges of
 // old line numbers. The old side does not change while the agent edits the
 // file, so an edit keeps the lines of a range open. The ranges are for the
 // old content with the hash Old. A different old content, for example
-// after a commit, closes them.
+// after a commit, closes the ranges.
 type openFolds struct {
 	Old    uint64   `json:"old"`
 	Ranges [][2]int `json:"ranges"` // the first and the last line of each range
@@ -312,17 +313,15 @@ func hash(s string) uint64 {
 	return h.Sum64()
 }
 
-// expanded tells if the lines of fold f of the file at path show: the
-// user expanded the fold, or one of comments is on one of its lines.
+// expanded tells if the lines of fold f of the file at path show. They show
+// if the user expands the fold, or if a comment is on one of them.
 func (m *model) expanded(path string, comments []*diff.Comment, f diff.Fold) bool {
 	// A fold that overlaps a range shows. An undo of a change next to a
 	// range makes a larger fold, which shows as a whole.
-	if o := m.folds[path]; o != nil {
-		for _, r := range o.Ranges {
-			if f.Old <= r[1] && f.Old+f.Lines-1 >= r[0] {
-				return true
-			}
-		}
+	if o := m.folds[path]; o != nil && slices.ContainsFunc(o.Ranges, func(r [2]int) bool {
+		return f.Old <= r[1] && f.Old+f.Lines-1 >= r[0]
+	}) {
+		return true
 	}
 	for _, c := range comments {
 		lo := f.New
@@ -461,7 +460,7 @@ func (m *model) jumpTo(path string, s diff.Side, line int) {
 	m.loadFiles()
 	i := slices.IndexFunc(m.allFiles, func(e vcs.Entry) bool { return e.Path == path })
 	if i < 0 {
-		m.flash("no such file: " + diff.Quote(path))
+		m.flash("no such file: " + termtext.Quote(path))
 		return
 	}
 	m.tab = tabFiles
@@ -489,7 +488,7 @@ func (p *pane) rowOf(s diff.Side, line int) int {
 // hit of the find. It wraps around.
 func (m *model) stepFind(d int) {
 	f, p := &m.find, m.cur()
-	// A reload can make the pane shorter than the rows that matched.
+	// A reload can make the pane shorter than the rows of the hits.
 	f.hits = slices.DeleteFunc(f.hits, func(h int) bool { return h >= len(p.lines) })
 	if len(f.hits) == 0 {
 		m.find = findState{}
@@ -500,7 +499,7 @@ func (m *model) stepFind(d int) {
 }
 
 // runFind finds q in the lines of the current pane, without case. It moves
-// the cursor to the first hit at or below it.
+// the cursor to the first hit at or below the cursor.
 func (m *model) runFind(q string) {
 	p := m.cur()
 	m.find = findState{query: q}
@@ -524,8 +523,8 @@ func (m *model) runFind(q string) {
 	p.cur = m.find.hits[m.find.i]
 }
 
-// gotoLine moves the cursor to the line number in s: "0" is the first
-// row, "$" the last row.
+// gotoLine moves the cursor to the line number in s. If s is "0", the
+// cursor goes to the first row. If s is "$", it goes to the last row.
 func (m *model) gotoLine(s string) {
 	p := m.cur()
 	switch s = strings.TrimSpace(s); s {

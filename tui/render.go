@@ -1,7 +1,7 @@
 package tui
 
-// This file turns files into the lines of a pane: diffs, the file viewer,
-// and markdown.
+// This file turns files into the lines of a pane. It renders diffs, the
+// file viewer, and Markdown.
 
 import (
 	"errors"
@@ -10,6 +10,7 @@ import (
 	"charm.land/glamour/v2"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -86,6 +87,7 @@ func (m *model) diffOptions(xoff int) diff.Options {
 			Green:      m.green,
 			Red:        m.red,
 		},
+		Cache: &m.cache,
 	}
 }
 
@@ -111,10 +113,10 @@ func (m *model) renderChanges() {
 	case f.TooBig:
 		p.setNote("file over 2 MB or 50,000 lines, not diffed")
 	case f.Old == f.New:
-		// A rename without changes, or a change of the file mode.
+		// The change is a rename with no edit, or a change of the file mode.
 		note := "no change to the content"
 		if f.From != "" {
-			note = "renamed from " + diff.Quote(f.From) + ", no change to the content"
+			note = "renamed from " + termtext.Quote(f.From) + ", no change to the content"
 		}
 		p.setNote(note)
 	case m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted:
@@ -137,14 +139,14 @@ func (p *pane) setNote(note string) {
 }
 
 // renderViewer shows the selected file in the Files tab, even if the file
-// did not change.
+// does not change.
 func (m *model) renderViewer() {
 	m.viewer.path = "" // no file has the path "", so refreshViewer renders
 	m.refreshViewer()
 }
 
 // refreshViewer shows the selected file in the Files tab if the file
-// changed.
+// changes.
 func (m *model) refreshViewer() {
 	p := &m.viewer
 	if m.allSel >= len(m.allFiles) {
@@ -191,7 +193,7 @@ func (m *model) markdown(wrap int) *glamour.TermRenderer {
 }
 
 // renderMarkdown returns the lines of src, rendered with r. If r is nil or
-// fails, it returns the lines of src as they are.
+// fails, renderMarkdown returns the lines of src as they are.
 func renderMarkdown(r *glamour.TermRenderer, src string) []string {
 	if r != nil {
 		if out, err := r.Render(src); err == nil {
@@ -204,7 +206,7 @@ func renderMarkdown(r *glamour.TermRenderer, src string) []string {
 // setMarkdown shows src as rendered markdown. The rendered lines take no
 // comments. Press m to see the source.
 func (m *model) setMarkdown(p *pane, src string) {
-	lines := renderMarkdown(m.markdown(m.codeWidth()-2), diff.Plain(src))
+	lines := renderMarkdown(m.markdown(m.codeWidth()-2), termtext.Plain(src))
 	p.path = ""
 	p.set(lines, make([]diff.Row, len(lines)))
 }

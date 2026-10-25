@@ -86,8 +86,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	defer closeLog()
 
-	// In Rex, upgrade replaces the code of the action if it differs from
-	// the code of this rexdiff.
+	// In Rex, upgrade replaces the code of the action if that code differs
+	// from the code of this rexdiff.
 	client := rex.FromEnv()
 	var notice string
 	bin, binErr := executable()
@@ -121,7 +121,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err = os.Setenv(resumeEnv, resume); err == nil {
 		err = update.Restart(bin, args) // returns only if it fails
 	}
-	fmt.Print("\x1b[?1049l\x1b[?25h") // leave the screen that Run kept, show the cursor
+	// Run keeps the alternate screen for the restart. Leave that screen and
+	// show the cursor.
+	fmt.Print("\x1b[?1049l\x1b[?25h")
 	return fmt.Errorf("start the new rexdiff: %w; your comments are saved in %s", err, resume)
 }
 
@@ -130,12 +132,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 // flag, so that the arguments of the user do not change.
 const resumeEnv = "REXDIFF_RESUME"
 
-// resumeFile returns the file in resumeEnv, or "", and unsets the variable,
+// resumeFile returns the file in resumeEnv, or "". It unsets the variable,
 // so that the programs that rexdiff starts, such as an editor, do not get
-// it.
+// the variable.
 func resumeFile() string {
 	path := os.Getenv(resumeEnv)
-	_ = os.Unsetenv(resumeEnv) // fails only for a bad name, and resumeEnv is good
+	// Unsetenv fails only for a bad name. resumeEnv is a good name.
+	_ = os.Unsetenv(resumeEnv)
 	return path
 }
 

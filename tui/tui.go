@@ -78,7 +78,7 @@ func CheckConfig(text string) error {
 // Run shows the review program in the terminal. It returns when the user
 // quits or when ctx is done. Run returns an error before it starts if the
 // settings are not valid. It also returns an error if Repo is nil, or if
-// it does not know the Layout or the Scope. After an update, Run returns
+// Run does not know the Layout or the Scope. After an update, Run returns
 // the file of the saved state. The caller then runs the new rexdiff with
 // Options.Resume set to that file.
 func Run(ctx context.Context, o Options) (resume string, err error) {
