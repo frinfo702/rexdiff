@@ -677,8 +677,8 @@ func (m *model) onKey(msg tea.KeyPressMsg) tea.Cmd {
 	return m.updateNormal(msg)
 }
 
-// onGrep shows the code matches of the search, but only if the search
-// still shows their query.
+// onGrep keeps the code matches of the search, but only if the search
+// still shows their query. The list shows them in the code mode.
 func (m *model) onGrep(msg grepMsg) {
 	ov := m.overlay
 	if ov == nil || ov.kind != overlaySearch || ov.input.Value() != msg.query {
@@ -690,7 +690,11 @@ func (m *model) onGrep(msg grepMsg) {
 		// Show only the error, and no old results under it.
 		s.hits, s.hitsMore, s.err = nil, false, msg.err.Error()
 	}
-	ov.showSearch()
+	// The list of the file matches stays, with its cursor. The chips
+	// show the count of the code matches.
+	if s.code {
+		ov.showSearch()
+	}
 }
 
 // onPR shows the pull request that loadPR reads, unless a later read

@@ -23,6 +23,7 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	if mouse.Button != tea.MouseLeft {
 		return nil
 	}
+	m.armed = 0 // as a key does
 	if m.mode == modeOverlay && m.overlay != nil {
 		return m.clickOverlay(mouse)
 	}
@@ -315,7 +316,8 @@ func (m *model) clickOverlay(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	idx := mouse.Y - y - listY
-	if idx < 0 || idx >= min(len(m.overlay.shown), m.overlay.rowsTo) || !m.overlay.pickable(idx) {
+	if idx < m.overlay.rowsFrom || idx >= min(len(m.overlay.shown), m.overlay.rowsTo) ||
+		!m.overlay.pickable(idx) {
 		return nil
 	}
 	if idx == m.overlay.cur { // a click on the selected row picks it

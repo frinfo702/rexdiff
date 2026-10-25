@@ -119,6 +119,10 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	last := max(len(p.lines)-1, 0)
 	inList := m.focusList && m.tab != tabPR
 	switch {
+	case key.Matches(msg, k.Focus) && m.listHiddenHere():
+		// As in herdr-reviewr, tab shows a hidden list with the focus.
+		m.listHidden, m.focusList = false, true
+		m.rerender()
 	case key.Matches(msg, k.Focus):
 		m.focusList = !m.focusList
 	case key.Matches(msg, k.Down) && inList:
@@ -347,12 +351,13 @@ func (m *model) setTab(t tab) {
 	m.rerender()
 }
 
-// setScope shows the Changes tab in scope s.
+// setScope shows the Changes tab in scope s, from its first row.
 func (m *model) setScope(s Scope) {
 	// The files of the last scope do not show while the new one fails.
 	m.tab, m.scope, m.folds, m.shownTrees = tabChanges, s, nil, ""
 	m.reload()
-	m.changes.cur, m.changes.top = 0, 0
+	m.changes.toStart()
+	m.armed = 0
 }
 
 // onFold tells if the cursor is on a fold of the Changes tab.
@@ -430,13 +435,15 @@ func (m *model) listSel() int {
 }
 
 // pickFile selects file i of the file list of the current tab. The
-// cursor of the list goes to the row of the file, if the row shows.
+// cursor of the list goes to the row of the file, if the row shows. The
+// pick drops an armed crossing.
 func (m *model) pickFile(i int) {
 	if t := m.list(); t != nil {
 		if r := t.rowOf(i); r >= 0 {
 			t.cur = r
 		}
 	}
+	m.armed = 0
 	switch m.tab {
 	case tabChanges:
 		if i < 0 || i >= len(m.files) {

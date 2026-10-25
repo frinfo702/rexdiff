@@ -64,7 +64,9 @@ type overlay struct {
 	mark   int // the commit picker: the item at the start of the range, or -1
 	agents []rex.Agent
 	search searchState
-	rowsTo int // the index after the last row that shows
+	// rowsFrom and rowsTo are the index of the first row that shows and
+	// the index after the last one.
+	rowsFrom, rowsTo int
 }
 
 // searchState has the results of the search. As in herdr-reviewr, the
@@ -820,7 +822,7 @@ func (m *model) overlayRows(inner, limit int) (rows []string, start int) {
 	ov := m.overlay
 	maxRows := min(len(ov.shown), max(limit, 1))
 	start = max(0, ov.cur-maxRows+1)
-	ov.rowsTo = start + maxRows
+	ov.rowsFrom, ov.rowsTo = start, start+maxRows
 	for i := start; i < len(ov.shown) && i < start+maxRows; i++ {
 		it := ov.items[ov.shown[i]]
 		if !ov.pickable(i) {
