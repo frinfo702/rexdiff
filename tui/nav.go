@@ -582,10 +582,21 @@ func (m *model) jumpTo(path string, s diff.Side, line int) {
 		m.tab = tabChanges
 		m.revealFile(path)
 		m.pickFile(i)
+		m.openFoldAt(s, line)
 		cursorToLine(&m.changes, s, line)
 		return
 	}
 	m.jumpToFile(path, s, line)
+}
+
+// openFoldAt opens the fold of the Changes tab that has line on side s.
+func (m *model) openFoldAt(s diff.Side, line int) {
+	for _, r := range m.changes.rows {
+		if f := r.Fold; f.Lines > 0 && line >= foldStart(f, s) && line <= foldEnd(f, s) {
+			m.expandFold(f)
+			return
+		}
+	}
 }
 
 // jumpToFile shows path in the Files tab with the cursor on line.
@@ -644,12 +655,7 @@ func (m *model) gotoLine(s string) {
 	}
 	n = min(max(n, 1), last)
 	if m.tab == tabChanges {
-		for _, r := range p.rows {
-			if f := r.Fold; f.Lines > 0 && n >= foldStart(f, side) && n <= foldEnd(f, side) {
-				m.expandFold(f)
-				break
-			}
-		}
+		m.openFoldAt(side, n)
 	}
 	p.cur = lineRow(p.rows, n, side)
 }
