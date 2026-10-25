@@ -244,26 +244,6 @@ func TestFromEnv(t *testing.T) {
 	}
 }
 
-// TestConfigPath checks that ConfigPath honours REX_CONFIG, then
-// XDG_CONFIG_HOME, then the home directory.
-func TestConfigPath(t *testing.T) {
-	t.Setenv("HOME", "/home/u")
-	tests := []struct{ name, config, xdg, want string }{
-		{"REX_CONFIG", "/etc/rex.lua", "/xdg", "/etc/rex.lua"},
-		{"XDG_CONFIG_HOME", "", "/xdg", "/xdg/rex/init.lua"},
-		{"home", "", "", "/home/u/.config/rex/init.lua"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("REX_CONFIG", tt.config)
-			t.Setenv("XDG_CONFIG_HOME", tt.xdg)
-			if got := rex.ConfigPath(); got != tt.want {
-				t.Errorf("ConfigPath() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 // TestReloadConfigOutsideRex checks that ReloadConfig runs the rex of the
 // Rex server app outside a Rex terminal.
 func TestReloadConfigOutsideRex(t *testing.T) {

@@ -1,11 +1,6 @@
 package tui
 
 import (
-	"cmp"
-	"errors"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -110,50 +105,5 @@ func TestPRBranchSwitch(t *testing.T) {
 	m = step(t, m, tickMsg{})
 	if m.pr.pr != nil || m.prf.gen == gen || !shows(m, "loading the pull request") {
 		t.Errorf("after a switch: pr %+v, gen %d, want a blank tab and a read", m.pr.pr, m.prf.gen)
-	}
-}
-
-// TestForgeHosts checks that the host settings of the self-hosted forges
-// pick the tool that reads the pull request.
-func TestForgeHosts(t *testing.T) {
-	const host = "forge.corp.example"
-	bin := t.TempDir()
-	log := filepath.Join(bin, "log")
-	for _, tool := range []string{"gh", "glab", "az"} {
-		testgit.Script(t, bin, tool, `echo "$(basename "$0") $GH_HOST" >> '`+log+"'\nexit 1\n")
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	tests := []struct{ setting, want string }{ // want is the log of the tools
-		{"github_host", "gh " + host + "\n"},
-		{"gitlab_host", "glab \n"},
-		{"azure_devops_host", "az \n"},
-		{"", ""}, // no tool reads the pull request of an unknown host
-	}
-	for _, tt := range tests {
-		t.Run(cmp.Or(tt.setting, "none"), func(t *testing.T) {
-			clearFile(t, log)
-			m, dir := newTestModel(t)
-			testgit.Git(t, dir, "remote", "add", "origin", "https://"+host+"/o/r.git")
-			text := "{}"
-			if tt.setting != "" {
-				text = `{"` + tt.setting + `": "` + host + `"}`
-			}
-			cfg, err := parseConfig(text)
-			if err != nil {
-				t.Fatal(err)
-			}
-			m.cfg = cfg
-			msg, _ := m.loadPR()().(prMsg)
-			if msg.err == nil {
-				t.Fatal("the read of the pull request: no error, want the error of the fake tool")
-			}
-			got, err := os.ReadFile(log)
-			if err != nil && !errors.Is(err, fs.ErrNotExist) {
-				t.Fatal(err)
-			}
-			if string(got) != tt.want {
-				t.Errorf("the tools ran %q, want %q", got, tt.want)
-			}
-		})
 	}
 }

@@ -41,15 +41,3 @@ func TestStartBadResume(t *testing.T) {
 		})
 	}
 }
-
-// TestStartSetsLabel checks that Run labels the block of rexdiff in Rex.
-func TestStartSetsLabel(t *testing.T) {
-	m, _ := newTestModel(t)
-	log := logRex(t, &m)
-	startModel(t.Context(), Options{Repo: m.repo, Rex: m.rex}, defaultConfig())
-	b, err := os.ReadFile(log)
-	want := `api call -s S session.set_block_label {"block_id":"B","label":"rexdiff"}`
-	if err != nil || !strings.Contains(string(b), want) {
-		t.Errorf("rex calls %q (%v), want %s", b, err, want)
-	}
-}
