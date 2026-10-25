@@ -31,5 +31,7 @@
     `Height`, `YOffset`, `InfiniteYScroll` (and the height cut and the scroll
     code); `MatchLexer`, `LineStyle` and the `Style`
     fields are unexported; `RowFile` removed
+  - a coloured bar `▌` marks a changed line, in place of crush's `+` and `-`; `Signs` gives
+    the signs back
   - the syntax cache key tells "no background" from black, so a black tint does not
     leak onto equal lines

@@ -79,6 +79,7 @@ Other settings:
 - `markdown_view`
 - `file_list`
 - `file_list_width`
+- `diff_signs`: `true` marks changed lines with `+` and `-`, in place of a coloured bar
 - `review_prefix`
 - `url_opener`
 - `focus_agent_after_send`

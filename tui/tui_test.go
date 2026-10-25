@@ -484,18 +484,48 @@ func TestParseConfig(t *testing.T) {
 		"editor": "code -g {file}:{line}",
 		"gitlab_host": "git.corp.example",
 		"focus_agent_after_send": false,
-		"file_list": "left"
+		"file_list": "left",
+		"diff_signs": true
 	}`
 	c, err := parseConfig(good)
 	if err != nil {
 		t.Fatalf("good config: %v", err)
 	}
-	if c.focusAgent() || c.FileList != positionLeft || c.Layout != LayoutUnified {
+	if c.focusAgent() || c.FileList != positionLeft || c.Layout != LayoutUnified || !c.DiffSigns {
 		t.Errorf("good config = %+v, want no focus, the list on the left, "+
-			"and the default layout", c)
+			"the default layout, and signs", c)
 	}
 	if c, err := parseConfig(""); err != nil || c.Layout != defaultConfig().Layout {
 		t.Errorf(`parseConfig("") = %+v, %v; want the defaults`, c, err)
+	}
+}
+
+// TestDiffSigns checks that a bar marks a changed line by default, and
+// that the setting diff_signs changes the bar to + and -.
+func TestDiffSigns(t *testing.T) {
+	line := func(m model, code string) string {
+		for l := range strings.Lines(view(m)) {
+			if strings.Contains(l, code) {
+				return l
+			}
+		}
+		return ""
+	}
+	m, _ := newTestModel(t)
+	if l := line(m, "x := 2"); !strings.Contains(l, "▌     x := 2") {
+		t.Errorf("by default, the inserted line is %q, want a bar", l)
+	}
+	cfg, err := parseConfig(`{"diff_signs": true}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.cfg = cfg
+	m.rerender()
+	if l := line(m, "x := 2"); !strings.Contains(l, "+     x := 2") {
+		t.Errorf("with diff_signs, the inserted line is %q, want +", l)
+	}
+	if l := line(m, "return 1"); !strings.Contains(l, "-     return 1") {
+		t.Errorf("with diff_signs, the deleted line is %q, want -", l)
 	}
 }
 

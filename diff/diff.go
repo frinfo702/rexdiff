@@ -64,6 +64,9 @@ type Options struct {
 	// Wrap continues a line that is wider than Width on the next lines,
 	// instead of cutting it. Then Offset does not apply.
 	Wrap bool
+	// Signs marks a changed line with + or -. Without Signs, a bar in the
+	// colour of the line marks it.
+	Signs bool
 	// Theme sets the colours.
 	Theme Theme
 }
@@ -95,6 +98,9 @@ func Render(path, old, new string, o Options) *Diff {
 		XOffset(o.Offset)
 	if o.Split {
 		dv = dv.Split()
+	}
+	if o.Signs {
+		dv = dv.Signs()
 	}
 	if o.Wrap {
 		dv = dv.Wrap()

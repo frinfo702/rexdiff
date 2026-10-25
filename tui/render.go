@@ -79,6 +79,7 @@ func (m *model) diffOptions(xoff int) diff.Options {
 		Offset: xoff,
 		Wrap:   m.wrap,
 		Split:  m.split,
+		Signs:  m.cfg.DiffSigns,
 		Theme: diff.Theme{
 			Background: m.bg,
 			Foreground: m.fg,
