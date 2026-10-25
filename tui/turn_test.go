@@ -38,6 +38,24 @@ func TestTurnNeedsSample(t *testing.T) {
 	}
 }
 
+// TestTurnReconnect checks that a reconnect of rex events forgets the
+// agents and lists them again. A list at work after the gap starts no
+// turn, because the start is not seen.
+func TestTurnReconnect(t *testing.T) {
+	m, dir := turnModel(t)
+	next, cmd := m.Update(eventMsg{Reconnect: true})
+	m = *next.(*model)
+	if cmd == nil || m.sampled || len(m.agents) != 0 {
+		t.Fatalf("after a reconnect: cmd %v, sampled %v, agents %d; want a list, no agents",
+			cmd != nil, m.sampled, len(m.agents))
+	}
+	working := sample("p", "pi", dir)
+	working.agents[0].Status.State = rex.StateWorking
+	if m = step(t, m, working); m.pending != nil {
+		t.Errorf("pending %+v after a list at work after a gap, want none", m.pending)
+	}
+}
+
 // TestTurnWithoutChange checks that a turn that changes no file does not
 // become the last turn.
 func TestTurnWithoutChange(t *testing.T) {

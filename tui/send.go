@@ -10,7 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/rednafi/rexdiff/internal/clipboard"
-	"github.com/rednafi/rexdiff/internal/turn"
 	"github.com/rednafi/rexdiff/rex"
 )
 
@@ -48,8 +47,16 @@ func (m *model) agent(block string) *agentState {
 }
 
 // onEvent keeps the state of the agent in the block of e, and follows the
-// turns.
-func (m *model) onEvent(e rex.Event) {
+// turns. After a reconnect, it forgets the agents and lists them again,
+// as herdr-reviewr does after a lost connection. Nobody sees the agents
+// in the gap, so the next state starts no turn.
+func (m *model) onEvent(e rex.Event) tea.Cmd {
+	if e.Reconnect {
+		m.tracker.Gap()
+		clear(m.agents)
+		m.sampled = false
+		return m.listAgents(agentsMsg{})
+	}
 	if e.Closed {
 		delete(m.agents, e.Block)
 	} else {
@@ -59,6 +66,7 @@ func (m *model) onEvent(e rex.Event) {
 		a.app, a.state = app, state
 	}
 	m.observeTurn()
+	return nil
 }
 
 // member is an agent that works in the repository.
@@ -143,7 +151,7 @@ func (m *model) observeTurn() {
 	for i, a := range ms {
 		states[i] = a.state
 	}
-	started, ended := m.tracker.Observe(turn.Fold(states...))
+	started, ended := m.tracker.Observe(states...)
 	if started {
 		m.startTurn(ms)
 	}

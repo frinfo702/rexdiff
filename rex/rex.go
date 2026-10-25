@@ -377,13 +377,16 @@ func ReloadConfig(ctx context.Context) (string, error) {
 	return string(out), err
 }
 
-// Event is a change to a block in the session.
+// Event is a change to a block in the session, or a reconnect.
 type Event struct {
 	Block  string // the ID of the block
 	Closed bool   // true if the block closed
 	// Status is the new status of the program in the block. If the program
 	// removes its status, Status is the zero Status.
 	Status Status
+	// Reconnect is true if Watch starts rex again. The events between the
+	// two runs of rex are lost. A Reconnect event has no block.
+	Reconnect bool
 }
 
 const (
@@ -395,10 +398,11 @@ const (
 
 // Watch calls fn for each event in the session, from one goroutine. It
 // runs "rex events" to get the events. If rex stops, Watch starts it again
-// after 2 seconds. Watch returns the error of ctx when ctx is done.
+// after 2 seconds. Then it calls fn with a Reconnect event before the
+// next events. Watch returns the error of ctx when ctx is done.
 func (c *Client) Watch(ctx context.Context, fn func(Event)) error {
-	for {
-		c.watchOnce(ctx, fn)
+	for again := false; ; again = true {
+		c.watchOnce(ctx, again, fn)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -408,11 +412,15 @@ func (c *Client) Watch(ctx context.Context, fn func(Event)) error {
 }
 
 // watchOnce runs "rex events" and calls fn for each event until rex stops.
-func (c *Client) watchOnce(ctx context.Context, fn func(Event)) {
+// If again is true, the first event is a Reconnect event.
+func (c *Client) watchOnce(ctx context.Context, again bool, fn func(Event)) {
 	cmd := c.command(ctx, "events", "-s", c.session, "--json")
 	out, err := cmd.StdoutPipe()
 	if err != nil || cmd.Start() != nil {
 		return
+	}
+	if again {
+		fn(Event{Reconnect: true})
 	}
 	lines := bufio.NewScanner(out)
 	lines.Buffer(make([]byte, maxEventLine), maxEventLine)

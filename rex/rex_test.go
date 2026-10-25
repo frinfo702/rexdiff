@@ -193,6 +193,31 @@ func TestWatch(t *testing.T) {
 	}
 }
 
+// TestWatchReconnect checks that Watch reports a reconnect after it starts
+// rex again.
+func TestWatchReconnect(t *testing.T) {
+	c, dir := fakeRex(t)
+	line := `{"type":"session_event","payload":{"event":{"type":"block_closed",` +
+		`"payload":{"block_id":"block:pi"}}}}`
+	path := filepath.Join(dir, "events")
+	if err := os.WriteFile(path, []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	closed := rex.Event{Block: "block:pi", Closed: true}
+	want := []rex.Event{closed, {Reconnect: true}, closed}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	var got []rex.Event
+	c.Watch(ctx, func(e rex.Event) {
+		if got = append(got, e); len(got) == len(want) {
+			cancel()
+		}
+	})
+	if !slices.Equal(got, want) {
+		t.Errorf("events got:\n%+v\nwant:\n%+v", got, want)
+	}
+}
+
 // TestFromEnv checks that FromEnv uses the environment that Rex sets.
 func TestFromEnv(t *testing.T) {
 	t.Setenv("REX_SESSION", "")

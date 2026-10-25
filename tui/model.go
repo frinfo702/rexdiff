@@ -610,7 +610,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case copiedMsg:
 		m.onCopied(msg)
 	case eventMsg:
-		m.onEvent(rex.Event(msg))
+		cmd = m.onEvent(rex.Event(msg))
 	case prMsg:
 		cmd = m.onPR(msg)
 	case grepMsg:
