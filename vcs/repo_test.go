@@ -1,6 +1,7 @@
 package vcs_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -330,18 +331,18 @@ func TestWorktree(t *testing.T) {
 		t.Errorf("Files = %s, want %s", got, want)
 	}
 
-	ms, err := r.Grep(ctx, "TWO", 10)
+	ms, _, err := r.Grep(ctx, "TWO", 10)
 	match := vcs.Match{Path: "a.txt", Line: 2, Text: "two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
 		t.Errorf("Grep(TWO) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
 	write(t, dir, "a:é\n.txt", "x: two\n") // git quotes this name unless -z
-	ms, err = r.Grep(ctx, "x: two", 10)
+	ms, _, err = r.Grep(ctx, "x: two", 10)
 	match = vcs.Match{Path: "a:é\n.txt", Line: 1, Text: "x: two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
 		t.Errorf("Grep(x: two) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
-	if ms, err := r.Grep(ctx, "nothing has this", 10); err != nil || len(ms) != 0 {
+	if ms, _, err := r.Grep(ctx, "nothing has this", 10); err != nil || len(ms) != 0 {
 		t.Errorf("Grep with no match = %+v, %v, want none, nil", ms, err)
 	}
 
@@ -576,5 +577,44 @@ func TestCommitsLikeHerdr(t *testing.T) {
 	}
 	if cs, err := er.Commits(ctx, ""); err != nil || len(cs) != 0 {
 		t.Errorf("Commits with no commit = %v, %v; want none, no error", cs, err)
+	}
+}
+
+// TestGrepLimit checks that Grep stops at the limit and tells that there
+// are more matches.
+func TestGrepLimit(t *testing.T) {
+	r, dir := newRepo(t)
+	ctx := t.Context()
+	write(t, dir, "many.txt", strings.Repeat("hit\n", 5000))
+	tests := []struct {
+		limit    int
+		wantN    int
+		wantMore bool
+	}{
+		{10, 10, true},
+		{4999, 4999, true},
+		{5000, 5000, false},
+		{6000, 5000, false},
+	}
+	for _, tt := range tests {
+		ms, more, err := r.Grep(ctx, "hit", tt.limit)
+		if err != nil || len(ms) != tt.wantN || more != tt.wantMore {
+			t.Errorf("Grep(hit, %d) = %d matches, more %t, %v; want %d, %t, nil",
+				tt.limit, len(ms), more, err, tt.wantN, tt.wantMore)
+		}
+	}
+	if ms, _, _ := r.Grep(ctx, "hit", 2); ms[1] != (vcs.Match{Path: "many.txt", Line: 2, Text: "hit"}) {
+		t.Errorf("Grep(hit, 2)[1] = %+v, want many.txt:2", ms[1])
+	}
+}
+
+// TestGrepCanceled checks that Grep returns the error of a canceled
+// context.
+func TestGrepCanceled(t *testing.T) {
+	r, _ := newRepo(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err := r.Grep(ctx, "one", 10); !errors.Is(err, context.Canceled) {
+		t.Errorf("Grep with a canceled context = %v, want %v", err, context.Canceled)
 	}
 }

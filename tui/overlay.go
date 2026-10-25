@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/sahilm/fuzzy"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/search"
 	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/rex"
 	"github.com/rednafi/rexdiff/vcs"
@@ -30,13 +32,6 @@ const (
 	overlayQuit
 )
 
-// The limits of the lists in the overlays.
-const (
-	maxFileHits = 15 // the files that match by name in the search
-	maxCodeHits = 60 // the code matches in the search
-	minGrepLen  = 2  // the search finds code only for a query this long
-)
-
 // These are the steps of the page keys in the commit picker, in rows, as
 // in herdr-reviewr.
 const (
@@ -50,10 +45,11 @@ type pickItem struct {
 	detail string // the dim text after the label
 	tag    string // a short mark at the end, for example "current"
 	// id is what the row picks, for example a path, a ref, a commit, or a
-	// block.
+	// block. In the search, a row with no id cannot have the cursor.
 	id      string
-	line    int // the search: the line of a code match
-	comment int // the comment list: the ID of the comment
+	line    int  // the search: the line of a code match
+	head    bool // the search: the header of the code matches of a file
+	comment int  // the comment list: the ID of the comment
 }
 
 // overlay is a modal box. It shows a list to pick from, a search, or a
@@ -67,7 +63,20 @@ type overlay struct {
 	cur    int
 	mark   int // the commit picker: the item at the start of the range, or -1
 	agents []rex.Agent
-	err    string // the search: the error of the code search
+	search searchState
+}
+
+// searchState has the results of the search. As in herdr-reviewr, the
+// search has two modes. It shows the files that match by name, or the
+// lines of the code that contain the query.
+type searchState struct {
+	code      bool     // the mode that shows the code matches
+	paths     []string // the files that the search can find
+	files     []string // the files that match
+	fileTotal int      // the number of the files that match
+	hits      []vcs.Match
+	hitsMore  bool   // git finds more matches than hits has
+	err       string // the error of the code search
 }
 
 // newOverlay returns an overlay. If its kind has an input, the input has
@@ -131,39 +140,87 @@ func (o *overlay) selected() *pickItem {
 func (o *overlay) down() { o.move(1) }
 func (o *overlay) up()   { o.move(-1) }
 
-// move moves the cursor of the list by d rows. It stops at the ends.
-func (o *overlay) move(d int) { o.cur = max(min(o.cur+d, len(o.shown)-1), 0) }
+// move moves the cursor of the list by d rows. It skips the rows that
+// cannot have the cursor, and it stops at the ends.
+func (o *overlay) move(d int) {
+	step := 1
+	if d < 0 {
+		step = -1
+	}
+	for ; d != 0; d -= step {
+		i := o.cur + step
+		for i >= 0 && i < len(o.shown) && !o.pickable(i) {
+			i += step
+		}
+		if i < 0 || i >= len(o.shown) {
+			return
+		}
+		o.cur = i
+	}
+}
 
-// setSearch shows the search results. It shows the files that match by
-// name, then the matches in the code.
-func (o *overlay) setSearch(files []vcs.Entry, hits []vcs.Match) {
-	q := o.input.Value()
+// pickable reports whether row i of the list can have the cursor. In the
+// search, the headers of the files and the "… more" row cannot.
+func (o *overlay) pickable(i int) bool {
+	return o.kind != overlaySearch || o.items[o.shown[i]].id != ""
+}
+
+// showSearch shows the results of the search in its mode, with the
+// cursor on the first result. As in herdr-reviewr, the code matches show
+// under a header for each file, and a "… more" row tells that the list
+// does not show all the results. An error shows in place of the results.
+func (o *overlay) showSearch() {
+	s := &o.search
 	var items []pickItem
-	if q != "" {
-		paths := make([]string, 0, len(files))
-		for _, f := range files {
-			if !f.Ignored {
-				paths = append(paths, f.Path)
-			}
+	switch {
+	case s.err != "":
+	case !s.code:
+		for _, p := range s.files {
+			items = append(items, pickItem{label: p, id: p})
 		}
-		for i, mt := range fuzzy.Find(q, paths) {
-			if i == maxFileHits {
-				break
+		if s.fileTotal > len(s.files) {
+			items = append(items, pickItem{label: "… more"})
+		}
+	default:
+		for i, h := range s.hits {
+			if i == 0 || h.Path != s.hits[i-1].Path {
+				items = append(items, pickItem{label: h.Path, head: true})
 			}
-			items = append(items, pickItem{label: mt.Str, tag: "file", id: mt.Str})
+			items = append(items, pickItem{
+				label: fmt.Sprintf("%5d: %s", h.Line, h.Text),
+				id:    h.Path,
+				line:  h.Line,
+			})
+		}
+		if s.hitsMore {
+			items = append(items, pickItem{label: "… more"})
 		}
 	}
-	for _, h := range hits {
-		items = append(items, pickItem{
-			label:  fmt.Sprintf("%s:%d", h.Path, h.Line),
-			detail: h.Text,
-			tag:    "code",
-			id:     h.Path,
-			line:   h.Line,
-		})
-	}
-	o.cur, o.err = 0, ""
 	o.setItems(items)
+	o.cur = 0
+	if len(o.shown) > 0 && !o.pickable(0) {
+		o.move(1)
+	}
+}
+
+// chips returns the chips of the modes of the search, as in
+// herdr-reviewr: "files N │ code M". A "+" after M tells that git finds
+// more matches. The chip of the mode in use is bright.
+func (o *overlay) chips() string {
+	s := &o.search
+	files, code := "files", "code"
+	if s.err == "" {
+		files = fmt.Sprintf("files %d", s.fileTotal)
+		code = fmt.Sprintf("code %d", len(s.hits))
+		if s.hitsMore {
+			code += "+"
+		}
+	}
+	on := cursorStyle.Underline(true)
+	if s.code {
+		return dimStyle.Render(files+" │ ") + on.Render(code)
+	}
+	return on.Render(files) + dimStyle.Render(" │ "+code)
 }
 
 // open shows ov and gives the keys to it.
@@ -174,6 +231,15 @@ func (m *model) open(ov *overlay) {
 // closeOverlay closes the overlay and gives the keys back to the panes.
 func (m *model) closeOverlay() {
 	m.overlay, m.mode = nil, modeNormal
+	m.stopGrep()
+}
+
+// stopGrep stops the code search that runs, if any.
+func (m *model) stopGrep() {
+	if m.grepCancel != nil {
+		m.grepCancel()
+		m.grepCancel = nil
+	}
 }
 
 // openInput opens a prompt of kind with the text value.
@@ -189,9 +255,50 @@ func (m *model) openConfirmQuit() {
 	m.open(newOverlay(overlayQuit, title))
 }
 
-// openSearch opens the search of the files and the code.
+// openSearch opens the search of the files and the code. With no query,
+// it lists the files.
 func (m *model) openSearch() {
-	m.open(newOverlay(overlaySearch, "search files and code"))
+	ov := newOverlay(overlaySearch, "")
+	ov.input.Placeholder = "Search files and code…"
+	for _, e := range m.allFiles {
+		if !e.Ignored {
+			ov.search.paths = append(ov.search.paths, e.Path)
+		}
+	}
+	m.open(ov)
+	m.runSearch()
+}
+
+// runSearch finds the files that match the query of the search, and
+// starts a code search for the query. It stops the code search of the
+// last query. Until the new code search ends, the old code matches show.
+// An empty query finds no code.
+func (m *model) runSearch() tea.Cmd {
+	ov := m.overlay
+	s, q := &ov.search, ov.input.Value()
+	s.files, s.fileTotal = search.Files(s.paths, m.recent, q, search.FileLimit)
+	s.err = ""
+	m.stopGrep()
+	if q == "" {
+		s.hits, s.hitsMore = nil, false
+		ov.showSearch()
+		return nil
+	}
+	ov.showSearch()
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.grepCancel = cancel
+	repo := m.repo
+	return func() tea.Msg {
+		hits, more, err := repo.Grep(ctx, q, search.CodeLimit)
+		return grepMsg{q, hits, more, err}
+	}
+}
+
+// addRecent puts path first in the list of the files that the search
+// shows for an empty query.
+func (m *model) addRecent(path string) {
+	rest := slices.DeleteFunc(m.recent, func(p string) bool { return p == path })
+	m.recent = append([]string{path}, rest[:min(len(rest), search.FileLimit-1)]...)
 }
 
 // openAgentPicker lets the user pick the agent to send to. The cursor
@@ -405,6 +512,12 @@ func (m *model) updateOverlay(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateCommentList(msg)
 	case overlayCommits:
 		return m.updateCommitPicker(msg)
+	case overlaySearch:
+		if key.Matches(msg, overlayKeys.Flip) {
+			ov.search.code = !ov.search.code
+			ov.showSearch()
+			return nil
+		}
 	}
 	switch {
 	case key.Matches(msg, k.Close):
@@ -528,16 +641,7 @@ func (m *model) inputChanged() tea.Cmd {
 	ov := m.overlay
 	switch ov.kind {
 	case overlaySearch:
-		q := ov.input.Value()
-		ov.setSearch(m.allFiles, nil)
-		if len(q) < minGrepLen {
-			return nil
-		}
-		repo, ctx := m.repo, m.ctx
-		return func() tea.Msg {
-			hits, err := repo.Grep(ctx, q, maxCodeHits)
-			return grepMsg{q, hits, err}
-		}
+		return m.runSearch()
 	case overlayBase:
 		ov.filter()
 	}
@@ -554,7 +658,8 @@ func (m *model) chooseOverlay() tea.Cmd {
 		m.gotoLine(ov.input.Value())
 	case overlaySearch:
 		m.closeOverlay()
-		if it != nil {
+		if it != nil && it.id != "" {
+			m.addRecent(it.id)
 			m.jumpTo(it.id, diff.SideNew, max(it.line, 1))
 		}
 	case overlayBase:
@@ -639,12 +744,15 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 	ov := m.overlay
 	w := min(max(m.w*2/3, 50), m.w-4)
 	inner := w - 4
-	// The title takes one line, for listY.
+	// The title takes one line, for listY. The search has no title. Its
+	// first line has the input and the chips, as in herdr-reviewr.
 	lines := []string{truncate(headerStyle.Render(ov.title), inner)}
 	if ov.kind == overlayQuit {
 		lines = append(lines, "", dimStyle.Render(m.quitHint()))
 	} else {
-		if ov.hasInput() {
+		if ov.kind == overlaySearch {
+			lines[0] = ov.searchBand(inner)
+		} else if ov.hasInput() {
 			ov.input.SetWidth(inner - 2)
 			lines = append(lines, ov.input.View())
 		}
@@ -667,6 +775,16 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 	x = (m.w - lipgloss.Width(box)) / 2
 	y = max((m.h-lipgloss.Height(box))/3, 1)
 	return box, x, y, listY
+}
+
+// searchBand returns the first line of the search, inner columns wide.
+// It has the input, and the chips at the right end.
+func (o *overlay) searchBand(inner int) string {
+	chips := o.chips()
+	o.input.SetWidth(max(inner-lipgloss.Width(chips)-4, 1))
+	in := o.input.View()
+	pad := max(inner-lipgloss.Width(in)-lipgloss.Width(chips), 1)
+	return truncate(in+strings.Repeat(" ", pad)+chips, inner)
 }
 
 // quitHint returns the keys of the prompt before a quit, as the footer
@@ -701,6 +819,14 @@ func (m *model) overlayRows(inner int) (rows []string, start int) {
 	start = max(0, ov.cur-maxRows+1)
 	for i := start; i < len(ov.shown) && i < start+maxRows; i++ {
 		it := ov.items[ov.shown[i]]
+		if !ov.pickable(i) {
+			style := dimStyle
+			if it.head {
+				style = headerStyle
+			}
+			rows = append(rows, "  "+truncate(style.Render(termtext.Quote(it.label)), inner-2))
+			continue
+		}
 		tag := ""
 		if it.tag != "" {
 			tag = "  " + cursorStyle.Render(it.tag)
@@ -718,10 +844,16 @@ func (m *model) overlayRows(inner int) (rows []string, start int) {
 		rows = append(rows, row)
 	}
 	switch {
-	case ov.err != "":
-		rows = append(rows, delStyle.Render("  "+termtext.Quote(ov.err)))
+	case ov.search.err != "":
+		rows = append(rows, delStyle.Render("  "+termtext.Quote(ov.search.err)))
 	case len(ov.shown) == 0 && ov.kind == overlayCommits:
 		rows = append(rows, dimStyle.Render("  no commits yet"))
+	case len(ov.shown) == 0 && ov.kind == overlaySearch:
+		// As in herdr-reviewr, an empty query finds no code, and that is
+		// not a miss.
+		if !ov.search.code || ov.input.Value() != "" {
+			rows = append(rows, dimStyle.Render("  no matches"))
+		}
 	case len(ov.shown) == 0 && ov.kind != overlayGoto:
 		rows = append(rows, dimStyle.Render("  no matches"))
 	}

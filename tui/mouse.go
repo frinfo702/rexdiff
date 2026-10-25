@@ -173,7 +173,7 @@ func (m *model) onWheel(mouse tea.Mouse) {
 		return
 	}
 	if m.mode == modeOverlay && m.overlay != nil {
-		m.overlay.cur = min(max(m.overlay.cur+d, 0), max(len(m.overlay.shown)-1, 0))
+		m.overlay.move(d)
 		return
 	}
 	if m.inList(mouse.X) {
@@ -200,7 +200,7 @@ func (m *model) clickOverlay(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	idx := mouse.Y - y - listY
-	if idx < 0 || idx >= len(m.overlay.shown) {
+	if idx < 0 || idx >= len(m.overlay.shown) || !m.overlay.pickable(idx) {
 		return nil
 	}
 	if idx == m.overlay.cur { // a click on the selected row picks it

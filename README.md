@@ -81,12 +81,16 @@ that show.
 | `y` | copy the comments and clear them, as a send does |
 | `\|` | side by side |
 | `:` | go to a line (`0` first, `$` last) |
+| `/` | search files. `tab` switches to code, `↑` `↓` or `ctrl+n` `ctrl+p` move, enter opens |
 | `ctrl+f` | find in the file (smart case): enter or `↓` next, `↑` previous, esc closes |
 | `m` | rendered markdown |
 | `1` `2` `3` | changes, all files, or pull request |
 | `esc` | clear the selection, then the armed `]` or `[`, then the key list |
 | `?` | all keys |
 | `q` | quit, or ask first if comments are unsent |
+
+The search shows up to 50 files and 200 lines of code, then "… more". With no
+query, it lists the files you opened from the search in this session first.
 
 Side by side needs 135 columns. A narrower pane shows one column.
 

@@ -97,7 +97,7 @@ func TestHostilePaths(t *testing.T) {
 			t.Errorf("ReadFile(%q) = %q, %v; want %q", p, got, err, s)
 		}
 		q := strings.TrimSpace(s)
-		if ms, err := r.Grep(ctx, q, 10); err != nil || len(ms) != 1 || ms[0].Path != p {
+		if ms, _, err := r.Grep(ctx, q, 10); err != nil || len(ms) != 1 || ms[0].Path != p {
 			t.Errorf("Grep(%q) = %+v, %v; want one match in %q", q, ms, err, p)
 		}
 	}
@@ -291,7 +291,7 @@ func TestGrepIsLiteral(t *testing.T) {
 		{"abc\na.c", nil}, // no line has a newline
 	}
 	for _, tt := range tests {
-		ms, err := r.Grep(ctx, tt.q, 10)
+		ms, _, err := r.Grep(ctx, tt.q, 10)
 		if err != nil {
 			t.Errorf("Grep(%q) = %v, want no error", tt.q, err)
 			continue

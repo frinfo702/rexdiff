@@ -1,8 +1,13 @@
 package vcs
 
 import (
+	"bufio"
+	"bytes"
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -161,36 +166,69 @@ type Match struct {
 }
 
 // Grep returns at most limit lines of the tracked and the untracked files
-// that contain the text q. The search ignores case and binary files.
-func (r *Repo) Grep(ctx context.Context, q string, limit int) ([]Match, error) {
+// that contain the text q. The search ignores case and binary files. When
+// it finds limit lines, it stops git, and more tells if there are others.
+func (r *Repo) Grep(ctx context.Context, q string, limit int) (ms []Match, more bool, err error) {
 	if strings.Contains(q, "\n") {
 		// git reads each line of q as a pattern. A match is one line, so no
 		// match can have the newline of q.
-		return nil, nil
+		return nil, false, nil
 	}
 	// --no-column overrides the git setting grep.column. That setting adds a
 	// field to each match.
-	out, err := r.run(ctx, nil,
+	cmd := exec.CommandContext(ctx, "git",
 		"grep", "-n", "--no-column", "-z", "-I", "-i", "-F", "--untracked", "--no-color",
 		"-e", q)
-	if exitedWith(err, 1) {
-		return nil, nil // no match
-	}
+	cmd.Dir = r.root
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	// Each match is "path NUL line NUL text LF". Only the text ends with a
-	// newline, because the path can have a newline.
-	var ms []Match
-	for len(ms) < limit && out != "" {
-		var path, num, text string
-		path, out, _ = strings.Cut(out, "\x00")
-		num, out, _ = strings.Cut(out, "\x00")
-		text, out, _ = strings.Cut(out, "\n")
-		n, _ := strconv.Atoi(num)
-		ms = append(ms, Match{Path: path, Line: n, Text: strings.TrimSpace(text)})
+	if err := cmd.Start(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			err = errors.New("git isn't installed")
+		}
+		return nil, false, fmt.Errorf("git grep: %w", err)
 	}
-	return ms, nil
+	ms, more = readMatches(bufio.NewReader(out), limit)
+	if more {
+		cmd.Process.Kill()
+	}
+	err = cmd.Wait()
+	switch {
+	case ctx.Err() != nil:
+		return nil, false, ctx.Err()
+	case more, exitedWith(err, 1): // stopped, or no match
+		return ms, more, nil
+	case err != nil:
+		msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
+		return nil, false, fmt.Errorf("git grep: %w", &runError{cmp.Or(msg, err.Error()), err})
+	}
+	return ms, false, nil
+}
+
+// readMatches reads at most limit matches of "git grep -n -z". Each match
+// is "path NUL line NUL text LF". Only the text ends with a newline,
+// because the path can have a newline. more tells if there is more output.
+func readMatches(r *bufio.Reader, limit int) (ms []Match, more bool) {
+	for len(ms) < limit {
+		path, err := r.ReadString(0)
+		if err != nil {
+			return ms, false
+		}
+		num, _ := r.ReadString(0)
+		text, _ := r.ReadString('\n')
+		n, _ := strconv.Atoi(strings.TrimSuffix(num, "\x00"))
+		ms = append(ms, Match{
+			Path: strings.TrimSuffix(path, "\x00"),
+			Line: n,
+			Text: strings.TrimSpace(text),
+		})
+	}
+	_, err := r.Peek(1)
+	return ms, err == nil
 }
 
 // The refs that keep the choices of rexdiff. git keeps a ref under

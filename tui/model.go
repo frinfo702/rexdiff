@@ -257,9 +257,13 @@ type model struct {
 	draft    *draft
 	mode     mode
 	overlay  *overlay
-	find     findState
-	drag     dragState
-	help     help.Model
+	// recent has the files that the user picks in the search in this
+	// session, the last pick first.
+	recent     []string
+	grepCancel context.CancelFunc // stops the code search that runs
+	find       findState
+	drag       dragState
+	help       help.Model
 
 	status     string
 	statusTill time.Time
@@ -353,6 +357,7 @@ type (
 	grepMsg struct {
 		query string
 		hits  []vcs.Match
+		more  bool // git finds more matches than hits has
 		err   error
 	}
 	prMsg struct {
@@ -633,13 +638,13 @@ func (m *model) onGrep(msg grepMsg) {
 	if ov == nil || ov.kind != overlaySearch || ov.input.Value() != msg.query {
 		return
 	}
+	s := &ov.search
+	s.hits, s.hitsMore, s.err = msg.hits, msg.more, ""
 	if msg.err != nil {
 		// Show only the error, and no old results under it.
-		ov.setItems(nil)
-		ov.err = msg.err.Error()
-		return
+		s.hits, s.hitsMore, s.err = nil, false, msg.err.Error()
 	}
-	ov.setSearch(m.allFiles, msg.hits)
+	ov.showSearch()
 }
 
 // onPR shows the pull request that loadPR reads, unless a later read

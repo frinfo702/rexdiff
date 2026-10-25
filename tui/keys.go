@@ -119,6 +119,8 @@ type overlayKeyMap struct {
 
 	// ListDown and ListUp work in the agent picker.
 	ListDown, ListUp key.Binding
+	// Flip switches the mode of the search.
+	Flip key.Binding
 }
 
 // overlayKeys has the keys of the overlays. The settings do not change
@@ -127,7 +129,8 @@ var overlayKeys = overlayKeyMap{
 	Choose:   key.NewBinding(key.WithKeys("enter")),
 	Close:    key.NewBinding(key.WithKeys("esc")),
 	Up:       key.NewBinding(key.WithKeys("up", "ctrl+p", "ctrl+k")),
-	Down:     key.NewBinding(key.WithKeys("down", "ctrl+n", "ctrl+j", "tab")),
+	Down:     key.NewBinding(key.WithKeys("down", "ctrl+n", "ctrl+j")),
+	Flip:     key.NewBinding(key.WithKeys("tab")),
 	ListDown: key.NewBinding(key.WithKeys("j")),
 	ListUp:   key.NewBinding(key.WithKeys("k")),
 }
