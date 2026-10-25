@@ -54,7 +54,7 @@ are gone, rexdiff marks the comment as stale.
 | --- | --- |
 | `u` `b` `t` | uncommitted, branch, or last-turn changes |
 | `G` | pick commits: `v` marks the start of a range, enter opens, esc clears or closes |
-| `]` `[` | next or previous change |
+| `]` `[` | next or previous change. Past the last one, press it again to go to the next file |
 | `→` or click | show the unchanged lines of a fold (`⋯ 12 unmodified lines`) |
 | `f` `F` | next or previous file |
 | `c` | new comment, also on a line that has one |
@@ -67,6 +67,7 @@ are gone, rexdiff marks the comment as stale.
 | `:` | go to a line (`0` first, `$` last) |
 | `m` | rendered markdown |
 | `1` `2` `3` | changes, all files, or pull request |
+| `esc` | clear the selection, then the armed `]` or `[`, then the key list |
 | `?` | all keys |
 | `q` | quit, or ask first if comments are unsent |
 

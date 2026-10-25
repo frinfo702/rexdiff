@@ -516,6 +516,7 @@ func (m *model) footerLine() string {
 		visual:  m.cur().anchor >= 0,
 		finding: m.find.active(),
 		onFold:  m.onFold(),
+		armed:   m.armed,
 	}
 	if m.help.ShowAll {
 		h := m.help.View(hk)

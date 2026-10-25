@@ -49,8 +49,7 @@ func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return tea.Quit
 	case key.Matches(msg, k.Cancel):
-		m.cur().anchor = -1
-		m.help.ShowAll = false
+		m.escape()
 	case key.Matches(msg, k.Keys):
 		m.help.ShowAll = !m.help.ShowAll
 	default:
@@ -58,6 +57,22 @@ func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	m.ensureVisible()
 	return cmd
+}
+
+// escape drops one layer with each press, as in herdr-reviewr: the
+// selection, then the armed crossing, then the list of all keys.
+func (m *model) escape() {
+	if p := m.cur(); m.tab != tabPR {
+		switch {
+		case p.anchor >= 0:
+			p.anchor = -1
+			return
+		case m.armed != 0:
+			m.armed = 0
+			return
+		}
+	}
+	m.help.ShowAll = false
 }
 
 // actionKey gives a key to the handlers of the actions, by topic. The
@@ -407,27 +422,68 @@ func (m *model) pickFile(i int) {
 }
 
 // stepChange moves the cursor to the next (d = 1) or the previous (d = -1)
-// block of changed rows.
+// block of changed rows, as in herdr-reviewr. Past the last block, one
+// press arms a crossing to the next file with a change in that direction.
+// A second press the same way crosses, and lands on the first block in
+// that direction. A selection holds the cursor.
 func (m *model) stepChange(d int) {
+	armed := m.armed == d
+	m.armed = 0
 	p := &m.changes
-	if m.tab != tabChanges || len(p.rows) == 0 {
+	if m.tab != tabChanges || p.anchor >= 0 {
 		return
 	}
+	if i := changeRow(p.rows, p.cur, d); i >= 0 {
+		p.cur = i
+		return
+	}
+	target := m.crossTarget(d)
+	if !armed {
+		if target >= 0 {
+			m.armed, m.armedPath = d, m.files[target].Path
+		}
+		return
+	}
+	// A reload can drop the armed file.
+	isArmed := func(f changed) bool { return f.Path == m.armedPath }
+	if i := slices.IndexFunc(m.files, isArmed); i >= 0 {
+		target = i
+	}
+	if target < 0 {
+		return
+	}
+	m.pickFile(target)
+	from := -1
+	if d < 0 {
+		from = len(p.rows)
+	}
+	p.cur = max(changeRow(p.rows, from, d), 0)
+}
+
+// changeRow returns the first row of the next (d = 1) or the previous
+// (d = -1) block of changed rows from row from, or -1.
+func changeRow(rows []diff.Row, from, d int) int {
 	isChange := func(i int) bool {
-		k := p.rows[i].Kind
+		k := rows[i].Kind
 		return k == diff.KindInsert || k == diff.KindDelete || k == diff.KindChange
 	}
-	for i := p.cur + d; i >= 0 && i < len(p.rows); i += d {
+	for i := from + d; i >= 0 && i < len(rows); i += d {
 		if isChange(i) && (i == 0 || !isChange(i-1)) {
-			p.cur = i
-			return
+			return i
 		}
 	}
-	// After the last change, go to the first change of the next file.
-	if d > 0 && m.changeSel+1 < len(m.files) {
-		m.pickFile(m.changeSel + 1)
-		m.stepChange(1)
+	return -1
+}
+
+// crossTarget returns the index of the nearest file in direction d that
+// has a changed line, or -1.
+func (m *model) crossTarget(d int) int {
+	for i := m.changeSel + d; i >= 0 && i < len(m.files); i += d {
+		if f := m.files[i]; f.adds+f.dels > 0 {
+			return i
+		}
 	}
+	return -1
 }
 
 // stepComment moves the cursor to the next (d = 1) or previous (d = -1)

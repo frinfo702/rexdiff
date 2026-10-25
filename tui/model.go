@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -223,8 +224,12 @@ type model struct {
 	listLeft   bool
 	listHidden bool
 	focusList  bool // the keys j and k move in the file list
-	listW      int
-	cache      diff.Cache // the syntax colours, for a fast sideways scroll
+	// armed is 1 or -1 after a ] or a [ past the last change arms a
+	// crossing to the file at armedPath. Else it is 0.
+	armed     int
+	armedPath string
+	listW     int
+	cache     diff.Cache // the syntax colours, for a fast sideways scroll
 
 	comments diff.Comments
 	editor   textarea.Model
@@ -565,6 +570,13 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 // onKey gives a key to the part of the screen that takes the keys.
 func (m *model) onKey(msg tea.KeyPressMsg) tea.Cmd {
 	m.log.Debug("key", "key", msg.String(), "mode", m.mode, "scope", m.scope)
+	// As in herdr-reviewr, a key other than ], [, or esc drops an armed
+	// crossing. The keys of the prompt before a quit do not.
+	inQuit := m.mode == modeOverlay && m.overlay != nil && m.overlay.kind == overlayQuit
+	step := key.Matches(msg, m.keys.NextHunk, m.keys.PrevHunk)
+	if !inQuit && !step && msg.Code != tea.KeyEscape {
+		m.armed = 0
+	}
 	switch m.mode {
 	case modeComment:
 		return m.updateComment(msg)
