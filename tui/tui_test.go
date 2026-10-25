@@ -562,7 +562,8 @@ func TestConfigFlags(t *testing.T) {
 		t.Errorf("scope %q; want the flag, last-turn", m.scope)
 	}
 	m.reload()
-	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40}) // wide enough for split
+	// The pane is wide enough for split.
+	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
 	m = press(t, m, "X")
 	if m.split {
 		t.Errorf("after the key X of the configuration: split %v, want false",

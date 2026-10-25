@@ -15,7 +15,7 @@ import (
 type Command struct {
 	Script  string // the command, for sh -c
 	Program string // the first word of the command, or "" if it has none
-	Window  bool   // the editor opens a window and does not draw in the terminal
+	Window  bool   // the editor opens a window, not a terminal editor
 }
 
 // Template returns the command that opens file at line with template,

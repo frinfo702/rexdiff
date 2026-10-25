@@ -131,7 +131,8 @@ func TestEditorError(t *testing.T) {
 		name, editor, path, want string
 	}{
 		{"fails", code + " -g {file}", os.Getenv("PATH"), "editor failed: exit status 3: code: no such file"},
-		{"cannot start", code + " -g {file}", "", "editor failed: "}, // sh is not in PATH
+		// sh is not in PATH.
+		{"cannot start", code + " -g {file}", "", "editor failed: "},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
