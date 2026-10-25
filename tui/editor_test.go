@@ -35,6 +35,9 @@ func TestEditorCommands(t *testing.T) {
 		{"", "subl", `subl '/r/a b.go:12'`, false},
 		{"", "idea", `idea --line 12 '/r/a b.go'`, false},
 		{"", "mvim", `mvim +12 '/r/a b.go'`, false},
+		// A path in quotes can have spaces.
+		{"", `"/Apps/VS Code.app/bin/code" -w`, `"/Apps/VS Code.app/bin/code" -w -g '/r/a b.go:12'`, false},
+		{"", `'/my apps/nvim'`, `'/my apps/nvim' +12 '/r/a b.go'`, true},
 		// An unknown editor gets +line, and draws in the terminal.
 		{"", "vim.basic", `vim.basic +12 '/r/a b.go'`, true},
 		// A wait flag tells that an unknown editor has a window.

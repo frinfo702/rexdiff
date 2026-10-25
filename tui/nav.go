@@ -295,7 +295,8 @@ func (m *model) onFold() bool {
 }
 
 // foldKey names a fold that the user expanded: the path of the file, and
-// the new line number of the first line of the fold.
+// the old line number of the first line of the fold. The old side does not
+// change while the agent edits the files.
 type foldKey struct {
 	path string
 	line int
@@ -304,7 +305,7 @@ type foldKey struct {
 // expanded tells if the lines of fold f of the file at path show: the
 // user expanded the fold, or a comment is on one of its lines.
 func (m *model) expanded(path string, f diff.Fold) bool {
-	if m.folds[foldKey{path, f.New}] {
+	if m.folds[foldKey{path, f.Old}] {
 		return true
 	}
 	for _, c := range m.comments.All() {
@@ -327,7 +328,7 @@ func (m *model) expandFold(f diff.Fold) {
 	if m.folds == nil {
 		m.folds = map[foldKey]bool{}
 	}
-	m.folds[foldKey{p.path, f.New}] = true
+	m.folds[foldKey{p.path, f.Old}] = true
 	m.rerender()
 	p.cur = max(p.rowOf(diff.SideNew, f.New), 0)
 	if m.find.active() {

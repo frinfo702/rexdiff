@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -142,6 +144,24 @@ func TestExpandKeepsPlaces(t *testing.T) {
 		if l := strings.ToLower(ansi.Strip(p.lines[h])); !strings.Contains(l, "line 3") {
 			t.Errorf("a hit is on %q, want a line with line 3", l)
 		}
+	}
+}
+
+// TestFoldStaysOpen checks that an expanded fold stays open when the agent
+// adds a line above it.
+func TestFoldStaysOpen(t *testing.T) {
+	m := newFoldModel(t)
+	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })
+	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
+	path := filepath.Join(m.repo.Root(), "f.txt")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, m.repo.Root(), "f.txt", "new\n"+string(b))
+	m.reload()
+	if got := foldsOf(&m.changes); !slices.Equal(got, []int{3, 7}) {
+		t.Errorf("after the edit, folds = %v, want [3 7]", got)
 	}
 }
 

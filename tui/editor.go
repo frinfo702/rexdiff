@@ -70,17 +70,27 @@ func makeDialects() map[string]dialect {
 // terminal editors take +line, and a window editor also works in a pane.
 // A wait flag tells that the editor has a window.
 func dialectOf(command string) dialect {
-	words := strings.Fields(command)
 	d := dialect{line: argPlus}
-	if len(words) > 0 {
-		if known, ok := dialects[filepath.Base(words[0])]; ok {
-			d = known
-		}
+	if known, ok := dialects[filepath.Base(program(command))]; ok {
+		d = known
 	}
+	words := strings.Fields(command)
 	if slices.Contains(words, "--wait") || slices.Contains(words, "--block") {
 		d.window = true
 	}
 	return d
+}
+
+// program returns the first word of command. A word in quotes can have
+// spaces, for example "/Applications/Visual Studio Code.app/.../code".
+func program(command string) string {
+	command = strings.TrimSpace(command)
+	if q := command[:min(len(command), 1)]; q == `"` || q == "'" {
+		word, _, _ := strings.Cut(command[1:], q)
+		return word
+	}
+	word, _, _ := strings.Cut(command, " ")
+	return word
 }
 
 // editorCommand is a command that opens a file at a line.
