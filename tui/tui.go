@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -57,13 +55,16 @@ type Options struct {
 
 // check returns an error for options that Run cannot use.
 func (o Options) check() error {
-	switch {
-	case o.Repo == nil:
+	if o.Repo == nil {
 		return errors.New("no repository")
-	case o.Layout != "" && !slices.Contains(layouts, o.Layout):
-		return invalid("layout", "one of "+strings.Join(names(layouts...), ", "), string(o.Layout))
-	case o.Scope != "" && !slices.Contains(configScopes, o.Scope):
-		return invalid("scope", "one of "+strings.Join(names(configScopes...), ", "), string(o.Scope))
+	}
+	if o.Layout != "" {
+		if err := choice("layout", o.Layout, layouts); err != nil {
+			return err
+		}
+	}
+	if o.Scope != "" {
+		return choice("scope", o.Scope, configScopes)
 	}
 	return nil
 }

@@ -196,23 +196,15 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 func oneOf[T ~string](p *T, allowed ...T) func(string) error {
 	return func(v string) error {
 		if !slices.Contains(allowed, T(v)) {
-			return fmt.Errorf("expected one of %s", join(allowed))
+			var want []string
+			for _, a := range allowed {
+				want = append(want, string(a))
+			}
+			return fmt.Errorf("expected one of %s", strings.Join(want, ", "))
 		}
 		*p = T(v)
 		return nil
 	}
-}
-
-// join returns the values separated by ", ".
-func join[T ~string](values []T) string {
-	var b strings.Builder
-	for i, v := range values {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		b.WriteString(string(v))
-	}
-	return b.String()
 }
 
 // openLog returns a logger that appends to the file at path. If path is

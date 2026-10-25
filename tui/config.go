@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
@@ -261,19 +262,13 @@ func (c config) check(set map[string]jsontext.Value) error {
 // are the layout, the scope, the markdown view, and the file list. set
 // has the keys that the text sets.
 func (c config) checkChoices(set map[string]jsontext.Value) error {
-	choices := []struct {
-		key, value string
-		allowed    []string
-	}{
-		{"layout", string(c.Layout), names(layouts...)},
-		{"default_scope", string(c.DefaultScope), names(configScopes...)},
-		{"markdown_view", string(c.MarkdownView), names(markdownViews...)},
-		{"file_list", string(c.FileList), names(positions...)},
-	}
-	for _, k := range choices {
-		if !slices.Contains(k.allowed, k.value) {
-			return invalid(k.key, "one of "+strings.Join(k.allowed, ", "), k.value)
-		}
+	if err := cmp.Or(
+		choice("layout", c.Layout, layouts),
+		choice("default_scope", c.DefaultScope, configScopes),
+		choice("markdown_view", c.MarkdownView, markdownViews),
+		choice("file_list", c.FileList, positions),
+	); err != nil {
+		return err
 	}
 	if set["file_list_width"] != nil && c.FileListWidth < minListWidth {
 		want := strconv.Itoa(minListWidth) + " or more"
@@ -421,10 +416,15 @@ func hostLabel(s string) bool {
 // focusAgent tells if the focus moves to the agent after a send.
 func (c config) focusAgent() bool { return c.FocusAgent == nil || *c.FocusAgent }
 
-func names[T ~string](values ...T) []string {
-	s := make([]string, len(values))
-	for i, v := range values {
-		s[i] = string(v)
+// choice returns an error if value is not one of allowed. key is the name
+// of the value in the error.
+func choice[T ~string](key string, value T, allowed []T) error {
+	if slices.Contains(allowed, value) {
+		return nil
 	}
-	return s
+	want := make([]string, len(allowed))
+	for i, a := range allowed {
+		want[i] = string(a)
+	}
+	return invalid(key, "one of "+strings.Join(want, ", "), string(value))
 }
