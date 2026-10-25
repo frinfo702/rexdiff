@@ -34,6 +34,8 @@ func review(c diff.Comment) string {
 	return cs.Review("")
 }
 
+// TestReviewMatchesHerdr checks that Review writes the text format of
+// herdr-reviewr.
 func TestReviewMatchesHerdr(t *testing.T) {
 	var cs diff.Comments
 	cs.Add(comment("c.go", diff.SideNew,
@@ -63,8 +65,7 @@ func TestReviewMatchesHerdr(t *testing.T) {
 	}
 }
 
-// TestReviewContinuedRows checks a comment on only continued rows. The
-// comment has no diff lines, so Review writes the lines of its range.
+// TestReviewContinuedRows checks a comment on only continued rows.
 func TestReviewContinuedRows(t *testing.T) {
 	old, new := "", strings.Repeat("word ", 20)+"\n"
 	d := diff.Render("a.go", old, new, diff.Options{Width: 30, Wrap: true})
@@ -76,12 +77,14 @@ func TestReviewContinuedRows(t *testing.T) {
 	}
 	c := diff.NewComment("a.go", diff.SideNew, cont, old, new)
 	c.Text = "long"
+	// The comment has no diff lines, so Review writes the lines of its range.
 	want := "a.go:1\n+" + strings.TrimSuffix(new, "\n") + "\nlong"
 	if got := review(c); len(cont) == 0 || got != want {
 		t.Errorf("%d continued rows, Review:\n%s\nwant:\n%s", len(cont), got, want)
 	}
 }
 
+// TestComments checks Add, Find, At, EndingAt, Count, and Remove.
 func TestComments(t *testing.T) {
 	var cs diff.Comments
 	a := cs.Add(diff.Comment{Path: "a.go", Side: diff.SideNew, Start: 2, End: 4})
@@ -170,6 +173,8 @@ func TestNewComment(t *testing.T) {
 	}
 }
 
+// TestRelocateFollowsMovedCode checks that a comment moves to the nearest copy
+// of its lines, or becomes stale.
 func TestRelocateFollowsMovedCode(t *testing.T) {
 	var cs diff.Comments
 	c := cs.Add(commentOn("a.go", diff.SideNew, "a\nb\nc\n", 2, 3))
@@ -201,8 +206,8 @@ func TestRelocateFollowsMovedCode(t *testing.T) {
 	}
 }
 
-// TestSnippetIsTheRealDiff checks that the snippet is the real diff, with
-// raw text and tabs, in both layouts. The snippet must match git diff.
+// TestSnippetIsTheRealDiff checks that the snippet matches git diff, with raw
+// text and tabs, in both layouts.
 func TestSnippetIsTheRealDiff(t *testing.T) {
 	old := "func a() {\n\treturn 1\n}\n"
 	new := "func a() {\n\t// two\n\treturn 2\n}\n"

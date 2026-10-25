@@ -39,7 +39,6 @@ type dialect struct {
 // xdg-open.
 var dialects = makeDialects()
 
-// makeDialects returns the table of dialects.
 func makeDialects() map[string]dialect {
 	d := map[string]dialect{}
 	add := func(dl dialect, names ...string) {

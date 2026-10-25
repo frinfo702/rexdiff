@@ -132,7 +132,7 @@ func TestTerminalEditorInRex(t *testing.T) {
 }
 
 // TestWindowEditor checks that a window editor gets the file and the line,
-// and runs without a terminal. So it cannot take the keys of rexdiff.
+// and runs without a terminal.
 func TestWindowEditor(t *testing.T) {
 	m, _ := newTestModel(t)
 	bin := t.TempDir()

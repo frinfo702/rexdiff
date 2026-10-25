@@ -54,8 +54,7 @@ func headers(d *diff.Diff) string {
 }
 
 // TestFolds checks that a long run of equal lines folds into the hunk
-// header below it. Three lines show beside each change. A fold that
-// [diff.Options.Expanded] accepts shows all its lines.
+// header below it.
 func TestFolds(t *testing.T) {
 	old, new := numbered(40), numbered(40, 10, 30)
 	header := func(o, n, lines int) []string { return []string{foldText(diff.Fold{Old: o, New: n, Lines: lines})} }
@@ -67,6 +66,8 @@ func TestFolds(t *testing.T) {
 		return out
 	}
 	change := func(n int) []string { return []string{fmt.Sprintf("%d:0", n), fmt.Sprintf("0:%d", n)} }
+	// Three lines show beside each change. A fold that Expanded accepts shows
+	// all of its lines.
 	top, middle, tail, none := header(1, 1, 6), header(14, 14, 13), header(34, 34, 7), header(0, 0, 0)
 	tests := []struct {
 		name     string
@@ -123,21 +124,21 @@ func TestFolds(t *testing.T) {
 	}
 }
 
-// TestFoldEdges checks the folds that show no line. One line between the
-// margins of two changes shows, because a fold of one line saves no row.
-// After an insert, the old and the new numbers of a fold differ. A file
-// without equal lines has no fold.
+// TestFoldEdges checks the folds that show no line.
 func TestFoldEdges(t *testing.T) {
 	tests := []struct {
 		name     string
 		old, new string
 		want     string
 	}{
-		// Changes at 10 and 18 leave line 14 alone between the margins.
+		// Changes at 10 and 18 leave line 14 alone between the margins. The
+		// line shows, because a fold of one line saves no row.
 		{"one line", numbered(21), numbered(21, 10, 18),
 			"@1/1+6 7:7 8:8 9:9 10:0 0:10 11:11 12:12 13:13 14:14 15:15 16:16 17:17 18:0 0:18 19:19 20:20 21:21"},
+		// After an insert, the old and the new numbers of a fold differ.
 		{"insert at the top", numbered(12), "new\n" + numbered(12),
 			"@0/0+0 0:1 1:2 2:3 3:4 @4/5+9"},
+		// A file without equal lines has no fold.
 		{"all new", "", "a\nb\n", "@0/0+0 0:1 0:2"},
 	}
 	for _, tt := range tests {

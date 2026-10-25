@@ -194,8 +194,8 @@ func (v *View) replaceTabs() {
 	}
 }
 
-// computeDiff computes the diff of the two versions once. Then it returns
-// the error of the first call.
+// computeDiff computes the diff of the two versions once. A later call
+// returns the error of the first call.
 func (v *View) computeDiff() error {
 	if v.isComputed {
 		return v.err

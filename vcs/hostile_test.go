@@ -173,9 +173,10 @@ func TestSnapshotNestedRepo(t *testing.T) {
 }
 
 // TestReadFileStaysInRoot checks that ReadFile reads only the regular files
-// in the root. A repository can link to a secret file, or to a device that
-// does not end, for example /dev/zero.
+// in the root.
 func TestReadFileStaysInRoot(t *testing.T) {
+	// A repository can link to a secret file, or to a device that does not
+	// end, for example /dev/zero.
 	r, dir := newRepo(t)
 	secret := filepath.Join(filepath.Dir(dir), "secret")
 	write(t, filepath.Dir(dir), "secret", "secret\n")
@@ -224,9 +225,10 @@ func TestOpenRootWithNewline(t *testing.T) {
 	}
 }
 
-// TestGitWorktree checks a working tree that "git worktree add" made. Such
-// a working tree has its own index.
+// TestGitWorktree checks Diff and Snapshot in a working tree that
+// "git worktree add" made.
 func TestGitWorktree(t *testing.T) {
+	// Such a working tree has its own index. Snapshot must not change it.
 	_, dir := newRepo(t)
 	ctx := t.Context()
 	wt := filepath.Join(t.TempDir(), "wt")

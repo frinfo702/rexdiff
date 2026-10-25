@@ -136,7 +136,7 @@ func (m *model) headerScopes(l *headerLine) {
 	}
 }
 
-// commitsLabel names the commits of the commits scope in the header.
+// commitsLabel returns the name of the commits of the commits scope in the header.
 func (m *model) commitsLabel() string {
 	if m.to == "" {
 		return "pick ▾"
@@ -165,7 +165,8 @@ func (m *model) turnLabel() string {
 	return app + dimStyle.Render(" · "+ago.String()+" ago")
 }
 
-// agentLabel tells how many agents can get the next send.
+// agentLabel returns the header text that tells how many agents can get
+// the next send.
 func (m *model) agentLabel() string {
 	if m.rex == nil {
 		return dimStyle.Render("not in Rex")
@@ -432,7 +433,7 @@ func (m *model) ensureVisible() {
 	// Each row takes one line or more. So the last row cannot show if it is
 	// h rows or more below the top.
 	p.top = max(p.top, last-h+1)
-	p.top = min(last, min(p.top, max(len(p.lines)-1, 0)))
+	p.top = min(last, p.top, max(len(p.lines)-1, 0))
 	for p.top < last {
 		_, rowAt := m.mainLines(h)
 		idx := slices.Index(rowAt, p.end(p.cur))
@@ -523,7 +524,7 @@ func (m *model) footerLine() string {
 	return m.help.View(hk)
 }
 
-// bodyHeight is the number of lines between the header and the footer.
+// bodyHeight returns the number of lines between the header and the footer.
 func (m *model) bodyHeight() int { return m.heightAbove(m.footer()) }
 
 // heightAbove returns the height of the body above footer.
@@ -553,10 +554,10 @@ func (m *model) View() tea.View {
 	screen := hdr + "\n" + body + "\n" + rule + "\n" + footer
 
 	if m.mode == modeOverlay && m.overlay != nil {
-		box, x, y, _ := m.overlayBox()
+		ov, x, y, _ := m.overlayBox()
 		c := lipgloss.NewCanvas(m.w, m.h)
 		c.Compose(lipgloss.NewLayer(screen))
-		c.Compose(lipgloss.NewLayer(box).X(x).Y(y).Z(1))
+		c.Compose(lipgloss.NewLayer(ov).X(x).Y(y).Z(1))
 		screen = c.Render()
 	}
 
@@ -577,7 +578,7 @@ func box(lines []string, w, h int) string {
 	return st.Render(strings.Join(lines, "\n"))
 }
 
-// programStatus is the status that rexdiff reports to Rex with OSC 7501.
+// programStatus returns the status that rexdiff reports to Rex with OSC 7501.
 // Rex shows it in its tabs and its sidebar.
 func (m *model) programStatus() *tea.ProgramStatus {
 	msg := "reviewing " + plural(len(m.files), "file")
@@ -592,7 +593,7 @@ func (m *model) programStatus() *tea.ProgramStatus {
 	}
 }
 
-// mainX is the screen column where the main pane starts.
+// mainX returns the screen column where the main pane starts.
 func (m *model) mainX() int {
 	if lw := m.listWidth(); lw > 0 && m.listLeft {
 		return lw + sepWidth
@@ -600,7 +601,7 @@ func (m *model) mainX() int {
 	return 0
 }
 
-// listX is the screen column where the file list starts.
+// listX returns the screen column where the file list starts.
 func (m *model) listX() int {
 	if !m.listLeft {
 		return m.mainWidth() + sepWidth

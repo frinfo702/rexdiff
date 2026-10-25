@@ -19,7 +19,7 @@ import (
 type Kind int
 
 const (
-	KindHunk   Kind = iota // a hunk header. It shows no source line.
+	KindHunk   Kind = iota // a hunk header, with no source line
 	KindEqual              // a line that is the same on the two sides
 	KindInsert             // a line that only the new side has
 	KindDelete             // a line that only the old side has

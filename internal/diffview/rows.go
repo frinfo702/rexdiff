@@ -5,6 +5,7 @@ import "github.com/aymanbagabas/go-udiff"
 // RowKind is the type of a rendered row.
 type RowKind int
 
+// The values of RowKind.
 const (
 	RowHunk   RowKind = iota // a hunk header
 	RowEqual                 // a line that is the same in the two versions
@@ -119,7 +120,8 @@ func splitKind(l *splitLine) RowKind {
 	return RowInsert
 }
 
-// Geometry gives the columns of the line numbers in the output of String.
+// Geometry gives the columns of the line numbers in the output of
+// [View.Render].
 // Use it to tell a line number from the code.
 type Geometry struct {
 	BeforeNum     int // the width of the old line-number column, in cells

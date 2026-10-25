@@ -509,15 +509,12 @@ func (m *model) runFind(q string) {
 	}
 	lq := strings.ToLower(q)
 	for i, l := range p.lines {
-		if !strings.Contains(strings.ToLower(ansi.Strip(l)), lq) {
-			continue
-		}
-		// The rows of a wrapped line make one hit.
-		hits := m.find.hits
-		if h := p.head(i); len(hits) == 0 || hits[len(hits)-1] != h {
-			m.find.hits = append(hits, h)
+		if strings.Contains(strings.ToLower(ansi.Strip(l)), lq) {
+			m.find.hits = append(m.find.hits, p.head(i))
 		}
 	}
+	// The rows of a wrapped line make one hit.
+	m.find.hits = slices.Compact(m.find.hits)
 	if !m.find.active() {
 		m.flash("no match for " + q)
 		return

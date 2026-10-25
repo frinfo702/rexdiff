@@ -96,7 +96,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	var updater tui.Updater
 	if u := update.Detect(bin, version); u != nil {
-		updater = u // a nil *update.Updater would make a non-nil interface
+		updater = u // an interface with a nil *update.Updater is not nil
 	}
 	resume, err := tui.Run(ctx, tui.Options{
 		Repo:    repo,
@@ -168,14 +168,10 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 	fs.Func("scope", "start scope: uncommitted, branch, or last-turn",
 		oneOf(&f.scope, tui.ScopeUncommitted, tui.ScopeBranch, tui.ScopeLastTurn))
 	fs.BoolVar(&f.wrap, "wrap", true, "wrap long lines; w toggles it")
-	fs.StringVar(&f.base, "base", "",
-		"base for the branch scope (default: the repo's default branch)")
-	fs.StringVar(&f.agent, "agent", os.Getenv("REX_AGENT_BLOCK"),
-		"the agent's Rex block (id or label) this pane was opened beside")
-	fs.StringVar(&f.logPath, "log", os.Getenv("REXDIFF_LOG"),
-		"append a debug log to this file")
-	fs.StringVar(&f.config, "config", "",
-		"the settings as JSON; the Rex action passes them from rexdiff.lua")
+	fs.StringVar(&f.base, "base", "", "base for the branch scope (default: the repo's default branch)")
+	fs.StringVar(&f.agent, "agent", os.Getenv("REX_AGENT_BLOCK"), "the agent's Rex block (id or label) this pane was opened beside")
+	fs.StringVar(&f.logPath, "log", os.Getenv("REXDIFF_LOG"), "append a debug log to this file")
+	fs.StringVar(&f.config, "config", "", "the settings as JSON; the Rex action passes them from rexdiff.lua")
 	fs.BoolVar(&f.check, "check", false, "check the settings of -config and exit")
 	fs.BoolVar(&f.version, "version", false, "print the version and exit")
 	fs.Usage = func() {

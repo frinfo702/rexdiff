@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -154,7 +155,7 @@ func TestInstallCommands(t *testing.T) {
 		"HOMEBREW_NO_ENV_HINTS=1 NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade --cask rexdiff",
 		"/opt/homebrew/bin/rexdiff -version",
 	}
-	if strings.Join(brew.calls, "\n") != strings.Join(want, "\n") {
+	if !slices.Equal(brew.calls, want) {
 		t.Errorf("brew calls:\n%s\nwant:\n%s", strings.Join(brew.calls, "\n"), strings.Join(want, "\n"))
 	}
 
@@ -301,7 +302,7 @@ func TestDownload(t *testing.T) {
 func TestInstallOutlivesCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	var sawCancel bool
-	run := func(ctx context.Context, _ []string, name string, args ...string) ([]byte, error) {
+	run := func(ctx context.Context, _ []string, name string, _ ...string) ([]byte, error) {
 		if name == "brew" {
 			cancel() // the user quits rexdiff while brew runs
 			sawCancel = ctx.Err() != nil

@@ -9,7 +9,7 @@ import (
 
 // pad right-aligns v in a column of width cells.
 func pad(v any, width int) string {
-	s := fmt.Sprintf("%v", v)
+	s := fmt.Sprint(v)
 	w := ansi.StringWidth(s)
 	if w >= width {
 		return s

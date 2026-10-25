@@ -180,9 +180,10 @@ func TestScopes(t *testing.T) {
 }
 
 // TestMissingCommit checks that Head and Parent fail when a commit object
-// is missing. The empty tree is not correct, because it shows every file
-// as added.
+// is missing.
 func TestMissingCommit(t *testing.T) {
+	// The empty tree is not a correct result, because it shows every file as
+	// added.
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	cs, err := r.Commits(ctx, 2)
@@ -394,14 +395,12 @@ func TestNewRepo(t *testing.T) {
 	}
 }
 
-// TestSnapshotRacyEdit checks that Snapshot sees an edit that keeps the
-// size of a file. The edit is in the same second as the last write of the
-// index.
-//
-// git checks such "racily clean" files by their content. It finds them by
-// the modification time of the index, so the copy of the index must keep
-// that time.
+// TestSnapshotRacyEdit checks that Snapshot sees a same-size edit in the
+// same second as the last write of the index.
 func TestSnapshotRacyEdit(t *testing.T) {
+	// git checks such "racily clean" files by their content. It finds them by
+	// the modification time of the index, so the copy of the index must keep
+	// that time.
 	r, dir := newRepo(t)
 	git(t, dir, "config", "core.trustctime", "false")
 	git(t, dir, "add", "-A")

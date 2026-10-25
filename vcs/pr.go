@@ -53,6 +53,7 @@ type Check struct {
 // the service.
 type Forge string
 
+// The forges that [Repo.PullRequest] supports.
 const (
 	ForgeGitHub Forge = "GitHub"
 	ForgeGitLab Forge = "GitLab"
@@ -62,6 +63,7 @@ const (
 // State is the state of a pull request. It is the same for each forge.
 type State string
 
+// The values of State.
 const (
 	StateOpen   State = "open"
 	StateDraft  State = "draft" // open, but not ready for review
@@ -72,6 +74,7 @@ const (
 // Result is the result of a CI check. It is the same for each forge.
 type Result string
 
+// The values of Result.
 const (
 	ResultPass    Result = "pass"
 	ResultFail    Result = "fail"    // also an error, a cancel, or a timeout

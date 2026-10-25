@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -58,8 +59,8 @@ const (
 )
 
 // Release is a release of rexdiff on GitHub. Get one from [Updater.Latest].
-// A Release that you make yourself has no files, so Install cannot install
-// it.
+// A Release that you make yourself has no files. Install can give it to
+// Homebrew or go install, but it cannot download it.
 type Release struct {
 	Tag    string // for example "v0.2.0"
 	assets []asset
@@ -400,15 +401,7 @@ func Restart(bin string, args []string) error {
 func newer(tag, have string) bool {
 	t, ok1 := numbers(tag)
 	h, ok2 := numbers(have)
-	if !ok1 || !ok2 {
-		return false
-	}
-	for i := range t {
-		if t[i] != h[i] {
-			return t[i] > h[i]
-		}
-	}
-	return false
+	return ok1 && ok2 && slices.Compare(t[:], h[:]) > 0
 }
 
 // numbers returns the three numbers of a version like "v1.2.3".

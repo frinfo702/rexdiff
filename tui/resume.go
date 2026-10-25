@@ -7,9 +7,11 @@ package tui
 import (
 	"encoding/json/v2"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/vcs"
 )
 
 // savedState holds the comments, the scope, the view, the expanded folds,
@@ -138,19 +140,15 @@ func (m *model) restoreSettings(s *savedState) {
 	m.lastSent, m.beside = s.LastSent, s.Beside
 }
 
-// restorePlaces selects the files of s and puts the cursors where they
-// were. Call it after the first reload.
+// restorePlaces selects the files of s and moves the cursors to the places
+// in s. Call it after the first reload.
 func (m *model) restorePlaces(s *savedState) {
-	for i, f := range m.files {
-		if f.Path == s.ChangePath {
-			m.changeSel = i
-		}
+	if i := slices.IndexFunc(m.files, func(f changed) bool { return f.Path == s.ChangePath }); i >= 0 {
+		m.changeSel = i
 	}
 	m.allFiles, _ = m.repo.Files(m.ctx) // an error shows an empty list
-	for i, e := range m.allFiles {
-		if e.Path == s.FilePath {
-			m.allSel = i
-		}
+	if i := slices.IndexFunc(m.allFiles, func(e vcs.Entry) bool { return e.Path == s.FilePath }); i >= 0 {
+		m.allSel = i
 	}
 	m.renderChanges()
 	m.refreshViewer()

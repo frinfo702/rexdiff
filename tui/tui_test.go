@@ -130,6 +130,7 @@ func paths(m model) []string {
 	return ps
 }
 
+// TestScopes checks the files that each scope shows.
 func TestScopes(t *testing.T) {
 	m, dir := newTestModel(t)
 	if got := paths(m); !slices.Equal(got, []string{"a.go"}) {
@@ -174,6 +175,8 @@ func TestScopes(t *testing.T) {
 	}
 }
 
+// TestComment checks comments in the two layouts, and the send, copy, and
+// quit keys with unsent comments.
 func TestComment(t *testing.T) {
 	m, _ := newTestModel(t)
 
@@ -213,6 +216,7 @@ func TestComment(t *testing.T) {
 	}
 }
 
+// TestTabs checks the Files tab and the PR tab.
 func TestTabs(t *testing.T) {
 	m, _ := newTestModel(t)
 
@@ -250,8 +254,8 @@ func TestPRChecks(t *testing.T) {
 	}
 }
 
-// TestSmallScreens presses every key on screens down to 1x1. The program
-// must not panic, and the view must fit the screen.
+// TestSmallScreens checks that every key works on screens down to 1x1 and
+// that the view fits the screen.
 func TestSmallScreens(t *testing.T) {
 	keys := []string{
 		"w", "j", "v", "j", "c", "\x1b[31mx\x07", "enter", "f", "F", "]", "[", "n", "N",
@@ -280,8 +284,8 @@ func TestSmallScreens(t *testing.T) {
 	}
 }
 
-// TestDragAfterReload drags while the pane gets shorter. The program must
-// not panic.
+// TestDragAfterReload checks that a drag does not panic when the pane gets
+// shorter.
 func TestDragAfterReload(t *testing.T) {
 	m, _ := newTestModel(t)
 	m.drag = dragState{active: true, gutter: true, moved: true, start: 48}
@@ -311,10 +315,11 @@ func click(t *testing.T, m model, x, y int) model {
 	return step(t, m, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y})
 }
 
-// TestClickOldNumber clicks the old line number of an unchanged line. The
-// comment goes on the new side, so that it shows and d can delete it.
+// TestClickOldNumber checks a comment from a click on the old line number of
+// an unchanged line.
 func TestClickOldNumber(t *testing.T) {
 	m, _ := newTestModel(t)
+	// The comment goes on the new side, so that it shows and d can delete it.
 	equal := func(r diff.Row) bool { return r.Kind == diff.KindEqual }
 	i := slices.IndexFunc(m.changes.rows, equal)
 	m = click(t, m, m.mainX()+gutter, screenY(t, m, i))
@@ -327,8 +332,8 @@ func TestClickOldNumber(t *testing.T) {
 	}
 }
 
-// TestClickCommentBox clicks while the comment box is open. No click
-// changes the draft or closes the box.
+// TestClickCommentBox checks that a click does not change the draft or close
+// the comment box.
 func TestClickCommentBox(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "]", "c", "h", "i")
@@ -350,8 +355,8 @@ func TestClickCommentBox(t *testing.T) {
 	}
 }
 
-// TestSendError sends the review when Rex fails. The footer shows the
-// error of Rex.
+// TestSendError checks that the footer shows the error of Rex after a send
+// fails.
 func TestSendError(t *testing.T) {
 	m, _ := newTestModel(t)
 	fakeRex(t, &m, "echo 'Error: no Rex server' >&2\nexit 1\n")
@@ -362,8 +367,8 @@ func TestSendError(t *testing.T) {
 	}
 }
 
-// TestMissingHead removes the object of the HEAD commit. The Changes tab
-// shows the error, and not each file as added.
+// TestMissingHead checks that the Changes tab shows an error, and not each
+// file as added, when the object of the HEAD commit is missing.
 func TestMissingHead(t *testing.T) {
 	m, dir := newTestModel(t)
 	sha, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
@@ -395,10 +400,8 @@ func errorHas(err error, texts ...string) bool {
 }
 
 // TestParseConfig checks the settings that the Rex action sends as JSON.
-// Each action of herdr-reviewr has a key. An unknown key or a bad value is
-// an error.
 func TestParseConfig(t *testing.T) {
-	// The actions in herdr-reviewr's src/keymap.rs.
+	// Each action in src/keymap.rs of herdr-reviewr has a key.
 	names := strings.Fields(`base-pick collapse comment comments commit-pick copy
 		delete down edit expand find goto-line half-down half-up keys navigator-grow
 		navigator-hide navigator-position navigator-shrink next-comment next-file
@@ -418,6 +421,7 @@ func TestParseConfig(t *testing.T) {
 		t.Errorf("every action: %v", err)
 	}
 
+	// An unknown key is an error.
 	unknown := []struct{ text, key string }{
 		{`{"layuot": "split"}`, `"layuot"`},
 		{`{"keybindings": {"next-fiel": ["x"]}}`, `"keybindings.next-fiel"`},
@@ -493,8 +497,8 @@ func TestParseConfig(t *testing.T) {
 	}
 }
 
-// TestDiffSigns checks that a bar marks a changed line by default, and
-// that the setting diff_signs changes the bar to + and -.
+// TestDiffSigns checks that a bar marks a changed line by default, and that
+// the setting diff_signs changes the bar to + and -.
 func TestDiffSigns(t *testing.T) {
 	line := func(m model, code string) string {
 		for l := range strings.Lines(view(m)) {
@@ -522,7 +526,7 @@ func TestDiffSigns(t *testing.T) {
 	}
 }
 
-// TestConfigFlags checks that the flags win over the settings, and that
+// TestConfigFlags checks that the flags override the settings, and that
 // the settings set the keys and the file list.
 func TestConfigFlags(t *testing.T) {
 	m, _ := newTestModel(t)
@@ -553,8 +557,8 @@ func TestConfigFlags(t *testing.T) {
 	}
 }
 
-// TestNotice checks that the footer shows all of a long notice, on its own
-// lines, so that the user can read what went wrong.
+// TestNotice checks that the footer shows all of a long notice on its own
+// lines.
 func TestNotice(t *testing.T) {
 	m, _ := newTestModel(t)
 	// The path makes the first line end in "--" at column 82, past the
@@ -564,19 +568,19 @@ func TestNotice(t *testing.T) {
 		strings.Repeat("the end word ", 20) + "LAST " + strings.Repeat("x", 100)
 	m = newModel(t.Context(), Options{Repo: m.repo, Notice: notice}, defaultConfig())
 	m = step(t, m, tea.WindowSizeMsg{Width: 80, Height: 30})
-	view := ansi.Strip(m.View().Content)
+	v := view(m)
 	// Each word of the notice is in the view, so a hyphen does not push
 	// "--" past the edge of the screen.
-	words := strings.Fields(view)
+	words := strings.Fields(v)
 	for _, w := range strings.Fields(notice)[:30] {
 		if !slices.Contains(words, w) {
-			t.Errorf("the view does not show %q of the notice:\n%s", w, view)
+			t.Errorf("the view does not show %q of the notice:\n%s", w, v)
 		}
 	}
-	if !strings.Contains(view, strings.Repeat("x", 80)) {
+	if !strings.Contains(v, strings.Repeat("x", 80)) {
 		t.Errorf("the view does not show the start of a word wider than the screen")
 	}
-	for line := range strings.SplitSeq(view, "\n") {
+	for line := range strings.SplitSeq(v, "\n") {
 		if ansi.StringWidth(line) > 80 {
 			t.Errorf("line wider than the screen: %q", line)
 		}
@@ -623,9 +627,7 @@ func twoHunks(t *testing.T, m model, dir, long string) model {
 	return m
 }
 
-// TestWrap checks that the w key toggles wrap, and that the cursor moves
-// by source lines. A comment on wrapped lines gets the same
-// snippet.
+// TestWrap checks that the w key turns wrap on and off.
 func TestWrap(t *testing.T) {
 	m, _, long := wrapModel(t)
 	cut := len(m.changes.lines)
@@ -638,6 +640,7 @@ func TestWrap(t *testing.T) {
 	if v := view(m); !strings.Contains(v, "x + 1") {
 		t.Errorf("the end of the long line does not show:\n%s", v)
 	}
+	// The cursor moves by source lines.
 	m = press(t, m, "]")
 	for range len(m.changes.lines) {
 		if m.changes.cont(m.changes.cur) {
@@ -646,6 +649,7 @@ func TestWrap(t *testing.T) {
 		m = press(t, m, "j")
 	}
 
+	// A comment on wrapped lines gets the same snippet.
 	m = press(t, m, "home", "]", "v", "j", "c", "o", "k", "enter")
 	cs := m.comments.All()
 	want := "\n-\treturn 1\n+" + long + "\nok"
@@ -732,9 +736,8 @@ func TestTallLine(t *testing.T) {
 			m.changes.top, m.changes.cur)
 	}
 
-	// A cursor on the line shows its first rows. The
-	// comment box shows below the last row. A c on a line with a comment
-	// edits the comment.
+	// A cursor on the line shows its first rows. The comment box shows below
+	// the last row. A c on a line with a comment edits the comment.
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
 	m = press(t, m, "home")
 	for m.changes.rows[m.changes.cur].New != 4 {
@@ -757,10 +760,10 @@ func TestTallLine(t *testing.T) {
 	}
 }
 
-// TestHostileText puts escape sequences in outside data: a file name, a
-// comment, an agent, and an error from Rex. The screen must not get them
-// raw. The diff tests check the review text.
+// TestHostileText checks that the screen does not show raw escape sequences
+// from a file name, a comment, an agent, or an error from Rex.
 func TestHostileText(t *testing.T) {
+	// The diff tests check the review text.
 	const osc = "\x1b]0;owned\x07" // sets the title of the terminal
 	raw := func(where string, m model) {
 		t.Helper()
@@ -789,8 +792,8 @@ func TestHostileText(t *testing.T) {
 	raw("the turn in the header", m)
 }
 
-// TestMouseOffScreen sends mouse events outside the screen, also while an
-// overlay is open and the screen changes size. The program must not panic.
+// TestMouseOffScreen checks that mouse events outside the screen do not
+// panic, also while an overlay is open and the screen changes size.
 func TestMouseOffScreen(t *testing.T) {
 	m, _ := newTestModel(t)
 	for _, keys := range [][]string{{}, {"G"}, {"/"}, {"2"}, {"3"}} {
@@ -814,9 +817,8 @@ func TestMouseOffScreen(t *testing.T) {
 	}
 }
 
-// TestEmptyRepo presses keys in each tab of a repository with no commits
-// and no files, with key bindings that conflict. The program must not
-// panic.
+// TestEmptyRepo checks that keys do not panic in a repository with no
+// commits and no files, with key bindings that conflict.
 func TestEmptyRepo(t *testing.T) {
 	dir := t.TempDir()
 	git(t, dir, "init", "-q", "-b", "main")
@@ -847,8 +849,8 @@ func TestEmptyRepo(t *testing.T) {
 	}
 }
 
-// TestFooterHints checks the footer in the select and the find modes. It
-// shows the keys of the mode.
+// TestFooterHints checks that the footer shows the keys of the select and the
+// find modes.
 func TestFooterHints(t *testing.T) {
 	m, _ := newTestModel(t)
 	if m = press(t, m, "]", "v"); !strings.Contains(view(m), "extend") {

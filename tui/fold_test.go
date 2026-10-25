@@ -57,9 +57,8 @@ func foldsOf(p *pane) []int {
 	return out
 }
 
-// TestExpandFold checks that → on a fold shows its lines, and moves the
-// cursor to the first of them. The footer tells about the key. On a line
-// of code, → scrolls sideways.
+// TestExpandFold checks that → shows the lines of a fold and scrolls
+// sideways on a line of code.
 func TestExpandFold(t *testing.T) {
 	m := newFoldModel(t)
 	p := &m.changes
@@ -115,9 +114,7 @@ func TestGotoLineInFold(t *testing.T) {
 }
 
 // TestExpandKeepsPlaces checks the cursor, the selection, and the hits of
-// a find after a fold shows. The cursor goes to the first line of the
-// fold, also for the fold at the top. The selection and the hits stay on
-// their lines.
+// a find after a fold shows.
 func TestExpandKeepsPlaces(t *testing.T) {
 	m := newFoldModel(t)
 	m.changes.cur = m.changes.rowOf(diff.SideNew, 29)
@@ -147,9 +144,8 @@ func TestExpandKeepsPlaces(t *testing.T) {
 	}
 }
 
-// TestFoldStaysOpen checks that an expanded fold stays open when the agent
-// adds a line above it, or changes a line in it. A commit changes the old
-// side, and closes the fold.
+// TestFoldStaysOpen checks that an expanded fold stays open after edits of
+// the agent and closes after a commit.
 func TestFoldStaysOpen(t *testing.T) {
 	m := newFoldModel(t)
 	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })
@@ -234,8 +230,7 @@ func TestClickFold(t *testing.T) {
 }
 
 // TestFoldKeepsComment checks that a fold with a comment on one of its
-// lines shows. A new scope closes the expanded folds. The commented line
-// stays on the screen.
+// lines shows, also after a new scope closes the expanded folds.
 func TestFoldKeepsComment(t *testing.T) {
 	m := newFoldModel(t)
 	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })
