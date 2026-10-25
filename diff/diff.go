@@ -49,8 +49,8 @@ type Row struct {
 }
 
 // Fold is a run of equal lines that hides. Old and New are the line
-// numbers of its first line. Lines is the number of lines, 0 if no line
-// hides.
+// numbers of its first line. Lines is the number of lines. It is 0 if no
+// line hides.
 type Fold struct {
 	Old, New, Lines int
 }

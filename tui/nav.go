@@ -294,19 +294,25 @@ func (m *model) onFold() bool {
 	return m.tab == tabChanges && p.cur < len(p.rows) && p.rows[p.cur].Fold.Lines > 0
 }
 
-// foldKey names a fold that the user expanded: the path of the file, and
-// the old line number of the first line of the fold. The old side does not
-// change while the agent edits the files.
-type foldKey struct {
-	path string
-	line int
+// openFolds has the folds that the user expanded in one file, as ranges of
+// old line numbers. The old side does not change while the agent edits the
+// file, so an edit in a range keeps the lines of the range open. The
+// ranges are for the old content old. A different old content, for example
+// after a commit, closes them.
+type openFolds struct {
+	old    string
+	ranges [][2]int // the first and the last line of each range
 }
 
 // expanded tells if the lines of fold f of the file at path show: the
 // user expanded the fold, or a comment is on one of its lines.
 func (m *model) expanded(path string, f diff.Fold) bool {
-	if m.folds[foldKey{path, f.Old}] {
-		return true
+	if o := m.folds[path]; o != nil {
+		for _, r := range o.ranges {
+			if f.Old >= r[0] && f.Old+f.Lines-1 <= r[1] {
+				return true
+			}
+		}
 	}
 	for _, c := range m.comments.All() {
 		lo := f.New
@@ -325,10 +331,19 @@ func (m *model) expanded(path string, f diff.Fold) bool {
 // on their lines.
 func (m *model) expandFold(f diff.Fold) {
 	p := &m.changes
-	if m.folds == nil {
-		m.folds = map[foldKey]bool{}
+	file := m.changedFile()
+	if file == nil {
+		return
 	}
-	m.folds[foldKey{p.path, f.Old}] = true
+	if m.folds == nil {
+		m.folds = map[string]*openFolds{}
+	}
+	o := m.folds[file.Path]
+	if o == nil {
+		o = &openFolds{old: file.Old}
+		m.folds[file.Path] = o
+	}
+	o.ranges = append(o.ranges, [2]int{f.Old, f.Old + f.Lines - 1})
 	m.rerender()
 	p.cur = max(p.rowOf(diff.SideNew, f.New), 0)
 	if m.find.active() {
@@ -519,7 +534,7 @@ func (m *model) gotoLine(s string) {
 		m.flash("not a line number: " + s)
 		return
 	}
-	if p == &m.changes {
+	if m.tab == tabChanges {
 		// Show the fold that has line n.
 		for _, r := range p.rows {
 			if f := r.Fold; n >= f.New && n < f.New+f.Lines {

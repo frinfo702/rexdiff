@@ -148,20 +148,39 @@ func TestExpandKeepsPlaces(t *testing.T) {
 }
 
 // TestFoldStaysOpen checks that an expanded fold stays open when the agent
-// adds a line above it.
+// adds a line above it, or changes a line in it. A commit changes the old
+// side, and closes the fold.
 func TestFoldStaysOpen(t *testing.T) {
 	m := newFoldModel(t)
 	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })
 	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
-	path := filepath.Join(m.repo.Root(), "f.txt")
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
+	dir := m.repo.Root()
+	edit := func(f func(string) string) {
+		b, err := os.ReadFile(filepath.Join(dir, "f.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, dir, "f.txt", f(string(b)))
+		m.reload()
 	}
-	write(t, m.repo.Root(), "f.txt", "new\n"+string(b))
-	m.reload()
+	edit(func(s string) string { return "new\n" + s })
 	if got := foldsOf(&m.changes); !slices.Equal(got, []int{3, 7}) {
-		t.Errorf("after the edit, folds = %v, want [3 7]", got)
+		t.Errorf("after a line above, folds = %v, want [3 7]", got)
+	}
+	edit(func(s string) string { return strings.Replace(s, "line 20\n", "LINE 20\n", 1) })
+	if got := foldsOf(&m.changes); !slices.Equal(got, []int{3, 7}) {
+		t.Errorf("after a change in the fold, folds = %v, want [3 7]", got)
+	}
+	// After the commit, the file has 41 lines. Changes at lines 12 and 26
+	// make a fold of old lines 16 to 22, inside the range that was open.
+	git(t, dir, "commit", "-qam", "agent")
+	edit(func(s string) string {
+		lines := strings.Split(s, "\n")
+		lines[11], lines[25] = "changed", "changed"
+		return strings.Join(lines, "\n")
+	})
+	if got := foldsOf(&m.changes); !slices.Equal(got, []int{8, 7, 12}) {
+		t.Errorf("after a commit, folds = %v, want [8 7 12]", got)
 	}
 }
 
@@ -182,8 +201,8 @@ func TestClickFold(t *testing.T) {
 }
 
 // TestFoldKeepsComment checks that a fold with a comment on one of its
-// lines shows. A new scope folds the lines. The comment must stay on the
-// screen.
+// lines shows. A new scope closes the expanded folds. The commented line
+// stays on the screen.
 func TestFoldKeepsComment(t *testing.T) {
 	m := newFoldModel(t)
 	m.changes.cur = slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 13 })

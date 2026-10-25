@@ -58,7 +58,7 @@ func headers(d *diff.Diff) string {
 // [diff.Options.Expanded] accepts shows all its lines.
 func TestFolds(t *testing.T) {
 	old, new := numbered(40), numbered(40, 10, 30)
-	header := func(old, new, n int) []string { return []string{foldText(diff.Fold{Old: old, New: new, Lines: n})} }
+	header := func(o, n, lines int) []string { return []string{foldText(diff.Fold{Old: o, New: n, Lines: lines})} }
 	lines := func(lo, hi int) []string {
 		var out []string
 		for i := lo; i <= hi; i++ {

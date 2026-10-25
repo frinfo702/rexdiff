@@ -35,8 +35,8 @@ type dialect struct {
 }
 
 // dialects has the editors that rexdiff knows, by program name. The table
-// is the same as in herdr-reviewr. It also has fresh, and the openers open
-// and xdg-open.
+// is the same as in herdr-reviewr. The table also lists fresh, open, and
+// xdg-open.
 var dialects = makeDialects()
 
 // makeDialects returns the table of dialects.
@@ -67,8 +67,8 @@ func makeDialects() map[string]dialect {
 
 // dialectOf returns the dialect of the program of command. An editor that
 // rexdiff does not know takes +line and draws in the terminal. Most
-// terminal editors take +line, and a window editor also works in a pane.
-// A wait flag tells that the editor has a window.
+// terminal editors take +line. A window editor also works in a pane. A
+// wait flag tells that the editor has a window.
 func dialectOf(command string) dialect {
 	d := dialect{line: argPlus}
 	if known, ok := dialects[filepath.Base(program(command))]; ok {
@@ -85,9 +85,11 @@ func dialectOf(command string) dialect {
 // spaces, for example "/Applications/Visual Studio Code.app/.../code".
 func program(command string) string {
 	command = strings.TrimSpace(command)
-	if q := command[:min(len(command), 1)]; q == `"` || q == "'" {
-		word, _, _ := strings.Cut(command[1:], q)
-		return word
+	for _, q := range []string{`"`, "'"} {
+		if rest, ok := strings.CutPrefix(command, q); ok {
+			word, _, _ := strings.Cut(rest, q)
+			return word
+		}
 	}
 	word, _, _ := strings.Cut(command, " ")
 	return word
@@ -95,8 +97,8 @@ func program(command string) string {
 
 // editorCommand is a command that opens a file at a line.
 type editorCommand struct {
-	script   string // the command, for sh -c
-	terminal bool   // the editor draws in the terminal
+	script string // the command, for sh -c
+	window bool   // the editor opens a window, not in the terminal
 }
 
 // templateCommand returns the command that opens the file abs at line with
@@ -108,7 +110,7 @@ func templateCommand(template, abs string, line int) editorCommand {
 	if !strings.Contains(template, "{file}") {
 		script += " " + shellQuote(abs)
 	}
-	return editorCommand{script, !dialectOf(template).window}
+	return editorCommand{script, dialectOf(template).window}
 }
 
 // envCommand returns the command that opens the file abs at line with
@@ -130,7 +132,7 @@ func envCommand(editor, abs string, line int) editorCommand {
 	case argFlag:
 		args = "--line " + n + " " + file
 	}
-	return editorCommand{editor + " " + args, !d.window}
+	return editorCommand{editor + " " + args, d.window}
 }
 
 // openEditor opens the file at path, at line. It uses the editor of the
@@ -151,8 +153,8 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 		)
 		ed = envCommand(editor, abs, line)
 	}
-	m.log.Debug("editor", "command", ed.script, "terminal", ed.terminal)
-	if !ed.terminal {
+	m.log.Debug("editor", "command", ed.script, "window", ed.window)
+	if ed.window {
 		return runWindowEditor(ed.script)
 	}
 	if m.rex != nil {

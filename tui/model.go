@@ -196,7 +196,7 @@ type model struct {
 
 	tab   tab
 	scope Scope
-	folds map[foldKey]bool // the folds that the user expanded in the Changes tab
+	folds map[string]*openFolds // the folds that the user expanded in the Changes tab, by path
 	base  string
 	from  string // the commits scope: the oldest commit that the user picked
 	to    string // the commits scope: the newest commit that the user picked

@@ -23,7 +23,7 @@ const (
 	ellipsis           = "…" // shows where a line is cut
 )
 
-// The symbols before the code of a line. A bar in the colour of the line
+// The symbols at the start of the code of a line. A bar in the colour of the line
 // marks each changed line. [View.Signs] shows + and - in place of the bar.
 const (
 	symNone   = "  " // an equal line, a missing line, or a continued line
@@ -212,9 +212,12 @@ func (v *View) computeDiff() error {
 		edits,
 		context,
 	)
-	v.folds = nil
-	if v.err == nil && len(v.unified.Hunks) == 1 {
-		v.unified.Hunks, v.folds = foldHunk(v.unified.Hunks[0], v.expanded)
+	hunks := v.unified.Hunks
+	v.unified.Hunks, v.folds = nil, nil
+	for _, h := range hunks {
+		hs, fs := foldHunk(h, v.expanded)
+		v.unified.Hunks = append(v.unified.Hunks, hs...)
+		v.folds = append(v.folds, fs...)
 	}
 	return v.err
 }
@@ -394,7 +397,7 @@ func (v *View) renderSplit() string {
 // header starts on the left side and can go on across the right side.
 func (v *View) splitHeader(i int) string {
 	div := v.style.dividerLine
-	// The two code columns and the new line numbers.
+	// The header covers the two code columns and the new line numbers.
 	width := 2*v.fullCodeWidth + btoi(v.extraColOnAfter) + v.afterNumDigits + lineNumPadding*2
 	return div.lineNumber.Render(pad(ellipsis, v.beforeNumDigits)) +
 		div.code.Width(width).Render(ansi.Truncate(v.headerText(i), width, ellipsis))

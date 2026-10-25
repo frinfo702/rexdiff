@@ -118,7 +118,7 @@ func TestRenderTabsAndOffset(t *testing.T) {
 	}
 }
 
-// TestMarks checks the mark before the code of each line, in the two
+// TestMarks checks the mark at the start of the code of each line, in the two
 // layouts. By default a bar marks a changed line, as in herdr-reviewr.
 // [diff.Options.Signs] gives + and -. The mark takes two cells in both
 // cases, so the columns do not move.
@@ -185,8 +185,8 @@ func TestMarks(t *testing.T) {
 }
 
 // markColours returns the foreground of each bar, + or - in lines, in
-// order, for example "31". The foreground is in the SGR sequence just
-// before the mark.
+// order, for example "31". The foreground is in the SGR sequence in front
+// of the mark.
 func markColours(lines []string) []string {
 	var out []string
 	for _, l := range lines {
