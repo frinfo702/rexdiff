@@ -49,13 +49,14 @@ func TestReviewMatchesHerdr(t *testing.T) {
 		"x := 1\ny := 2\n",
 		"merge these\n\n  \nplease  ",
 	))
-	cs.Relocate("c.go", "", "other\n") // makes the c.go comment stale
+	// A stale comment has no note in the review.
+	cs.Relocate("c.go", "", "other\n")
 
 	got := cs.Review("Fix each comment.\r\n")
 	want := "Fix each comment.\n\n" +
 		"a.go:1-2\n+x := 1\n+y := 2\nmerge these\nplease\n\n" +
 		"b.go:1 (removed)\n-gone()\nwhy?\n\n" +
-		"c.go:1-2 (stale: the code has changed since)\n" +
+		"c.go:1-2\n" +
 		" ctx\n-\told[31m\n+\tnew\nfix]7501;state=idle this"
 	if got != want {
 		t.Errorf("Review got:\n%s\nwant:\n%s", got, want)

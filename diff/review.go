@@ -29,9 +29,6 @@ func (cs *Comments) Review(prefix string) string {
 func format(c *Comment) string {
 	var b strings.Builder
 	b.WriteString(termtext.Plain(c.Location()))
-	if c.Stale {
-		b.WriteString(" (stale: the code has changed since)")
-	}
 	// Write the rows as the diff shows them, so that the agent reads a real
 	// diff.
 	if len(c.snippet) > 0 {
