@@ -93,27 +93,7 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	m := newModel(ctx, o, cfg)
-	if err := m.startWatch(); err != nil {
-		m.dropWatch(err)
-	}
-	var saved *savedState
-	if o.Resume != "" {
-		if saved, err = loadState(o.Resume); err != nil {
-			m.flash("cannot read the comments from before the update: " + err.Error())
-		} else {
-			m.restoreSettings(saved)
-		}
-	}
-	m.reload()
-	if saved != nil {
-		m.restorePlaces(saved)
-	}
-	if o.Rex != nil && o.Rex.Block != "" {
-		if err := o.Rex.SetLabel(ctx, o.Rex.Block, appName); err != nil {
-			m.log.Debug("set label", "err", err)
-		}
-	}
+	m := startModel(ctx, o, cfg)
 	program := tea.NewProgram(&m, tea.WithContext(ctx))
 	if o.Rex != nil {
 		// Watch returns only the error of ctx, when ctx is done.
@@ -131,4 +111,33 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 		return fm.restartState, nil
 	}
 	return "", err
+}
+
+// startModel returns the model that Run shows. It starts the watcher,
+// reads the state of o.Resume, loads the changes, and labels the block of
+// the program in Rex.
+func startModel(ctx context.Context, o Options, cfg config) model {
+	m := newModel(ctx, o, cfg)
+	if err := m.startWatch(); err != nil {
+		m.dropWatch(err)
+	}
+	var saved *savedState
+	if o.Resume != "" {
+		var err error
+		if saved, err = loadState(o.Resume); err != nil {
+			m.flash("cannot read the comments from before the update: " + err.Error())
+		} else {
+			m.restoreSettings(saved)
+		}
+	}
+	m.reload()
+	if saved != nil {
+		m.restorePlaces(saved)
+	}
+	if o.Rex != nil && o.Rex.Block != "" {
+		if err := o.Rex.SetLabel(ctx, o.Rex.Block, appName); err != nil {
+			m.log.Debug("set label", "err", err)
+		}
+	}
+	return m
 }

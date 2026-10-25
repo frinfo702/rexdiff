@@ -12,10 +12,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -391,5 +393,36 @@ func TestErrorWithoutOutput(t *testing.T) {
 	_, err := u.command(t.Context(), nil, "/x/brew", "upgrade")
 	if want := `brew: exec: "brew": executable file not found in $PATH`; err == nil || err.Error() != want {
 		t.Errorf("error = %v, want %s", err, want)
+	}
+}
+
+// restartEnv makes the test binary run TestRestart as the process that
+// restarts.
+const restartEnv = "UPDATE_TEST_RESTART"
+
+// TestRestart checks that Restart runs the program with the arguments and
+// the environment in the same process, and that a missing program is an
+// error.
+func TestRestart(t *testing.T) {
+	if os.Getenv(restartEnv) != "" {
+		err := Restart("/bin/sh", []string{"-c", `echo "$$|$0|$` + restartEnv + `"`, "a b"})
+		fmt.Println("Restart:", err)
+		os.Exit(1)
+	}
+	run := "-test.run=^TestRestart$"
+	cmd := exec.CommandContext(t.Context(), os.Args[0], run) //nolint:gosec // the test binary
+	cmd.Env = append(os.Environ(), restartEnv+"=1")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("the restart: %v, output %q", err, out.String())
+	}
+	if want := fmt.Sprintf("%d|a b|1\n", cmd.Process.Pid); out.String() != want {
+		t.Errorf("the restarted program printed %q, want %q", out.String(), want)
+	}
+
+	err := Restart(filepath.Join(t.TempDir(), "rexdiff"), nil)
+	if !errors.Is(err, syscall.ENOENT) {
+		t.Errorf("Restart of a missing program = %v, want ENOENT", err)
 	}
 }

@@ -96,7 +96,8 @@ func TestAgents(t *testing.T) {
 	}
 }
 
-// TestCommands checks the rex calls of Resolve, Paste, Focus, and Split.
+// TestCommands checks the rex calls of Resolve, Paste, Focus, Split, and
+// SetLabel.
 func TestCommands(t *testing.T) {
 	c, dir := fakeRex(t)
 	ctx := t.Context()
@@ -120,6 +121,9 @@ func TestCommands(t *testing.T) {
 	if err := c.Split(ctx, "/repo", "sh", "-c", "vi x"); err != nil {
 		t.Fatal(err)
 	}
+	if err := c.SetLabel(ctx, "block:self", "rex\"diff"); err != nil {
+		t.Fatal(err)
+	}
 
 	b, _ := os.ReadFile(filepath.Join(dir, "calls"))
 	calls := string(b)
@@ -128,6 +132,7 @@ func TestCommands(t *testing.T) {
 			`"event":{"type":"paste","payload":{"text":"a\n\tb"}}}`,
 		`api call -s S session.focus_block {"block_id":"block:pi"}`,
 		`split -s S -b block:self --cwd /repo -- sh -c vi x`,
+		`api call -s S session.set_block_label {"block_id":"block:self","label":"rex\"diff"}`,
 	} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("calls got:\n%s\nwant a call %s", calls, want)
@@ -236,6 +241,26 @@ func TestFromEnv(t *testing.T) {
 	calls, err := os.ReadFile(filepath.Join(dir, "calls"))
 	if err != nil || !strings.Contains(string(calls), "api call -s S ") {
 		t.Errorf("calls %q, want a call to the fake rex in session S", calls)
+	}
+}
+
+// TestConfigPath checks that ConfigPath honours REX_CONFIG, then
+// XDG_CONFIG_HOME, then the home directory.
+func TestConfigPath(t *testing.T) {
+	t.Setenv("HOME", "/home/u")
+	tests := []struct{ name, config, xdg, want string }{
+		{"REX_CONFIG", "/etc/rex.lua", "/xdg", "/etc/rex.lua"},
+		{"XDG_CONFIG_HOME", "", "/xdg", "/xdg/rex/init.lua"},
+		{"home", "", "", "/home/u/.config/rex/init.lua"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("REX_CONFIG", tt.config)
+			t.Setenv("XDG_CONFIG_HOME", tt.xdg)
+			if got := rex.ConfigPath(); got != tt.want {
+				t.Errorf("ConfigPath() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
