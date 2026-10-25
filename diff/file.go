@@ -28,10 +28,16 @@ func RenderFile(path, src string, o Options) *Diff {
 		"\t", strings.Repeat(" ", tabWidth),
 	).Replace(src)
 	hl := strings.Split(o.Cache.fileColours(path, src), "\n")
-	hl = hl[:min(len(hl), len(Lines(src)))] // chroma can add a final newline
+	lines := 0
+	for range strings.Lines(src) {
+		lines++
+	}
+	hl = hl[:min(len(hl), lines)] // chroma can add a final newline
 	digits := len(strconv.Itoa(len(hl)))
 	numWidth := digits + 2 // a space on each side of the number
-	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(lineNumberColor))
+	// The style renders once, around a format for the number.
+	numFmt := lipgloss.NewStyle().Foreground(lipgloss.Color(lineNumberColor)).
+		Render(" %*d ") + " "
 	d := &Diff{newNum: numWidth, src: [2]string{raw, raw}, wrap: o.Wrap}
 	d.codeAt = [2]int{numWidth + 1, numWidth + 1}
 	if !o.Wrap {
@@ -43,7 +49,7 @@ func RenderFile(path, src string, o Options) *Diff {
 		for k, p := range fileLineParts(l, code, o) {
 			num := blank
 			if k == 0 {
-				num = numStyle.Render(fmt.Sprintf(" %*d ", digits, i+1)) + " "
+				num = fmt.Sprintf(numFmt, digits, i+1)
 			}
 			line := num + p
 			if o.Width > 0 { // the number or a wide character can be too wide
