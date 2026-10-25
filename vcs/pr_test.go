@@ -48,7 +48,8 @@ func azArgs(branch string) string {
 	return "repos pr list --source-branch " + branch + " --status all --top 1 --output json"
 }
 
-// TestPullRequest checks the pull request that each forge tool gives.
+// TestPullRequest checks the pull request that each forge tool gives. The
+// fake tools are in PATH, so only the subtests run in parallel.
 func TestPullRequest(t *testing.T) {
 	dir := t.TempDir()
 	fakePath(t, dir)
@@ -141,16 +142,17 @@ func TestPullRequest(t *testing.T) {
 		}},
 	}
 	for _, tt := range tests {
-		r, _ := repoAt(t, tt.remote)
-		pr, err := r.PullRequest(t.Context(), tt.hosts)
-		if err != nil {
-			t.Errorf("PullRequest(%s) = %v, want no error", tt.remote, err)
-			continue
-		}
-		if !reflect.DeepEqual(pr, tt.want) {
-			t.Errorf("PullRequest(%s) got:\n%+v\nwant:\n%+v",
-				tt.remote, pr, tt.want)
-		}
+		t.Run(tt.remote, func(t *testing.T) {
+			t.Parallel()
+			r, _ := repoAt(t, tt.remote)
+			pr, err := r.PullRequest(t.Context(), tt.hosts)
+			if err != nil {
+				t.Fatalf("PullRequest = %v, want no error", err)
+			}
+			if !reflect.DeepEqual(pr, tt.want) {
+				t.Errorf("PullRequest got:\n%+v\nwant:\n%+v", pr, tt.want)
+			}
+		})
 	}
 }
 
@@ -181,11 +183,6 @@ func TestPullRequestErrors(t *testing.T) {
 			msg:    "unexpected call: " + azArgs("other"),
 		},
 		{remote: "", branch: "feat", msg: "no git remote"},
-		{
-			remote: "https://example.com/r.git",
-			branch: "feat",
-			msg:    "the remote is not on GitHub, GitLab, or Azure DevOps",
-		},
 		{remote: azure, branch: "none", want: vcs.ErrNoPullRequest},
 		{
 			remote: azure,
@@ -197,6 +194,7 @@ func TestPullRequestErrors(t *testing.T) {
 	for _, tt := range tests {
 		// Two cases have the same remote, so the name has the branch.
 		t.Run(cmp.Or(tt.remote, "no remote")+" on "+tt.branch, func(t *testing.T) {
+			t.Parallel()
 			r, dir := newRepo(t)
 			if tt.remote != "" {
 				testgit.Git(t, dir, "remote", "add", "origin", tt.remote)

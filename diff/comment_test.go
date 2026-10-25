@@ -209,7 +209,8 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 		filepath.Join(dir, "old"),
 		filepath.Join(dir, "new"),
 	)
-	git.Env = append(os.Environ(), testgit.Env()...) // no diff settings of the user
+	// No diff setting of the user applies.
+	git.Env = append(os.Environ(), testgit.Env()...)
 	out, _ := git.Output()
 	_, body, _ := strings.Cut(string(out), "@@\n")
 	if strings.TrimSuffix(body, "\n") != want {

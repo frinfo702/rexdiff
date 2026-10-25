@@ -16,12 +16,30 @@ import (
 	"github.com/rednafi/rexdiff/rex"
 )
 
-// fakeRex writes a shell script that answers like the rex tool, with
-// recorded output. It logs each call to the file "calls" in its directory.
-func fakeRex(t *testing.T) (*rex.Client, string) {
+// client writes a rex script with body in a new directory. It sets the
+// environment of the block block:self in the session S, and returns the
+// client of FromEnv and the directory. A test that calls it cannot run in
+// parallel.
+func client(t *testing.T, body string) (*rex.Client, string) {
 	t.Helper()
 	dir := t.TempDir()
-	script := `printf "%s\n" "$*" >> "` + dir + `/calls"
+	testgit.Script(t, dir, "rex", body)
+	t.Setenv("REX_SESSION", "S")
+	t.Setenv("REX_BLOCK", "block:self")
+	t.Setenv("REX_BIN_DIR", dir)
+	c := rex.FromEnv()
+	if c == nil || c.Block != "block:self" {
+		t.Fatalf("FromEnv = %+v, want the block block:self", c)
+	}
+	return c, dir
+}
+
+// fakeRex returns a client of a rex script that answers with recorded
+// output. The script logs each call to the file "calls" in its directory,
+// and prints the file "events" for "rex events".
+func fakeRex(t *testing.T) (*rex.Client, string) {
+	t.Helper()
+	script := `printf "%s\n" "$*" >> "${0%/*}/calls"
 case "$*" in
 "api call -s S session.list_blocks {}")
   echo '{"blocks":[
@@ -55,18 +73,16 @@ case "$*" in
   echo 'Error: no block matches nosuch
 more detail' >&2; exit 1 ;;
 "events -s S --json")
-  cat "` + dir + `/events" ;;
+  cat "${0%/*}/events" ;;
 *) ;;
 esac
 `
-	testgit.Script(t, dir, "rex", script)
-	return rex.NewTestClient(dir), dir
+	return client(t, script)
 }
 
 // TestAgents checks that Agents returns only the terminal blocks that send
 // an app name, without the block of the client.
 func TestAgents(t *testing.T) {
-	t.Parallel()
 	c, _ := fakeRex(t)
 	agents, err := c.Agents(t.Context())
 	if err != nil {
@@ -96,7 +112,6 @@ func TestAgents(t *testing.T) {
 // TestCommands checks the rex calls of Resolve, Paste, Focus, Split, and
 // SetLabel.
 func TestCommands(t *testing.T) {
-	t.Parallel()
 	c, dir := fakeRex(t)
 	ctx := t.Context()
 	if id, err := c.Resolve(ctx, "agent"); err != nil || id != "block:pi" {
@@ -147,9 +162,9 @@ func blockEvent(block, name, payload string) string {
 }
 
 // TestWatch checks that Watch reports only the changes of the status of
-// the program, and closed blocks.
+// the program, and closed blocks. The fake rex stops after the events, so
+// Watch reports a reconnect and then the events again.
 func TestWatch(t *testing.T) {
-	t.Parallel()
 	c, dir := fakeRex(t)
 	events := strings.Join([]string{
 		blockEvent("block:pi", "program_status_changed", `{"id":"",`+
@@ -171,42 +186,13 @@ func TestWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []rex.Event{
+	once := []rex.Event{
 		{Block: "block:pi", Status: rex.Status{App: "pi", State: rex.StateWorking}},
 		{Block: "block:pi"},
 		{Block: "block:pi", Closed: true},
 	}
+	want := slices.Concat(once, []rex.Event{{Reconnect: true}}, once)
 	// Stop Watch when it reports all the events.
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	var got []rex.Event
-	err := c.Watch(ctx, func(e rex.Event) {
-		got = append(got, e)
-		if len(got) == len(want) {
-			cancel()
-		}
-	})
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("Watch = %v, want context.Canceled", err)
-	}
-	if !slices.Equal(got, want) {
-		t.Errorf("events got:\n%+v\nwant:\n%+v", got, want)
-	}
-}
-
-// TestWatchReconnect checks that Watch reports a reconnect after it starts
-// rex again.
-func TestWatchReconnect(t *testing.T) {
-	t.Parallel()
-	c, dir := fakeRex(t)
-	line := `{"type":"session_event","payload":{"event":{"type":"block_closed",` +
-		`"payload":{"block_id":"block:pi"}}}}`
-	path := filepath.Join(dir, "events")
-	if err := os.WriteFile(path, []byte(line+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	closed := rex.Event{Block: "block:pi", Closed: true}
-	want := []rex.Event{closed, {Reconnect: true}, closed}
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	var got []rex.Event
@@ -223,24 +209,12 @@ func TestWatchReconnect(t *testing.T) {
 	}
 }
 
-// TestFromEnv checks that FromEnv uses the environment that Rex sets.
+// TestFromEnv checks that FromEnv returns nil outside Rex. The client of
+// the other tests comes from FromEnv in a fake block.
 func TestFromEnv(t *testing.T) {
 	t.Setenv("REX_SESSION", "")
 	if c := rex.FromEnv(); c != nil {
 		t.Errorf("FromEnv outside Rex = %+v, want nil", c)
-	}
-	// fakeRex sets the environment of a block. The client runs the rex
-	// command of REX_BIN_DIR, in the session REX_SESSION.
-	c, dir := fakeRex(t)
-	if c == nil || c.Block != "block:self" {
-		t.Fatalf("FromEnv = %+v, want the block block:self", c)
-	}
-	if err := c.Focus(t.Context(), "block:pi"); err != nil {
-		t.Fatal(err)
-	}
-	calls, err := os.ReadFile(filepath.Join(dir, "calls"))
-	if err != nil || !strings.Contains(string(calls), "api call -s S ") {
-		t.Errorf("calls %q, want a call to the fake rex in session S", calls)
 	}
 }
 
@@ -270,12 +244,11 @@ func TestReloadConfigOutsideRex(t *testing.T) {
 // TestErrorKeepsCause checks that the error of a failed rex is the message
 // of rex. The error also wraps the exit error of the process.
 func TestErrorKeepsCause(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	testgit.Script(t, dir, "rex", "echo 'Error: no Rex server' >&2\nexit 3\n")
-	err := rex.NewTestClient(dir).Focus(t.Context(), "block:pi")
+	c, _ := client(t, "echo 'Error: no Rex server' >&2\nexit 3\n")
+	err := c.Focus(t.Context(), "block:pi")
 	ee, ok := errors.AsType[*exec.ExitError](err)
 	if err == nil || err.Error() != "no Rex server" || !ok || ee.ExitCode() != 3 {
-		t.Errorf("Focus error = %v, exit error %v; want %q wrapping exit 3", err, ok, "no Rex server")
+		t.Errorf("Focus error = %v, exit error %v; want %q wrapping exit 3",
+			err, ok, "no Rex server")
 	}
 }

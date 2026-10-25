@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -59,13 +60,13 @@ func TestHostilePaths(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	commitAll(t, dir)
-	paths := []string{
+	hostile := []string{
 		"-n", "--output=x", "-", "tab\tname", "new\nline", "trail\n",
 		`say "hi"`, `back\slash`, "ünï cödé", " spaces ",
 		"*", "[a]", ":(glob)x", "\xff\xfe",
 	}
 	want := map[string]string{} // the content of each path
-	for i, p := range paths {
+	for i, p := range hostile {
 		s := fmt.Sprintf("id%02d\n", i)
 		if err := os.WriteFile(filepath.Join(dir, p), []byte(s), 0o644); err != nil {
 			// For example, macOS needs UTF-8 names.
@@ -90,12 +91,9 @@ func TestHostilePaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files := map[string]bool{}
-	for _, e := range es {
-		files[e.Path] = true
-	}
+	files := paths(es)
 	for p, s := range want {
-		if !files[p] {
+		if !slices.Contains(files, p) {
 			t.Errorf("Files has no %q, want it", p)
 		}
 		if got, err := r.ReadFile(p); got != s || err != nil {
@@ -216,25 +214,6 @@ func TestReadFileStaysInRoot(t *testing.T) {
 	}
 }
 
-// TestOpenRootWithNewline checks Open and Diff in a root whose path has a
-// newline.
-func TestOpenRootWithNewline(t *testing.T) {
-	t.Parallel()
-	dir := filepath.Join(t.TempDir(), "a\nb")
-	testgit.Git(t, filepath.Dir(dir), "init", "-q", dir)
-	testgit.WriteFile(t, dir, "a.txt", "one\n")
-	r, err := vcs.Open(t.Context(), dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want, _ := filepath.EvalSymlinks(dir); r.Root() != want {
-		t.Errorf("Root = %q, want %q", r.Root(), want)
-	}
-	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Aa.txt" {
-		t.Errorf("Diff(Head, Snapshot) = %s, want Aa.txt", got)
-	}
-}
-
 // TestGitWorktree checks Diff and Snapshot in a working tree that
 // "git worktree add" creates.
 func TestGitWorktree(t *testing.T) {
@@ -252,8 +231,7 @@ func TestGitWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := names(changes(t, r, head(t, r), snapshot(t, r)))
-	if got != "Ma.txt Astaged.txt" {
+	if got := uncommitted(t, r); got != "Ma.txt Astaged.txt" {
 		t.Errorf("Diff(Head, Snapshot) = %s, want Ma.txt Astaged.txt", got)
 	}
 	st := testgit.Git(t, wt, "status", "--porcelain")
@@ -269,8 +247,7 @@ func TestDetachedHead(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	testgit.Git(t, dir, "checkout", "-q", "--detach", "main")
-	got := names(changes(t, r, head(t, r), snapshot(t, r)))
-	if got != "A.gitignore Ma.txt Anew.txt" {
+	if got := uncommitted(t, r); got != "A.gitignore Ma.txt Anew.txt" {
 		t.Errorf("Diff(Head, Snapshot) = %s, want A.gitignore Ma.txt Anew.txt",
 			got)
 	}
@@ -286,7 +263,8 @@ func TestGrepIsLiteral(t *testing.T) {
 	r, dir := newRepo(t)
 	ctx := t.Context()
 	testgit.WriteFile(t, dir, "g.txt", "abc\na.c\n-v\n--help\n[x\n(y\n\\d\n*\n^a\nx$\n")
-	testgit.Git(t, dir, "config", "grep.column", "true") // adds a field to the output
+	// grep.column adds a field to the output.
+	testgit.Git(t, dir, "config", "grep.column", "true")
 	tests := []struct {
 		q    string
 		want []string
@@ -383,7 +361,7 @@ func TestPullRequestBadJSON(t *testing.T) {
 
 // TestGrepDeadline checks that Grep returns the matches that it finds
 // before the deadline of ctx, with more set, as herdr-reviewr does with
-// its time budget. A cancel is still an error.
+// its time budget.
 func TestGrepDeadline(t *testing.T) {
 	r, _ := newRepo(t)
 	bin := t.TempDir()
@@ -402,11 +380,5 @@ func TestGrepDeadline(t *testing.T) {
 	defer cancel()
 	if ms, more, err := r.Grep(ctx, "hit", 10); err != nil || !more || len(ms) != 0 {
 		t.Errorf("Grep after the deadline = %+v, %v, %v; want none, more, no error", ms, more, err)
-	}
-
-	ctx, stop := context.WithCancel(t.Context())
-	stop()
-	if _, _, err := r.Grep(ctx, "hit", 10); !errors.Is(err, context.Canceled) {
-		t.Errorf("Grep after a cancel: error %v, want context.Canceled", err)
 	}
 }

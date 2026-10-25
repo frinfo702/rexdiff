@@ -1,117 +1,131 @@
-package turn
+package turn_test
 
 import (
 	"testing"
 
+	"github.com/rednafi/rexdiff/internal/turn"
 	"github.com/rednafi/rexdiff/rex"
 )
 
 // The tests come from turn.rs of herdr-reviewr.
 
-// TestFold checks how the states of the agents fold into one state.
+// The states of one agent that give each state of a repository.
+var (
+	resting = []rex.State{rex.StateIdle}
+	working = []rex.State{rex.StateWorking}
+	held    = []rex.State{rex.StateBlocked}
+)
+
+// step is one call to a Tracker and the edges that it gives. With gap,
+// the step calls Gap and not Observe.
+type step struct {
+	states         []rex.State
+	gap            bool
+	started, ended bool
+}
+
+// TestFold checks how the states of the agents fold into one state. After a
+// rest, only work starts a turn. After work, only a rest ends it.
 func TestFold(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name   string
 		states []rex.State
-		want   state
+		// starts tells that the states start a turn after a rest. ends
+		// tells that they end a turn after work. A held state does neither.
+		starts, ends bool
 	}{
 		// No agent rests, so a fresh pane tracks the next turn it sees.
-		{"no agent", nil, resting},
-		{"idle and working", []rex.State{rex.StateIdle, rex.StateWorking}, working},
-		{"blocked and working", []rex.State{rex.StateBlocked, rex.StateWorking}, working},
-		{"idle and done", []rex.State{rex.StateIdle, rex.StateDone}, resting},
-		{"blocked and idle", []rex.State{rex.StateBlocked, rex.StateIdle}, held},
+		{"no agent", nil, false, true},
+		{"idle and working", []rex.State{rex.StateIdle, rex.StateWorking}, true, false},
+		{"blocked and working", []rex.State{rex.StateBlocked, rex.StateWorking}, true, false},
+		{"idle and done", []rex.State{rex.StateIdle, rex.StateDone}, false, true},
+		{"blocked and idle", []rex.State{rex.StateBlocked, rex.StateIdle}, false, false},
 		// An unknown state never rests, so it starts no turn.
-		{"unknown", []rex.State{"compacting"}, held},
+		{"unknown", []rex.State{"compacting"}, false, false},
 	}
 	for _, tt := range tests {
-		if got := fold(tt.states...); got != tt.want {
-			t.Errorf("%s: fold(%q) = %v, want %v", tt.name, tt.states, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var rest turn.Tracker
+			rest.Observe(resting...)
+			if started, _ := rest.Observe(tt.states...); started != tt.starts {
+				t.Errorf("after a rest: started %v, want %v", started, tt.starts)
+			}
+			var work turn.Tracker
+			work.Observe(resting...)
+			work.Observe(working...)
+			if _, ended := work.Observe(tt.states...); ended != tt.ends {
+				t.Errorf("after work: ended %v, want %v", ended, tt.ends)
+			}
+		})
 	}
 }
 
-// step is one state for a Tracker and the edges that it gives.
-type step struct {
-	s              state
-	started, ended bool
-}
-
-// run gives the states of steps to a new Tracker, and checks the edges.
-func run(t *testing.T, steps ...step) {
-	t.Helper()
-	var tr Tracker
-	for i, st := range steps {
-		started, ended := tr.observe(st.s)
-		if started != st.started || ended != st.ended {
-			t.Errorf("step %d (%v): started %v, ended %v; want %v, %v",
-				i, st.s, started, ended, st.started, st.ended)
-		}
+// TestTracker checks the edges of a series of states.
+func TestTracker(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		steps []step
+	}{
+		{"empty repo starts on the first worker", []step{
+			{states: nil},
+			{states: working, started: true},
+		}},
+		// The first state never starts a turn.
+		{"start after a rest", []step{
+			{states: resting},
+			{states: working, started: true},
+		}},
+		// A prompt in the middle of a turn does not start another turn.
+		{"held back to work continues", []step{
+			{states: resting},
+			{states: working, started: true},
+			{states: held},
+			{states: working},
+		}},
+		{"end only after work", []step{
+			{states: resting},                // no work before, so no end
+			{states: working, started: true}, // a start is never an end
+			{states: held},                   // a pause, not an end
+			{states: working},
+			{states: resting, ended: true},
+		}},
+		// The prompt keeps the turn open. A rest after it ends the turn once.
+		{"end through held", []step{
+			{states: resting},
+			{states: working, started: true},
+			{states: held},
+			{states: resting, ended: true},
+			{states: resting},
+		}},
+		// The start of this turn is not seen.
+		{"lone first working starts nothing", []step{
+			{states: working},
+		}},
+		// Nobody sees the agents in a gap, so the next work starts no turn.
+		{"gap", []step{
+			{states: resting},
+			{gap: true},
+			{states: working},
+		}},
 	}
-}
-
-func TestEmptyRepoStartsOnFirstWorker(t *testing.T) {
-	t.Parallel()
-	var tr Tracker
-	tr.Observe()
-	if started, _ := tr.Observe(rex.StateWorking); !started {
-		t.Error("the first worker after no agent starts no turn")
-	}
-}
-
-func TestStartAfterRest(t *testing.T) {
-	t.Parallel()
-	// The first state never starts a turn.
-	run(t, step{resting, false, false}, step{working, true, false})
-}
-
-func TestHeldBackToWorkContinues(t *testing.T) {
-	t.Parallel()
-	// A prompt in the middle of a turn does not start another turn.
-	run(t,
-		step{resting, false, false},
-		step{working, true, false},
-		step{held, false, false},
-		step{working, false, false},
-	)
-}
-
-func TestEndOnlyAfterWork(t *testing.T) {
-	t.Parallel()
-	run(t,
-		step{resting, false, false}, // no work before, so no end
-		step{working, true, false},  // a start is never an end
-		step{held, false, false},    // a pause, not an end
-		step{working, false, false},
-		step{resting, false, true},
-	)
-}
-
-func TestEndThroughHeld(t *testing.T) {
-	t.Parallel()
-	// The prompt keeps the turn open. A rest after it ends the turn once.
-	run(t,
-		step{resting, false, false},
-		step{working, true, false},
-		step{held, false, false},
-		step{resting, false, true},
-		step{resting, false, false},
-	)
-}
-
-func TestLoneFirstWorkingStartsNothing(t *testing.T) {
-	t.Parallel()
-	// The start of this turn is not seen.
-	run(t, step{working, false, false})
-}
-
-func TestGap(t *testing.T) {
-	t.Parallel()
-	var tr Tracker
-	tr.Observe(rex.StateIdle)
-	tr.Gap()
-	if started, _ := tr.Observe(rex.StateWorking); started {
-		t.Error("the first state after a gap starts a turn")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var tr turn.Tracker
+			for i, st := range tt.steps {
+				if st.gap {
+					tr.Gap()
+					continue
+				}
+				started, ended := tr.Observe(st.states...)
+				if started != st.started || ended != st.ended {
+					t.Errorf("step %d (%q): started %v, ended %v; want %v, %v",
+						i, st.states, started, ended, st.started, st.ended)
+				}
+			}
+		})
 	}
 }

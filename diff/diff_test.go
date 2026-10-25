@@ -38,6 +38,29 @@ func kinds(rows []diff.Row) string {
 	return b.String()
 }
 
+// renderer is a way to show the versions old and new.
+type renderer struct {
+	name   string
+	render func(o diff.Options) *diff.Diff
+}
+
+// renderers returns the unified and the split diff of old and new, and the
+// file new.
+func renderers(old, new string) []renderer {
+	return []renderer{
+		{"unified", func(o diff.Options) *diff.Diff {
+			return diff.Render("x.go", old, new, o)
+		}},
+		{"split", func(o diff.Options) *diff.Diff {
+			o.Split = true
+			return diff.Render("x.go", old, new, o)
+		}},
+		{"file", func(o diff.Options) *diff.Diff {
+			return diff.RenderFile("x.go", new, o)
+		}},
+	}
+}
+
 // TestRenderRowsFollowLines checks the row of each line, in each layout and
 // theme.
 func TestRenderRowsFollowLines(t *testing.T) {
@@ -104,12 +127,21 @@ func TestRenderRowsFollowLines(t *testing.T) {
 	}
 }
 
-// TestRenderSameContentIsEmpty checks that two equal versions give no lines.
-func TestRenderSameContentIsEmpty(t *testing.T) {
+// TestRenderKinds checks the kinds of the rows of a diff. Equal versions
+// give no rows. A change of a tab to spaces is a change, as Count and git
+// tell.
+func TestRenderKinds(t *testing.T) {
 	t.Parallel()
-	d := diff.Render("x.go", oldSrc, oldSrc, diff.Options{Width: 80})
-	if len(d.Lines) != 0 || len(d.Rows) != 0 {
-		t.Fatalf("got %d lines and %d rows, want none", len(d.Lines), len(d.Rows))
+	tests := []struct{ old, new, want string }{
+		{oldSrc, oldSrc, ""},
+		{"\tx\n", "    x\n", "@-+"},
+	}
+	for _, tt := range tests {
+		d := diff.Render("x.go", tt.old, tt.new, diff.Options{Width: 80})
+		if got := kinds(d.Rows); got != tt.want || len(d.Lines) != len(d.Rows) {
+			t.Errorf("Render(%q, %q): kinds %q, %d lines; want %q, one line each",
+				tt.old, tt.new, got, len(d.Lines), tt.want)
+		}
 	}
 }
 
@@ -293,11 +325,6 @@ func TestRenderFile(t *testing.T) {
 	if got := ansi.Strip(d.Lines[0]); got != " 1  package x" {
 		t.Errorf("line 0 = %q, want %q", got, " 1  package x")
 	}
-	// Control characters must not reach the terminal.
-	d = diff.RenderFile("x.txt", "a\x1b[31mb\n", diff.Options{})
-	if strings.Contains(ansi.Strip(d.Lines[0]), "\x1b") {
-		t.Errorf("line 0 = %q, want no escape", d.Lines[0])
-	}
 }
 
 // TestWrap checks that a wrapped long line shows all of its text and fits the
@@ -307,23 +334,8 @@ func TestWrap(t *testing.T) {
 	long := "x := []string{" + strings.Repeat(`"word", `, 12) + "}"
 	old, new := "a\nb\n", "a\n"+long+"\nb\n"
 	const width = 40
-	renders := []struct {
-		name   string
-		render func(o diff.Options) *diff.Diff
-	}{
-		{"unified", func(o diff.Options) *diff.Diff {
-			return diff.Render("x.go", old, new, o)
-		}},
-		{"split", func(o diff.Options) *diff.Diff {
-			o.Split = true
-			return diff.Render("x.go", old, new, o)
-		}},
-		{"file", func(o diff.Options) *diff.Diff {
-			return diff.RenderFile("x.go", new, o)
-		}},
-	}
-	for _, tt := range renders {
-		name, render := tt.name, tt.render
+	for _, l := range renderers(old, new) {
+		name, render := l.name, l.render
 		cut := render(diff.Options{Width: width})
 		d := render(diff.Options{Width: width, Wrap: true})
 		if len(d.Lines) != len(d.Rows) || len(d.Lines) <= len(cut.Lines) {

@@ -44,6 +44,7 @@ func TestEscapesAreVisible(t *testing.T) {
 	t.Parallel()
 	tests := []struct{ src, want string }{
 		{"\x1b]52;c;aGk=\x07\n", "␛]52;c;aGk=␇"},
+		{"a\x1b[31mb\n", "a␛[31mb"},
 		{"\x1b]7501;state=idle\x1b\\\n", "␛]7501;state=idle␛\\"},
 		{"a\x00b\n", "a␀b"},
 		{"\u009b31m\n", "\ufffd31m"},
@@ -84,16 +85,6 @@ func TestWrapWideText(t *testing.T) {
 			t.Errorf("split %v: the wrapped lines = %q, want all of %q",
 				o.Split, got, line)
 		}
-	}
-}
-
-// TestTabToSpacesIsAChange checks that a diff shows a change of a tab to
-// spaces, as Count and git do.
-func TestTabToSpacesIsAChange(t *testing.T) {
-	t.Parallel()
-	d := diff.Render("x.go", "\tx\n", "    x\n", diff.Options{})
-	if got := kinds(d.Rows); got != "@-+" {
-		t.Errorf("kinds = %q, want %q", got, "@-+")
 	}
 }
 

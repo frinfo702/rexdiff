@@ -103,23 +103,16 @@ func TestCellMatchesScreen(t *testing.T) {
 	}
 	long := "\t" + strings.Join(words, " ") + " 日本 end"
 	old, new := "a\nb\n", "a\n"+long+"\nb\n"
-	renders := map[string]func(o diff.Options) *diff.Diff{
-		"unified": func(o diff.Options) *diff.Diff { return diff.Render("x.go", old, new, o) },
-		"split": func(o diff.Options) *diff.Diff {
-			o.Split = true
-			return diff.Render("x.go", old, new, o)
-		},
-		"file": func(o diff.Options) *diff.Diff { return diff.RenderFile("x.go", new, o) },
-	}
 	opts := map[string]diff.Options{
 		"cut":    {Width: 60},
 		"offset": {Width: 60, Offset: 13},
 		"wrap":   {Width: 60, Wrap: true},
 	}
 	src := map[diff.Side][]string{diff.SideOld: diff.Lines(old), diff.SideNew: diff.Lines(new)}
-	for rn, render := range renders {
+	for _, l := range renderers(old, new) {
+		rn := l.name
 		for on, o := range opts {
-			d := render(o)
+			d := l.render(o)
 			checked := 0
 			for i, l := range d.Lines {
 				plain := ansi.Strip(l)

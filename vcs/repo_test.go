@@ -103,6 +103,26 @@ func names(fs []vcs.File) string {
 	return strings.Join(n, " ")
 }
 
+// uncommitted returns the names of the files that differ from HEAD to the
+// working tree.
+func uncommitted(t *testing.T, r *vcs.Repo) string {
+	t.Helper()
+	return names(changes(t, r, head(t, r), snapshot(t, r)))
+}
+
+// paths returns the path of each entry. An ignored path starts with "!".
+func paths(es []vcs.Entry) []string {
+	var out []string
+	for _, e := range es {
+		if e.Ignored {
+			out = append(out, "!"+e.Path)
+		} else {
+			out = append(out, e.Path)
+		}
+	}
+	return out
+}
+
 // TestScopes checks the trees that each scope of a review compares.
 func TestScopes(t *testing.T) {
 	t.Parallel()
@@ -212,7 +232,8 @@ func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 	testgit.WriteFile(t, dir, "lines", "y"+lines)
 	testgit.WriteFile(t, dir, "limit", "z"+limit)
 	testgit.WriteFile(t, dir, "bin", "a\x00b")
-	testgit.WriteFile(t, dir, "late", strings.Repeat("x", 9000)+"\x00") // NUL at byte 9000
+	// The NUL of "late" is at byte 9000.
+	testgit.WriteFile(t, dir, "late", strings.Repeat("x", 9000)+"\x00")
 	testgit.WriteFile(t, dir, "big", strings.Repeat("x\n", 50_001))
 	testgit.WriteFile(t, dir, "huge", strings.Repeat("x", 2_000_001))
 	// Diff reads this file after the skipped content.
@@ -281,11 +302,7 @@ func TestFilesInConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got []string
-	for _, e := range es {
-		got = append(got, e.Path)
-	}
-	if want := []string{"f.txt"}; !slices.Equal(got, want) {
+	if got, want := paths(es), []string{"f.txt"}; !slices.Equal(got, want) {
 		t.Errorf("Files = %q, want %q", got, want)
 	}
 }
@@ -301,25 +318,14 @@ func TestWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got []string
-	for _, e := range es {
-		if e.Ignored {
-			got = append(got, "!"+e.Path)
-		} else {
-			got = append(got, e.Path)
-		}
-	}
 	want := ".gitignore a.txt b.txt !build/ !ignored.txt new.txt"
-	if got := strings.Join(got, " "); got != want {
+	if got := strings.Join(paths(es), " "); got != want {
 		t.Errorf("Files = %s, want %s", got, want)
 	}
 
 	testgit.WriteFile(t, dir, "build/sub/x", "x\n")
-	var ignored []string
-	for _, e := range r.IgnoredDir("build") {
-		ignored = append(ignored, e.Path)
-	}
-	if want := []string{"build/out", "build/sub/"}; !slices.Equal(ignored, want) {
+	ignored := paths(r.IgnoredDir("build"))
+	if want := []string{"!build/out", "!build/sub/"}; !slices.Equal(ignored, want) {
 		t.Errorf("IgnoredDir(build) = %q, want %q", ignored, want)
 	}
 	if es := r.IgnoredDir("no such dir"); len(es) != 0 {
@@ -331,7 +337,8 @@ func TestWorktree(t *testing.T) {
 	if err != nil || len(ms) != 1 || ms[0] != match {
 		t.Errorf("Grep(TWO) = %+v, %v, want [%+v], nil", ms, err, match)
 	}
-	testgit.WriteFile(t, dir, "a:é\n.txt", "x: two\n") // git quotes this name unless -z
+	// git quotes this name unless -z.
+	testgit.WriteFile(t, dir, "a:é\n.txt", "x: two\n")
 	ms, _, err = r.Grep(ctx, "x: two", 10)
 	match = vcs.Match{Path: "a:é\n.txt", Line: 1, Text: "x: two"}
 	if err != nil || len(ms) != 1 || ms[0] != match {
@@ -362,8 +369,9 @@ func TestWorktree(t *testing.T) {
 
 // TestOwns checks which directories are in the working tree, as in
 // herdr-reviewr: a subdirectory is, a nested repository and a relative or
-// outside path are not, and without git the answer is an error.
+// outside path are not.
 func TestOwns(t *testing.T) {
+	t.Parallel()
 	r, dir := newRepo(t)
 	nested := filepath.Join(dir, "build", "nested")
 	testgit.NewRepo(t, nested)
@@ -384,11 +392,16 @@ func TestOwns(t *testing.T) {
 			t.Errorf("Owns(%q) = %v, %v, want %v, nil", tt.dir, got, err, tt.want)
 		}
 	}
+}
+
+// TestOwnsWithoutGit checks that Owns fails without git. No git runs for
+// a path outside the root.
+func TestOwnsWithoutGit(t *testing.T) {
+	r, dir := newRepo(t)
 	t.Setenv("PATH", t.TempDir())
 	if _, err := r.Owns(t.Context(), dir); err == nil {
 		t.Error("Owns without git gives no error")
 	}
-	// No git runs for a path outside the root.
 	if got, err := r.Owns(t.Context(), filepath.Dir(dir)); got || err != nil {
 		t.Errorf("Owns(outside) without git = %v, %v, want false, nil", got, err)
 	}
@@ -489,19 +502,27 @@ func TestOpenOutsideARepo(t *testing.T) {
 	}
 }
 
-// TestNewRepo checks Head and Snapshot in a repository with no commit and
-// no index.
+// TestNewRepo checks Open, Root, Head, and Snapshot in a repository with
+// no commit and no index. The path of a root can have a newline.
 func TestNewRepo(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	testgit.Git(t, dir, "init", "-q")
-	testgit.WriteFile(t, dir, "a.txt", "one\n")
-	r, err := vcs.Open(t.Context(), dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Aa.txt" {
-		t.Errorf("Diff(Head, Snapshot) = %s, want Aa.txt", got)
+	for _, name := range []string{"repo", "a\nb"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := filepath.Join(t.TempDir(), name)
+			testgit.Git(t, filepath.Dir(dir), "init", "-q", dir)
+			testgit.WriteFile(t, dir, "a.txt", "one\n")
+			r, err := vcs.Open(t.Context(), dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want, _ := filepath.EvalSymlinks(dir); r.Root() != want {
+				t.Errorf("Root = %q, want %q", r.Root(), want)
+			}
+			if got := uncommitted(t, r); got != "Aa.txt" {
+				t.Errorf("Diff(Head, Snapshot) = %s, want Aa.txt", got)
+			}
+		})
 	}
 }
 
@@ -548,7 +569,7 @@ func TestSnapshotRacyEdit(t *testing.T) {
 	testgit.WriteFile(t, dir, "b.txt", "BEE\n") // the same size and time
 	touch("b.txt")
 
-	if got := names(changes(t, r, head(t, r), snapshot(t, r))); got != "Mb.txt" {
+	if got := uncommitted(t, r); got != "Mb.txt" {
 		t.Errorf("Diff(HEAD, Snapshot) = %s, want Mb.txt", got)
 	}
 }
