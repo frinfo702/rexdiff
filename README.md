@@ -68,6 +68,7 @@ that show.
 | `y` | copy the comments and clear them, as a send does |
 | `\|` | side by side |
 | `:` | go to a line (`0` first, `$` last) |
+| `ctrl+f` | find in the file (smart case): enter or `↓` next, `↑` previous, esc closes |
 | `m` | rendered markdown |
 | `1` `2` `3` | changes, all files, or pull request |
 | `esc` | clear the selection, then the armed `]` or `[`, then the key list |

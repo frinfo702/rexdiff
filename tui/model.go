@@ -46,6 +46,7 @@ const (
 	modeNormal mode = iota
 	modeComment
 	modeOverlay
+	modeFind // the find band
 )
 
 // pane is one view that scrolls and takes comments. It has the rendered
@@ -129,16 +130,6 @@ type turnState struct {
 	running bool
 	at      time.Time // the start of the turn
 }
-
-// findState is the result of a find in the current pane.
-type findState struct {
-	query string
-	hits  []int // the first rows of the lines that match, in order
-	i     int   // the hit at the cursor
-}
-
-// active tells if the find has hits, so that n and N step through them.
-func (f *findState) active() bool { return len(f.hits) > 0 }
 
 // dragState is a drag of the left mouse button in the main pane.
 type dragState struct {
@@ -581,6 +572,8 @@ func (m *model) onKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateComment(msg)
 	case modeOverlay:
 		return m.updateOverlay(msg)
+	case modeFind:
+		return m.updateFind(msg)
 	}
 	return m.updateNormal(msg)
 }
@@ -627,6 +620,8 @@ func (m *model) onPaste(text string) tea.Cmd {
 	case m.mode == modeOverlay && m.overlay != nil && m.overlay.hasInput():
 		m.overlay.input.SetValue(m.overlay.input.Value() + text)
 		return m.inputChanged()
+	case m.mode == modeFind:
+		m.find.input.SetValue(m.find.input.Value() + text)
 	}
 	return nil
 }

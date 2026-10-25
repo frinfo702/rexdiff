@@ -37,9 +37,6 @@ type keyMap struct {
 
 	// The comment box. Cancel also clears the selection.
 	Save, Newline, Cancel key.Binding
-
-	// FindNext and FindPrev move to the next and the previous hit of a find.
-	FindNext, FindPrev key.Binding
 }
 
 // bind returns a binding of keys, with helpKey and desc in the help.
@@ -114,9 +111,6 @@ func defaultKeys() keyMap {
 			"new line",
 		),
 		Cancel: bind([]string{"esc"}, "esc", "cancel"),
-
-		FindNext: key.NewBinding(key.WithKeys("n")),
-		FindPrev: key.NewBinding(key.WithKeys("N")),
 	}
 }
 
@@ -283,14 +277,13 @@ func keyNames() string {
 
 // helpKeys implements help.KeyMap for the mode and the tab of the program.
 type helpKeys struct {
-	k       keyMap
-	mode    mode
-	tab     tab
-	split   bool
-	visual  bool
-	finding bool
-	onFold  bool // the cursor is on a fold
-	armed   int  // the direction of an armed crossing, or 0
+	k      keyMap
+	mode   mode
+	tab    tab
+	split  bool
+	visual bool
+	onFold bool // the cursor is on a fold
+	armed  int  // the direction of an armed crossing, or 0
 }
 
 // ShortHelp returns the keys of the footer.
@@ -308,11 +301,6 @@ func (h helpKeys) ShortHelp() []key.Binding {
 	case h.armed < 0:
 		return []key.Binding{hint(k.PrevHunk, firstKey(k.PrevHunk), "prev file"),
 			k.Comment, k.Send, k.Keys, k.Quit}
-	case h.finding:
-		return []key.Binding{
-			hint(k.FindNext, "n/N", "next/prev match"),
-			hint(k.Cancel, "esc", "stop finding"),
-		}
 	case h.visual:
 		return []key.Binding{
 			k.Comment,

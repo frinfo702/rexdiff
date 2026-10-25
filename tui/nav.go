@@ -9,7 +9,6 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/internal/termtext"
@@ -25,19 +24,6 @@ const (
 // updateNormal handles a key when no box is open.
 func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 	k := m.keys
-	if m.find.active() {
-		switch {
-		case key.Matches(msg, k.FindNext):
-			m.stepFind(1)
-			return nil
-		case key.Matches(msg, k.FindPrev):
-			m.stepFind(-1)
-			return nil
-		case key.Matches(msg, k.Cancel):
-			m.find = findState{}
-			return nil
-		}
-	}
 	var cmd tea.Cmd
 	switch {
 	case key.Matches(msg, k.QuitDiscard):
@@ -224,7 +210,7 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.loadFiles()
 		m.openSearch()
 	case key.Matches(msg, k.Find):
-		m.openInput(overlayFind, "find in file", m.find.query)
+		return m.openFind(), true
 	case key.Matches(msg, k.GotoLine):
 		m.openInput(overlayGoto, "go to line (:0 first, :$ last)", "")
 	case key.Matches(msg, k.Rendered):
@@ -299,7 +285,11 @@ func (m *model) refresh() tea.Cmd {
 // setTab shows tab t.
 func (m *model) setTab(t tab) {
 	m.tab = t
-	m.find, m.drag = findState{}, dragState{}
+	m.drag = dragState{}
+	// As in herdr-reviewr, the PR tab has no find band.
+	if t == tabPR {
+		m.closeFind()
+	}
 	switch t {
 	case tabFiles:
 		if m.allFiles == nil {
@@ -366,8 +356,7 @@ func (m *model) expanded(path string, comments []*diff.Comment, f diff.Fold) boo
 }
 
 // expandFold shows the lines of fold f in the Changes tab, and moves the
-// cursor to the first of them. The selection and the hits of a find stay
-// on their lines.
+// cursor to the first of them. The selection stays on its lines.
 func (m *model) expandFold(f diff.Fold) {
 	p := &m.changes
 	file := m.changedFile()
@@ -385,11 +374,6 @@ func (m *model) expandFold(f diff.Fold) {
 	o.Ranges = append(o.Ranges, [2]int{f.Old, f.Old + f.Lines - 1})
 	m.rerender()
 	p.cur = max(p.rowOf(diff.SideNew, f.New), 0)
-	if m.find.active() {
-		cur := p.cur
-		m.runFind(m.find.query)
-		p.cur = cur
-	}
 }
 
 // listSel returns the index of the selected file in the file list.
@@ -418,7 +402,7 @@ func (m *model) pickFile(i int) {
 		m.viewer.toStart()
 		m.renderViewer()
 	}
-	m.find, m.drag = findState{}, dragState{}
+	m.drag = dragState{}
 }
 
 // stepChange moves the cursor to the next (d = 1) or the previous (d = -1)
@@ -572,45 +556,6 @@ func cursorToLine(p *pane, s diff.Side, line int) {
 // rowOf returns the first row of p that shows line on side s, or -1.
 func (p *pane) rowOf(s diff.Side, line int) int {
 	return slices.IndexFunc(p.rows, func(r diff.Row) bool { return r.Line(s) == line })
-}
-
-// stepFind moves the cursor to the next (d = 1) or the previous (d = -1)
-// hit of the find. It wraps around.
-func (m *model) stepFind(d int) {
-	f, p := &m.find, m.cur()
-	// A reload can make the pane shorter than the rows of the hits.
-	f.hits = slices.DeleteFunc(f.hits, func(h int) bool { return h >= len(p.lines) })
-	if len(f.hits) == 0 {
-		m.find = findState{}
-		return
-	}
-	f.i = (min(f.i, len(f.hits)-1) + d + len(f.hits)) % len(f.hits)
-	p.cur = f.hits[f.i]
-}
-
-// runFind finds q in the lines of the current pane, without case. It moves
-// the cursor to the first hit at or below the cursor.
-func (m *model) runFind(q string) {
-	p := m.cur()
-	m.find = findState{query: q}
-	if q == "" {
-		return
-	}
-	lq := strings.ToLower(q)
-	for i, l := range p.lines {
-		if strings.Contains(strings.ToLower(ansi.Strip(l)), lq) {
-			m.find.hits = append(m.find.hits, p.head(i))
-		}
-	}
-	// The rows of a wrapped line make one hit.
-	m.find.hits = slices.Compact(m.find.hits)
-	if !m.find.active() {
-		m.flash("no matches")
-		return
-	}
-	atCursor := func(h int) bool { return h >= p.cur }
-	m.find.i = max(slices.IndexFunc(m.find.hits, atCursor), 0)
-	p.cur = m.find.hits[m.find.i]
 }
 
 // gotoLine moves the cursor to the line in s, as herdr-reviewr does. s is

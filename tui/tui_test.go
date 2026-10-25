@@ -873,8 +873,8 @@ func TestEmptyRepo(t *testing.T) {
 	}
 }
 
-// TestFooterHints checks that the footer shows the keys of the select and the
-// find modes.
+// TestFooterHints checks that the footer shows the keys of the select mode,
+// and the find band.
 func TestFooterHints(t *testing.T) {
 	m, _ := newTestModel(t)
 	if m = press(t, m, "]", "v"); !strings.Contains(view(m), "extend") {
@@ -882,9 +882,11 @@ func TestFooterHints(t *testing.T) {
 	}
 	m = press(t, m, "esc")
 	m = step(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
+	if !strings.HasPrefix(lastLine(m), "find Find in file…") {
+		t.Errorf("find band: footer %q, want the empty band", lastLine(m))
+	}
 	m = press(t, m, "r", "e", "t", "u", "r", "n", "enter")
-	if !strings.Contains(view(m), "next/prev match") {
-		t.Errorf("find mode: view got:\n%s\nwant the hint next/prev match",
-			view(m))
+	if l := lastLine(m); !strings.HasPrefix(l, "find return") || !strings.HasSuffix(l, "2/2") {
+		t.Errorf("find band: footer %q, want the query and 2/2", l)
 	}
 }

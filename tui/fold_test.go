@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/vcs"
@@ -112,19 +111,13 @@ func TestGotoLineInFold(t *testing.T) {
 	}
 }
 
-// TestExpandKeepsPlaces checks the cursor, the selection, and the hits of
-// a find after a fold shows.
+// TestExpandKeepsPlaces checks the cursor and the selection after a fold
+// shows.
 func TestExpandKeepsPlaces(t *testing.T) {
 	m := newFoldModel(t)
 	m.changes.cur = m.changes.rowOf(diff.SideNew, 29)
 	m = press(t, m, "v") // the selection starts on line 29
-	m = step(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
-	m = step(t, m, tea.KeyPressMsg{Text: "line 3", Code: 'l'})
-	m = press(t, m, "enter")
-	if !m.find.active() {
-		t.Fatal("the find has no hits, want hits")
-	}
-	m.changes.cur = 0 // the fold at the top
+	m.changes.cur = 0    // the fold at the top
 	m = step(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
 	p := &m.changes
 	if r := p.rows[p.cur]; r.New != 1 {
@@ -132,14 +125,6 @@ func TestExpandKeepsPlaces(t *testing.T) {
 	}
 	if r := p.rows[p.anchor]; r.New != 29 {
 		t.Errorf("the selection starts on %+v, want line 29", r)
-	}
-	if len(m.find.hits) == 0 {
-		t.Error("the find has no hits after the fold shows, want hits")
-	}
-	for _, h := range m.find.hits {
-		if l := strings.ToLower(ansi.Strip(p.lines[h])); !strings.Contains(l, "line 3") {
-			t.Errorf("a hit is on %q, want a line with line 3", l)
-		}
 	}
 }
 

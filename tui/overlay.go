@@ -27,7 +27,6 @@ const (
 	overlayComments
 	overlaySearch
 	overlayGoto
-	overlayFind
 	overlayQuit
 )
 
@@ -549,9 +548,6 @@ func (m *model) chooseOverlay() tea.Cmd {
 	case overlayGoto:
 		m.closeOverlay()
 		m.gotoLine(ov.input.Value())
-	case overlayFind:
-		m.closeOverlay()
-		m.runFind(ov.input.Value())
 	case overlaySearch:
 		m.closeOverlay()
 		if it != nil {
@@ -718,7 +714,7 @@ func (m *model) overlayRows(inner int) (rows []string, start int) {
 		rows = append(rows, delStyle.Render("  "+termtext.Quote(ov.err)))
 	case len(ov.shown) == 0 && ov.kind == overlayCommits:
 		rows = append(rows, dimStyle.Render("  no commits yet"))
-	case len(ov.shown) == 0 && ov.kind != overlayGoto && ov.kind != overlayFind:
+	case len(ov.shown) == 0 && ov.kind != overlayGoto:
 		rows = append(rows, dimStyle.Render("  no matches"))
 	}
 	return rows, start

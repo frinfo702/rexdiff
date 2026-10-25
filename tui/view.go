@@ -302,11 +302,12 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 			add(l, -1)
 		}
 	}
+	hits := m.findRows()
 	for i := p.top; i < len(p.lines) && len(lines) < h; i++ {
 		// A wrapped line shows its marks on its first row, and its
 		// comments below its last row.
 		t := m.target(i, diff.SideNew)
-		add(m.rowMark(i, t, lo, hi)+p.lines[i], i)
+		add(m.rowMark(i, t, lo, hi, hits[i])+p.lines[i], i)
 		if t != nil && p.end(i) == i {
 			addBelow(m.commentsBelow(t))
 		}
@@ -349,11 +350,10 @@ func (m *model) highlighted() (lo, hi int) {
 }
 
 // rowMark returns the gutter mark of row i. t is the line that row i
-// shows, or nil. The mark shows the cursor, the rows lo to hi, a find hit,
-// or a comment.
-func (m *model) rowMark(i int, t *targetLine, lo, hi int) string {
+// shows, or nil. hit is true for a find hit. The mark shows the cursor,
+// the rows lo to hi, a find hit, or a comment.
+func (m *model) rowMark(i int, t *targetLine, lo, hi int, hit bool) string {
 	p := m.cur()
-	_, hit := slices.BinarySearch(m.find.hits, i) // the hits are in order
 	switch {
 	case i == p.cur && m.tab != tabPR:
 		return cursorStyle.Render("▶ ")
@@ -481,8 +481,12 @@ func wrapWords(s string, w int) string {
 	return strings.Join(append(lines, line), "\n")
 }
 
-// footerLine renders the status and the help of the keys.
+// footerLine renders the status and the help of the keys, or the find
+// band.
 func (m *model) footerLine() string {
+	if m.mode == modeFind {
+		return m.findBand()
+	}
 	m.help.SetWidth(m.w)
 	var badge string
 	switch {
@@ -490,23 +494,19 @@ func (m *model) footerLine() string {
 		badge = cursorStyle.Render(m.status)
 	case m.release != nil:
 		badge = cursorStyle.Render(m.releaseBadge())
-	case m.find.active():
-		f := m.find
-		badge = findStyle.Render(fmt.Sprintf("≈ %q %d/%d", f.query, f.i+1, len(f.hits)))
 	case m.mode == modeComment && m.draft != nil:
 		badge = cursorStyle.Render("✎ " + m.draft.Location())
 	case m.comments.Len() > 0:
 		badge = cursorStyle.Render("● " + plural(m.comments.Len(), "unsent comment"))
 	}
 	hk := helpKeys{
-		k:       m.keys,
-		mode:    m.mode,
-		tab:     m.tab,
-		split:   m.splitShown(),
-		visual:  m.cur().anchor >= 0,
-		finding: m.find.active(),
-		onFold:  m.onFold(),
-		armed:   m.armed,
+		k:      m.keys,
+		mode:   m.mode,
+		tab:    m.tab,
+		split:  m.splitShown(),
+		visual: m.cur().anchor >= 0,
+		onFold: m.onFold(),
+		armed:  m.armed,
 	}
 	if m.help.ShowAll {
 		h := m.help.View(hk)

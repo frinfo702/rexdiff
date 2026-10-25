@@ -91,9 +91,10 @@ func TestStatusMessages(t *testing.T) {
 
 	m = step(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModCtrl})
 	m = press(t, m, "z", "z", "z", "enter")
-	if m.status != "no matches" {
-		t.Errorf("a find with no hit: status %q, want \"no matches\"", m.status)
+	if !strings.HasSuffix(lastLine(m), "no matches") {
+		t.Errorf("a find with no hit: footer %q, want \"no matches\"", lastLine(m))
 	}
+	m = press(t, m, "esc")
 
 	if m = press(t, m, "B", "z", "z", "z", "z"); !shows(m, "no matches") {
 		t.Errorf("a picker with no match got:\n%s\nwant \"no matches\"", view(m))
