@@ -25,6 +25,8 @@ const maxSend = 256 << 10
 func (m *model) listAgents(msg agentsMsg) tea.Cmd {
 	c, ctx := m.rex, m.ctx
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(ctx, rexTimeout)
+		defer cancel()
 		agents, err := c.Agents(ctx)
 		isRexdiff := func(a rex.Agent) bool { return a.Status.App == appName }
 		agents = slices.DeleteFunc(agents, isRexdiff)
@@ -32,6 +34,10 @@ func (m *model) listAgents(msg agentsMsg) tea.Cmd {
 		return msg
 	}
 }
+
+// rexTimeout is the longest time of the calls to Rex for one action. A
+// Rex that does not answer then fails the action.
+const rexTimeout = 10 * time.Second
 
 // inRepo tells if dir is in the repository. An empty dir is unknown, and
 // counts as in the repository.
@@ -67,8 +73,7 @@ func (m *model) onEvent(e rex.Event) tea.Cmd {
 		a := m.agent(e.Block)
 		a.app, a.state, a.since = app, state, cmp.Or(e.Status.At, time.Now())
 	}
-	m.observeTurn()
-	return nil
+	return m.observeTurn()
 }
 
 // member is an agent that works in the repository.
@@ -81,9 +86,9 @@ type member struct {
 // members returns the agents that work in the repository, in the order
 // of their blocks. As in herdr-reviewr, an agent is a member if its
 // working directory is absolute and in this working tree. If the place of
-// an agent is not known, members returns false.
-func (m *model) members() ([]member, bool) {
-	var out []member
+// an agent is not known, members returns false, and the block of the
+// agent if Rex can tell its place.
+func (m *model) members() (ms []member, ask string, ok bool) {
 	for _, block := range slices.Sorted(maps.Keys(m.agents)) {
 		a := m.agents[block]
 		if a.state == "" || a.app == appName || (m.rex != nil && block == m.rex.Block) {
@@ -91,25 +96,53 @@ func (m *model) members() ([]member, bool) {
 		}
 		if !a.hasCwd {
 			if m.rex == nil {
-				return nil, false
+				return nil, "", false
 			}
-			cwd, err := m.rex.Cwd(m.ctx, block)
-			if err != nil {
-				m.log.Debug("agent cwd failed", "block", block, "err", err)
-				return nil, false // ask again with the next state
-			}
-			a.cwd, a.hasCwd = cwd, true
+			return nil, block, false
 		}
 		in, err := m.owns(a.cwd)
 		if err != nil {
 			m.log.Warn("agent membership failed", "err", err)
-			return nil, false
+			return nil, "", false
 		}
 		if in {
-			out = append(out, member{block, a.app, a.state, a.since})
+			ms = append(ms, member{block, a.app, a.state, a.since})
 		}
 	}
-	return out, true
+	return ms, "", true
+}
+
+// askCwd returns a command that asks Rex for the working directory of the
+// agent in block. The answer comes as a cwdMsg.
+func (m *model) askCwd(block string) tea.Cmd {
+	a := m.agents[block]
+	if a.asking {
+		return nil
+	}
+	a.asking = true
+	c, ctx := m.rex, m.ctx
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(ctx, rexTimeout)
+		defer cancel()
+		cwd, err := c.Cwd(ctx, block)
+		return cwdMsg{block, cwd, err}
+	}
+}
+
+// onCwd keeps the working directory of an agent, and follows the turns
+// with it. After an error, the next state asks again.
+func (m *model) onCwd(msg cwdMsg) tea.Cmd {
+	a := m.agents[msg.block]
+	if a == nil {
+		return nil // the block closed
+	}
+	a.asking = false
+	if msg.err != nil {
+		m.log.Debug("agent cwd failed", "block", msg.block, "err", msg.err)
+		return nil
+	}
+	a.cwd, a.hasCwd = msg.cwd, true
+	return m.observeTurn()
 }
 
 // owns tells if dir is in this working tree. It keeps the directories
@@ -130,13 +163,16 @@ func (m *model) owns(dir string) (bool, error) {
 
 // observeTurn gives the state of the repository to the tracker, and
 // follows the start and the end of a turn.
-func (m *model) observeTurn() {
+func (m *model) observeTurn() tea.Cmd {
 	if !m.sampled {
-		return
+		return nil
 	}
-	ms, ok := m.members()
+	ms, ask, ok := m.members()
+	if ask != "" {
+		return m.askCwd(ask)
+	}
 	if !ok {
-		return // keep the last state, as herdr-reviewr does
+		return nil // keep the last state, as herdr-reviewr does
 	}
 	here := len(ms) > 0
 	if m.agentsHere == nil || *m.agentsHere != here {
@@ -156,6 +192,7 @@ func (m *model) observeTurn() {
 	if ended {
 		m.endTurn()
 	}
+	return nil
 }
 
 // turnWaitMessage tells why the last-turn scope has no turn. The messages
@@ -276,9 +313,10 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 		m.log.Warn("agent list failed", "err", msg.err)
 		m.sampleRetry.fail(time.Now())
 	}
-	m.observeTurn()
+	// A send drops the question for a cwd. The next state asks again.
+	turn := m.observeTurn()
 	if !msg.send {
-		return nil
+		return turn
 	}
 	m.sends--
 	if msg.err != nil {
@@ -314,6 +352,15 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	return nil
 }
 
+// commentIDs returns the IDs of the comments.
+func (m *model) commentIDs() []int {
+	var ids []int
+	for _, c := range m.comments.All() {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
 // reviewText returns the text of the review that a send pastes.
 func (m *model) reviewText() string {
 	return m.comments.Review(m.cfg.ReviewPrefix)
@@ -325,13 +372,11 @@ func (m *model) reviewText() string {
 func (m *model) deliver(a rex.Agent) tea.Cmd {
 	m.sends++
 	c, ctx := m.rex, m.ctx
-	text := m.reviewText()
-	var ids []int
-	for _, cm := range m.comments.All() {
-		ids = append(ids, cm.ID)
-	}
+	text, ids := m.reviewText(), m.commentIDs()
 	focus := m.cfg.focusAgent()
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(ctx, rexTimeout)
+		defer cancel()
 		status, err := c.Status(ctx, a.Block)
 		if err != nil {
 			return sentMsg{agent: a, err: fmt.Errorf("check %s: %w", a.Name, err)}
@@ -394,10 +439,7 @@ func (m *model) copyComments() {
 		m.flash("no comments yet")
 		return
 	}
-	var ids []int
-	for _, c := range m.comments.All() {
-		ids = append(ids, c.ID)
-	}
+	ids := m.commentIDs()
 	m.copyText(m.reviewText(), "copied "+plural(len(ids), "comment"), ids)
 }
 

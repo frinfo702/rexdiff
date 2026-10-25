@@ -108,6 +108,7 @@ func command(
 ) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir, cmd.Stdin = dir, stdin
+	cmd.WaitDelay = waitDelay
 	if env != nil {
 		cmd.Env = append(cmd.Environ(), env...) // Environ sets PWD to cmd.Dir
 	}
@@ -123,6 +124,10 @@ func command(
 	}
 	return string(out), nil
 }
+
+// waitDelay is how long a stopped process can keep its output open. A
+// child of gh or az can keep it open after the process ends.
+const waitDelay = time.Second
 
 // runError shows the message of the program, but keeps the error of the
 // process.
@@ -143,8 +148,11 @@ func exitedOne(err error) bool {
 // Resolve returns the object ID of rev, for example "HEAD" or "main^{tree}".
 func (r *Repo) Resolve(ctx context.Context, rev string) (string, error) {
 	out, err := r.run(ctx, nil, "rev-parse", "--verify", "--quiet", rev)
+	if exitedOne(err) {
+		return "", fmt.Errorf("git: unknown revision %q", rev)
+	}
 	if err != nil {
-		return "", fmt.Errorf("git: unknown revision %s", rev)
+		return "", fmt.Errorf("git rev-parse: %w", err)
 	}
 	return strings.TrimSpace(out), nil
 }
@@ -391,6 +399,7 @@ func (r *Repo) readBlobs(ctx context.Context, ids []string, blobs []blob) error 
 		return nil
 	}
 	cmd := exec.CommandContext(ctx, "git", "cat-file", "--batch")
+	cmd.WaitDelay = waitDelay
 	cmd.Dir = r.root
 	cmd.Stdin = strings.NewReader(in.String())
 	var stderr bytes.Buffer

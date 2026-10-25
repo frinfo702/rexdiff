@@ -238,8 +238,10 @@ func (m *model) closeOverlay() {
 	m.stopGrep()
 }
 
-// stopGrep stops the code search that runs, if any.
+// stopGrep stops the code search that runs, if any. Its result then does
+// not show.
 func (m *model) stopGrep() {
+	m.grepGen++
 	if m.grepCancel != nil {
 		m.grepCancel()
 		m.grepCancel = nil
@@ -291,10 +293,11 @@ func (m *model) runSearch() tea.Cmd {
 	ov.showSearch()
 	ctx, cancel := context.WithTimeout(m.ctx, search.CodeTimeout)
 	m.grepCancel = cancel
-	repo := m.repo
+	repo, gen := m.repo, m.grepGen
 	return func() tea.Msg {
+		defer cancel()
 		hits, more, err := repo.Grep(ctx, q, search.CodeLimit, search.CodeBudget)
-		return grepMsg{q, hits, more, err}
+		return grepMsg{gen, hits, more, err}
 	}
 }
 

@@ -606,7 +606,7 @@ func TestCommitsLikeHerdr(t *testing.T) {
 	}
 	got := subjects(cs)
 	if len(got) != 62 || got[0] != "c59" || got[60] != "merge side" || got[61] != "b" {
-		t.Errorf("Commits(fork point) = %d commits %q…, want c59 to b, no side", len(got), got[:3])
+		t.Errorf("Commits(fork point) = %d commits %q…, want c59 to b, no side", len(got), got[:min(3, len(got))])
 	}
 
 	cs, err = r.Commits(ctx, "")
@@ -649,8 +649,9 @@ func TestGrepLimit(t *testing.T) {
 				tt.limit, len(ms), more, err, tt.wantN, tt.wantMore)
 		}
 	}
-	if ms, _, _ := r.Grep(ctx, "hit", 2, time.Minute); ms[1] != (vcs.Match{Path: "many.txt", Line: 2, Text: "hit"}) {
-		t.Errorf("Grep(hit, 2)[1] = %+v, want many.txt:2", ms[1])
+	want := vcs.Match{Path: "many.txt", Line: 2, Text: "hit"}
+	if ms, _, _ := r.Grep(ctx, "hit", 2, time.Minute); len(ms) != 2 || ms[1] != want {
+		t.Errorf("Grep(hit, 2) = %+v, want many.txt:2 second", ms)
 	}
 }
 

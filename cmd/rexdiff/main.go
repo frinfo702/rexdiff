@@ -33,10 +33,27 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	err := run(ctx, os.Args[1:], os.Stdout, os.Stderr)
 	stop()
-	if err != nil {
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+	case errors.Is(err, errUsage):
+		os.Exit(2) // the flag package prints the error
+	case err != nil:
 		fmt.Fprintln(os.Stderr, "rexdiff:", err)
 		os.Exit(1)
 	}
+}
+
+// errUsage is the error of bad flags. The flag package prints it and the
+// usage.
+var errUsage = errors.New("bad usage")
+
+// usageError returns err of flag parsing for -h, and errUsage for the
+// other errors.
+func usageError(err error) error {
+	if errors.Is(err, flag.ErrHelp) {
+		return err
+	}
+	return errUsage
 }
 
 const usage = `usage: rexdiff [flags] [repo]
@@ -57,13 +74,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			}
 			return install(ctx, bin, args[1:], stdout, stderr)
 		case "uninstall":
-			return uninstall(ctx, stdout)
+			return uninstall(ctx, args[1:], stdout, stderr)
 		}
 	}
 	f, err := parseFlags(args, stderr)
-	if errors.Is(err, flag.ErrHelp) {
-		return nil
-	}
 	if err != nil {
 		return err
 	}
@@ -161,7 +175,8 @@ type flags struct {
 }
 
 // parseFlags parses the arguments of the diff viewer. It writes the usage
-// and errors to stderr. For -h, it returns flag.ErrHelp.
+// and the errors of the flags to stderr. For -h, it returns
+// [flag.ErrHelp], and for a bad flag errUsage.
 func parseFlags(args []string, stderr io.Writer) (flags, error) {
 	var f flags
 	fs := flag.NewFlagSet("rexdiff", flag.ContinueOnError)
@@ -182,10 +197,10 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
-		return f, err
+		return f, usageError(err)
 	}
 	if fs.NArg() > 1 {
-		return f, fmt.Errorf("unknown argument %s (flags go before the repo)", fs.Arg(1))
+		return f, fmt.Errorf("unknown argument %q (flags go before the repo)", fs.Arg(1))
 	}
 	f.repo = fs.Arg(0)
 	return f, nil

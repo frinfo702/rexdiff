@@ -20,6 +20,10 @@ cmp .config/rex/init.lua installed.lua
 [realrex] stdout 'actions: 1'
 [realrex] ! stderr .
 
+# uninstall -h only shows the usage.
+exec rexdiff uninstall -h
+exists .config/rex/rexdiff.lua
+
 # If uninstall cannot change init.lua, it keeps rexdiff.lua, so that
 # init.lua does not require a missing file.
 chmod 0444 .config/rex/init.lua

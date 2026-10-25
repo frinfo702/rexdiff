@@ -21,16 +21,14 @@ const (
 	// prPoll is the time between two reads while the PR tab shows. A
 	// change on the forge has no local sign.
 	prPoll = time.Minute
-	// prHang is the time after which a new request drops a read that
-	// does not end.
-	prHang = time.Minute
+	// prTimeout is the longest time of a read.
+	prTimeout = time.Minute
 )
 
 // prFetch follows the reads of the pull request.
 type prFetch struct {
 	gen      int       // the read whose result shows; others are stale
 	inFlight bool      // the read gen runs
-	started  time.Time // the start of the read gen
 	polled   time.Time // the last request, for prPoll
 	cancel   context.CancelFunc
 	// trailing is true if an ambient request comes while a read runs.
@@ -42,12 +40,11 @@ type prFetch struct {
 
 // requestPR asks for a read of the pull request. A forced request starts
 // a read at once. An ambient request during a read starts one more read
-// after it, unless the read hangs.
+// after it. A read that hangs ends after prTimeout.
 func (m *model) requestPR(forced bool) tea.Cmd {
 	f := &m.prf
 	f.polled = time.Now()
-	hung := f.inFlight && f.polled.Sub(f.started) >= prHang
-	if !forced && f.inFlight && !hung {
+	if !forced && f.inFlight {
 		f.trailing = true
 		return nil
 	}
@@ -61,9 +58,9 @@ func (m *model) loadPR() tea.Cmd {
 	if f.cancel != nil {
 		f.cancel()
 	}
-	ctx, cancel := context.WithCancel(m.ctx)
+	ctx, cancel := context.WithTimeout(m.ctx, prTimeout)
 	f.gen++
-	f.inFlight, f.trailing, f.started, f.cancel = true, false, time.Now(), cancel
+	f.inFlight, f.trailing, f.cancel = true, false, cancel
 	repo, gen := m.repo, f.gen
 	hosts := vcs.Hosts{
 		GitHub: m.cfg.GitHubHost,

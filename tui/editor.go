@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -46,15 +48,31 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 	if ed.Window {
 		return m.runWindowEditor(path, ed.Script)
 	}
-	if m.rex != nil {
-		err := m.rex.Split(m.ctx, m.repo.Root(), "sh", "-c", ed.Script)
-		if err == nil {
-			m.flash("opened " + path)
-			return nil
-		}
-		m.log.Debug("editor split", "err", err)
+	if m.rex == nil {
+		return m.runHere(path, ed.Script)
 	}
-	return tea.ExecProcess(command("sh", "-c", ed.Script), func(err error) tea.Msg {
+	c, ctx, root := m.rex, m.ctx, m.repo.Root()
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(ctx, rexTimeout)
+		defer cancel()
+		return splitMsg{path, ed.Script, c.Split(ctx, root, "sh", "-c", ed.Script)}
+	}
+}
+
+// onSplit tells that the editor opens in a new pane. If Rex cannot open
+// the pane, the editor runs in this pane.
+func (m *model) onSplit(msg splitMsg) tea.Cmd {
+	if msg.err == nil {
+		m.flash("opened " + msg.path)
+		return nil
+	}
+	m.log.Debug("editor split", "err", msg.err)
+	return m.runHere(msg.path, msg.script)
+}
+
+// runHere runs the editor script in this pane, in place of rexdiff.
+func (m *model) runHere(path, script string) tea.Cmd {
+	return tea.ExecProcess(command("sh", "-c", script), func(err error) tea.Msg {
 		return editorDoneMsg{path: path, err: err}
 	})
 }
@@ -64,37 +82,51 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 // If the editor fails, the returned command gives the error and the last
 // line of the stderr of the editor.
 func (m *model) runWindowEditor(path, script string) tea.Cmd {
-	cmd := command("sh", "-c", script)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
+	wait, err := detach("editor", "sh", "-c", script)
+	if err != nil {
 		m.flash("editor failed: " + err.Error())
 		return nil
 	}
 	m.flash("opened " + path)
+	return wait
+}
+
+// detach starts a program in its own session and with no terminal, so
+// that it cannot read the keys of rexdiff. The returned command waits for
+// the program. If the program fails, the command gives a detachedMsg with
+// the last line of the stderr of the program.
+func detach(what, name string, args ...string) (tea.Cmd, error) {
+	cmd := command(name, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// A child of the program can keep stderr open after the program ends.
+	cmd.WaitDelay = time.Second
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
 	return func() tea.Msg {
 		err := cmd.Wait()
-		if err == nil {
+		if err == nil || errors.Is(err, exec.ErrWaitDelay) {
 			return nil
 		}
 		s := strings.TrimSpace(stderr.String())
 		if last := s[strings.LastIndexByte(s, '\n')+1:]; last != "" {
 			err = fmt.Errorf("%w: %s", err, last)
 		}
-		return editorDoneMsg{window: true, err: err}
-	}
+		return detachedMsg{what, err}
+	}, nil
 }
 
-// onEditorDone shows how the editor stops. A terminal editor that stops
-// with an error code can still save the file.
+// onEditorDone shows how the editor in this pane stops. An editor that
+// stops with an error code can still save the file.
 func (m *model) onEditorDone(msg editorDoneMsg) {
 	exit, isExit := errors.AsType[*exec.ExitError](msg.err)
 	switch {
 	case msg.err == nil:
 		m.flash("edited " + msg.path)
-	case !msg.window && isExit:
-		m.flash("editor exited with " + exit.Error())
+	case isExit:
+		m.flash("editor stopped: " + exit.Error())
 	default:
 		m.flash("editor failed: " + msg.err.Error())
 	}
@@ -102,29 +134,17 @@ func (m *model) onEditorDone(msg editorDoneMsg) {
 }
 
 // openURL opens url with the URL opener of the settings, else with
-// the opener of the system.
-func openURL(cfg config, url string) error {
+// the opener of the system. The command waits for the opener.
+func openURL(cfg config, url string) (tea.Cmd, error) {
 	if cfg.URLOpener != "" {
 		script := strings.ReplaceAll(cfg.URLOpener, "{url}", editor.ShellQuote(url))
-		return start("sh", "-c", script)
+		return detach("open", "sh", "-c", script)
 	}
 	opener := "xdg-open"
 	if runtime.GOOS == "darwin" {
 		opener = "open"
 	}
-	return start(opener, url)
-}
-
-// start starts a program and does not wait for it to stop. A goroutine
-// waits for the program, so that the program does not stay a zombie
-// process.
-func start(name string, args ...string) error {
-	cmd := command(name, args...)
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	go func() { _ = cmd.Wait() }()
-	return nil
+	return detach("open", opener, url)
 }
 
 // command returns the command for an editor or a URL opener. The command

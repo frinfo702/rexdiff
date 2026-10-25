@@ -248,6 +248,7 @@ func tool(name string, dirs ...string) string {
 func runCommand(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = append(cmd.Environ(), env...)
+	cmd.WaitDelay = time.Second // a child of brew can keep the output open
 	return cmd.CombinedOutput()
 }
 

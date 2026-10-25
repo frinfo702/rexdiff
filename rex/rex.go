@@ -69,7 +69,9 @@ func binFromEnv() string {
 
 // command returns the command "rex args...".
 func (c *Client) command(ctx context.Context, args ...string) *exec.Cmd {
-	return exec.CommandContext(ctx, cmp.Or(c.bin, "rex"), args...)
+	cmd := exec.CommandContext(ctx, cmp.Or(c.bin, "rex"), args...)
+	cmd.WaitDelay = time.Second // a child of rex can keep the output open
+	return cmd
 }
 
 // runRex runs "rex args..." and returns the output. If rex fails, the

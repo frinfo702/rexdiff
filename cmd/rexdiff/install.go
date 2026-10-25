@@ -254,17 +254,8 @@ func executable() (string, error) {
 // install writes rexdiff.lua with the action that runs bin, the path of
 // rexdiff. It adds the require line to init.lua.
 func install(ctx context.Context, bin string, args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("rexdiff install", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+	if err := parseSub("install", args, stderr); err != nil {
 		return err
-	}
-	if fs.NArg() > 0 {
-		return fmt.Errorf("unknown argument %s (set the key and the placement in the settings in %s)",
-			fs.Arg(0), luaPath())
 	}
 
 	// Make the new content first. Then a bad rexdiff.lua stops the install
@@ -348,10 +339,28 @@ func isRequire(line string) bool {
 	return t == requireLine || strings.HasPrefix(t, requireLine+" --")
 }
 
+// parseSub parses the arguments of the subcommand name, which has no
+// flags. It returns the errors of parseFlags.
+func parseSub(name string, args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("rexdiff "+name, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	if err := fs.Parse(args); err != nil {
+		return usageError(err)
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unknown argument %q (set the key and the placement in the settings in %s)",
+			fs.Arg(0), luaPath())
+	}
+	return nil
+}
+
 // uninstall removes the require line from init.lua, then rexdiff.lua with
 // the settings. In this order, a failure does not leave init.lua with a
 // require of a file that is not there.
-func uninstall(ctx context.Context, stdout io.Writer) error {
+func uninstall(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	if err := parseSub("uninstall", args, stderr); err != nil {
+		return err
+	}
 	initPath := rex.ConfigPath()
 	if err := removeRequire(initPath); err != nil {
 		return err

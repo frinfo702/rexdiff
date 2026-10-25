@@ -214,7 +214,7 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int, budget time.Durati
 	cmd := exec.CommandContext(ctx, "git",
 		"grep", "-n", "--no-column", "-z", "-I", "-i", "-F", "--untracked", "--no-color",
 		"-e", q)
-	cmd.Dir = r.root
+	cmd.Dir, cmd.WaitDelay = r.root, waitDelay
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.StdoutPipe()

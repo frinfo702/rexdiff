@@ -168,6 +168,7 @@ type agentState struct {
 	since  time.Time // when Rex got the state
 	cwd    string    // the working directory, or "" if Rex does not know it
 	hasCwd bool      // the program has the answer of Rex for cwd
+	asking bool      // a question to Rex for cwd runs
 }
 
 // model is the state of the program. It implements tea.Model.
@@ -284,6 +285,7 @@ type model struct {
 	// session, the last pick first.
 	recent     []string
 	grepCancel context.CancelFunc // stops the code search that runs
+	grepGen    int                // the last code search
 	find       findState
 	findLines  splitLines // the lines that find searches
 	md         mdRenderer // the last markdown renderer
@@ -374,10 +376,10 @@ type (
 		err   error
 	}
 	grepMsg struct {
-		query string
-		hits  []vcs.Match
-		more  bool // git finds more matches than hits has
-		err   error
+		gen  int // the search whose result shows; others are stale
+		hits []vcs.Match
+		more bool // git finds more matches than hits has
+		err  error
 	}
 	prMsg struct {
 		gen int // the read, see prFetch
@@ -385,12 +387,25 @@ type (
 		err error
 	}
 	eventMsg rex.Event
-	// editorDoneMsg tells that the editor of path stops. A window editor
-	// sends it only if it fails.
+	// splitMsg tells if Rex opens the pane of the editor of path.
+	splitMsg struct {
+		path, script string
+		err          error
+	}
+	// cwdMsg is the answer of Rex for the working directory of an agent.
+	cwdMsg struct {
+		block, cwd string
+		err        error
+	}
+	// editorDoneMsg tells that the editor of path in this pane stops.
 	editorDoneMsg struct {
-		path   string
-		err    error
-		window bool
+		path string
+		err  error
+	}
+	// detachedMsg tells that a detached program, for what, fails.
+	detachedMsg struct {
+		what string
+		err  error
 	}
 )
 
@@ -640,6 +655,12 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		m.onInstalled(msg)
 	case editorDoneMsg:
 		m.onEditorDone(msg)
+	case detachedMsg:
+		m.flash(msg.what + " failed: " + msg.err.Error())
+	case cwdMsg:
+		cmd = m.onCwd(msg)
+	case splitMsg:
+		cmd = m.onSplit(msg)
 	case tea.MouseClickMsg:
 		m.followCursor()
 		return m.onClick(msg.Mouse())
@@ -691,7 +712,7 @@ func (m *model) onKey(msg tea.KeyPressMsg) tea.Cmd {
 // still shows their query. The list shows them in the code mode.
 func (m *model) onGrep(msg grepMsg) {
 	ov := m.overlay
-	if ov == nil || ov.kind != overlaySearch || ov.input.Value() != msg.query {
+	if ov == nil || ov.kind != overlaySearch || msg.gen != m.grepGen {
 		return
 	}
 	s := &ov.search

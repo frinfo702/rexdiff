@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -95,13 +96,16 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 
 	m := startModel(ctx, o, cfg)
 	program := tea.NewProgram(&m, tea.WithContext(ctx))
+	var wg sync.WaitGroup
 	if o.Rex != nil {
 		// Watch returns only the error of ctx, when ctx is done.
-		go func() {
+		wg.Go(func() {
 			_ = o.Rex.Watch(ctx, func(e rex.Event) { program.Send(eventMsg(e)) })
-		}()
+		})
 	}
 	final, err := program.Run()
+	cancel()
+	wg.Wait()
 	if fm, ok := final.(*model); ok && err == nil {
 		if fm.restartState != "" {
 			// Keep the last screen until the new rexdiff draws, so that

@@ -255,7 +255,7 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.FileListShrink):
 		m.resizeList(-listStep)
 	case key.Matches(msg, k.OpenPR):
-		m.openPR()
+		return m.openPR(), true
 	case key.Matches(msg, k.Refresh):
 		return m.refresh(), true
 	case m.release != nil && key.Matches(msg, k.Upgrade):
@@ -308,13 +308,15 @@ func (m *model) resizeList(d int) {
 }
 
 // openPR opens the pull request in the browser.
-func (m *model) openPR() {
+func (m *model) openPR() tea.Cmd {
 	if m.pr.pr == nil || m.pr.pr.URL == "" {
-		return
+		return nil
 	}
-	if err := openURL(m.cfg, m.pr.pr.URL); err != nil {
-		m.flash("open: " + err.Error())
+	wait, err := openURL(m.cfg, m.pr.pr.URL)
+	if err != nil {
+		m.flash("open failed: " + err.Error())
 	}
+	return wait
 }
 
 // refresh reads the current tab again.
