@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -91,7 +92,6 @@ type opts struct {
 // term is a rexdiff that runs in a terminal.
 type term struct {
 	t    *testing.T
-	pty  *os.File
 	emu  *vt.Emulator
 	mu   sync.Mutex    // guards emu
 	wait func() error  // waits for rexdiff once, and keeps its error
@@ -134,7 +134,7 @@ func startBin(t *testing.T, bin, repo string, o opts) *term {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tm := &term{t: t, pty: f, emu: vt.NewEmulator(int(w), int(h)), wait: sync.OnceValue(cmd.Wait), done: make(chan struct{})}
+	tm := &term{t: t, emu: vt.NewEmulator(int(w), int(h)), wait: sync.OnceValue(cmd.Wait), done: make(chan struct{})}
 	go func() {
 		defer close(tm.done)
 		buf := make([]byte, 32<<10)
@@ -150,14 +150,22 @@ func startBin(t *testing.T, bin, repo string, o opts) *term {
 			}
 		}
 	}()
-	// The emulator answers the queries of rexdiff, for example for the
-	// colours. This copy ends with the test process, because the Close of
-	// the emulator races with its Read.
-	go func() { _, _ = io.Copy(f, tm.emu) }()
+	// The input of rexdiff comes from the emulator, as from a terminal:
+	// the keys and the mouse of the test, and the answers to the queries
+	// of rexdiff, for example for the colours.
+	input := make(chan struct{})
+	go func() {
+		defer close(input)
+		_, _ = io.Copy(f, tm.emu)
+	}()
 	t.Cleanup(func() {
 		_ = tm.wait() // t.Context is done, so Cancel stops rexdiff
 		_ = f.Close()
 		<-tm.done
+		// Close of the pipe, not of the emulator, ends the copy. The Close
+		// of the emulator races with its Read.
+		_ = tm.emu.InputPipe().(io.Closer).Close()
+		<-input
 	})
 	tm.waitFor("1 Changes")
 	return tm
@@ -170,24 +178,22 @@ func (tm *term) screen() string {
 	return tm.emu.String()
 }
 
-// keys types each key. A key is a text, or a name in keyCodes.
+// keys types each key. A key is a name in keyCodes, or else a text. As
+// in a terminal, an esc and the key after it can join into one key, so esc
+// must be the last key. Wait for the screen after it, as a user does.
 func (tm *term) keys(keys ...string) {
 	tm.t.Helper()
+	if i := slices.Index(keys, "esc"); i >= 0 && i != len(keys)-1 {
+		tm.t.Fatalf("keys %q: esc must be the last key", keys)
+	}
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 	for _, k := range keys {
-		s, ok := keyCodes[k]
-		if !ok {
-			s = k
+		if code, ok := keyCodes[k]; ok {
+			tm.emu.SendKey(code)
+		} else {
+			tm.emu.SendText(k)
 		}
-		if _, err := tm.pty.WriteString(s); err != nil {
-			tm.t.Fatal(err)
-		}
-		// A pause lets rexdiff take the key. A lone esc needs a longer
-		// one, else it joins the next key.
-		pause := 20 * time.Millisecond
-		if k == "esc" {
-			pause = 150 * time.Millisecond
-		}
-		time.Sleep(pause)
 	}
 }
 
@@ -197,40 +203,39 @@ func (tm *term) typed(text string) {
 	tm.keys(strings.Split(text, "")...)
 }
 
-// keyCodes are the bytes of the named keys.
-var keyCodes = map[string]string{
-	"enter":  "\r",
-	"esc":    "\x1b",
-	"tab":    "\t",
-	"right":  "\x1b[C",
-	"left":   "\x1b[D",
-	"pgdown": "\x1b[6~",
-	"pgup":   "\x1b[5~",
-	"ctrl+d": "\x04",
-	"ctrl+u": "\x15",
-	"ctrl+f": "\x06",
-	"ctrl+j": "\n",
+// keyCodes are the named keys.
+var keyCodes = map[string]vt.KeyPressEvent{
+	"enter":  {Code: vt.KeyEnter},
+	"esc":    {Code: vt.KeyEscape},
+	"tab":    {Code: vt.KeyTab},
+	"right":  {Code: vt.KeyRight},
+	"left":   {Code: vt.KeyLeft},
+	"pgdown": {Code: vt.KeyPgDown},
+	"pgup":   {Code: vt.KeyPgUp},
+	"ctrl+d": {Code: 'd', Mod: vt.ModCtrl},
+	"ctrl+u": {Code: 'u', Mod: vt.ModCtrl},
+	"ctrl+f": {Code: 'f', Mod: vt.ModCtrl},
+	"ctrl+j": {Code: 'j', Mod: vt.ModCtrl},
 }
 
 // at returns the column and the line of text on the screen, from 0.
 func (tm *term) at(text string) (x, y int) {
 	tm.t.Helper()
-	for i, l := range strings.Split(tm.waitFor(text), "\n") {
+	s := tm.waitFor(text)
+	for i, l := range strings.Split(s, "\n") {
 		if before, _, ok := strings.Cut(l, text); ok {
 			return utf8.RuneCountInString(before), i
 		}
 	}
-	return -1, -1
+	tm.t.Fatalf("the screen does not show %s. It shows:\n%s", text, s)
+	return 0, 0
 }
 
-// mouse sends a mouse event with the SGR code b at column x of line y.
-// end is "M" for a press or a motion, and "m" for a release.
-func (tm *term) mouse(b, x, y int, end string) {
-	tm.t.Helper()
-	seq := "\x1b[<" + strconv.Itoa(b) + ";" + strconv.Itoa(x+1) + ";" + strconv.Itoa(y+1) + end
-	if _, err := tm.pty.WriteString(seq); err != nil {
-		tm.t.Fatal(err)
-	}
+// mouse sends the mouse event m, as the terminal encodes it.
+func (tm *term) mouse(m vt.Mouse) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	tm.emu.SendMouse(m)
 }
 
 // click clicks text on the screen the given number of times in a row.
@@ -238,9 +243,8 @@ func (tm *term) click(text string, times int) {
 	tm.t.Helper()
 	x, y := tm.at(text)
 	for range times {
-		tm.mouse(0, x, y, "M")
-		tm.mouse(0, x, y, "m")
-		time.Sleep(50 * time.Millisecond) // as a hand clicks
+		tm.mouse(vt.MouseClick{X: x, Y: y, Button: vt.MouseLeft})
+		tm.mouse(vt.MouseRelease{X: x, Y: y, Button: vt.MouseLeft})
 	}
 }
 
@@ -250,9 +254,18 @@ func (tm *term) drag(from, to string) {
 	tm.t.Helper()
 	x0, y0 := tm.at(from)
 	x1, y1 := tm.at(to)
-	tm.mouse(0, x0, y0, "M")
-	tm.mouse(32, x1, y1, "M") // a motion with the button down
-	tm.mouse(0, x1, y1, "m")
+	tm.mouse(vt.MouseClick{X: x0, Y: y0, Button: vt.MouseLeft})
+	tm.mouse(vt.MouseMotion{X: x1, Y: y1, Button: vt.MouseLeft})
+	tm.mouse(vt.MouseRelease{X: x1, Y: y1, Button: vt.MouseLeft})
+}
+
+// wheel turns the mouse wheel down n times over text.
+func (tm *term) wheel(text string, n int) {
+	tm.t.Helper()
+	x, y := tm.at(text)
+	for range n {
+		tm.mouse(vt.MouseWheel{X: x, Y: y, Button: vt.MouseWheelDown})
+	}
 }
 
 // waitFor waits until the screen shows each of texts, and returns the

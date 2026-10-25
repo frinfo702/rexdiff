@@ -3,6 +3,7 @@ package test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -62,7 +63,9 @@ func TestScopes(t *testing.T) {
 	tm.waitFor("Changes (1)", "A b.go", "var B = 2")
 	tm.keys("G")
 	tm.waitFor("commits · 1 over main")
-	tm.keys("esc", "u", "B")
+	tm.keys("esc")
+	tm.waitGone("commits · 1 over main")
+	tm.keys("u", "B")
 	tm.waitFor("base branch for the branch scope")
 	tm.typed("feat")
 	tm.keys("enter")
@@ -119,10 +122,10 @@ func TestWrap(t *testing.T) {
 	tm.waitFor("end\"")
 	tm.keys("w")
 	tm.waitGone("end\"")
-	eventually(t, func() bool {
-		tm.keys("right")
-		return strings.Contains(tm.screen(), "end\"")
-	}, func() string { return "→ does not scroll to the end:\n" + tm.screen() })
+	// Each → scrolls 8 columns. 12 of them show the end of the line, and
+	// keep its start in the view.
+	tm.keys(slices.Repeat([]string{"right"}, 12)...)
+	tm.waitFor("end\"")
 }
 
 // column returns the column of text in the first line of s that has it,
@@ -223,7 +226,15 @@ func TestReviewPrefix(t *testing.T) {
 // terminal.
 func TestTinyScreen(t *testing.T) {
 	tm := start(t, newRepo(t), opts{width: 40, height: 8})
-	tm.keys("f", "j", "2", "/", "esc", "?", "esc", "1")
+	tm.keys("f", "j", "2", "/")
+	tm.waitFor("›")
+	tm.keys("esc")
+	tm.waitGone("›")
+	tm.keys("?")
+	tm.waitFor("ctrl+d/u")
+	tm.keys("esc")
+	tm.waitGone("ctrl+d/u")
+	tm.keys("1")
 	tm.waitFor("1 Changes")
 }
 

@@ -51,8 +51,10 @@ func TestCommentBox(t *testing.T) {
 	tm.waitGone("✎ a.go:1-3")
 	tm.keys("]", "c", "a", "ctrl+j", "b", "enter")
 	tm.waitFor("💬 a", "b")
-	tm.keys("j", "c", "x", "esc")
-	tm.waitGone("💬 x")
+	tm.keys("j", "c", "x")
+	tm.waitFor("✎ a.go:4 ")
+	tm.keys("esc")
+	tm.waitGone("✎")
 	tm.keys("v", "j", "c", "r", "enter", "l")
 	tm.waitFor("a.go:4-5  r")
 }
@@ -143,10 +145,10 @@ func TestMouse(t *testing.T) {
 
 	tm.click("M long.txt", 1)
 	tm.keys(":", "2", "0", "enter") // opens the fold
-	x, y := tm.at("line 20")
-	for range 10 {
-		tm.mouse(65, x, y, "M") // the wheel down
-	}
+	tm.waitCursor("line 20")
+	tm.keys(":", "1", "enter")
+	tm.waitFor(" first")
+	tm.wheel("line 2", 10)
 	tm.waitGone(" first")
 }
 
