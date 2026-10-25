@@ -44,6 +44,10 @@ them, run `rexdiff uninstall`.
 - Update: when rexdiff shows a new version at the bottom, press `U`. Your
   comments stay.
 
+rexdiff checks the files about once a second without running git, and runs git
+only after a change. In a large repository it checks less often, so its checks
+use at most about 5% of a core. `r` reloads at once.
+
 A long run of unchanged lines folds into one row. Three lines show beside each
 change.
 

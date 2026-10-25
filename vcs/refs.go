@@ -132,19 +132,17 @@ func (r *Repo) Files(ctx context.Context) ([]Entry, error) {
 	}{
 		// In a merge conflict, git lists a path once for each stage.
 		// --deduplicate lists it once.
-		{[]string{"ls-files", "-co", "--deduplicate", "--exclude-standard", "-z"}, false},
-		{[]string{"ls-files", "-oi", "--exclude-standard", "--directory", "-z"}, true},
+		{[]string{"-co", "--deduplicate", "--exclude-standard"}, false},
+		{[]string{"-oi", "--exclude-standard", "--directory"}, true},
 	}
 	var es []Entry
 	for _, l := range lists {
-		out, err := r.run(ctx, nil, l.args...)
+		ps, err := r.lsFiles(ctx, l.args...)
 		if err != nil {
 			return nil, err
 		}
-		for p := range strings.SplitSeq(out, "\x00") {
-			if p != "" {
-				es = append(es, Entry{Path: p, Ignored: l.ignored})
-			}
+		for _, p := range ps {
+			es = append(es, Entry{Path: p, Ignored: l.ignored})
 		}
 	}
 	slices.SortStableFunc(es, func(a, b Entry) int {

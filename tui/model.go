@@ -189,6 +189,18 @@ type model struct {
 	focused bool
 	ticks   int
 
+	// watch tells when the files or the refs change, or is nil. If it is
+	// nil, each tick reloads the current tab.
+	watch *vcs.Watcher
+	// reloadOwed is true if a change is seen but the Changes tab does not
+	// show it yet. A reload waits until reloadAt, after the pause of the
+	// last one, and until retryAt, after a failure.
+	reloadOwed bool
+	filesOwed  bool // the same for the list of all files
+	reloadAt   time.Time
+	retryAt    time.Time
+	retryWait  time.Duration // the wait after the next failure, or 0
+
 	tab   tab
 	scope Scope
 	// folds has the folds that the user expands in the Changes tab, by path.
@@ -403,16 +415,19 @@ func (m *model) reload() {
 }
 
 // reloadIfChanged reads the changes of the scope again if the trees differ
-// from the shown trees.
+// from the shown trees. After a failure, the next tick tries again after a
+// wait.
 func (m *model) reloadIfChanged() {
+	m.reloadOwed = false
 	from, to, note, err := m.trees()
 	trees := from + ".." + to
 	var files []vcs.File
-	if err == nil && note == "" {
-		if trees == m.shownTrees {
-			return
-		}
+	if err == nil && note == "" && trees != m.shownTrees {
 		files, err = m.repo.Diff(m.ctx, from, to)
+	}
+	m.retry(err)
+	if err == nil && note == "" && trees == m.shownTrees {
+		return
 	}
 	if err != nil {
 		note = err.Error()
@@ -457,6 +472,7 @@ func (m *model) loadFiles() {
 
 // reloadFiles reads the list of all files again.
 func (m *model) reloadFiles() {
+	m.filesOwed = false
 	m.readFiles()
 	m.allSel = min(m.allSel, max(len(m.allFiles)-1, 0))
 	m.refreshViewer()
@@ -626,31 +642,67 @@ func (m *model) onPaste(text string) tea.Cmd {
 	return nil
 }
 
-// The intervals of the work of onTick, in ticks of one second.
+// colorTicks is the interval of the requests for the colours of the
+// terminal, in ticks of one second.
+const colorTicks = 3
+
+// The waits of a reload, as in herdr-reviewr.
 const (
-	blurredTicks = 5  // a reload while the program does not have the focus
-	filesTicks   = 10 // a read of the list of all files
-	colorTicks   = 3  // a request for the colours of the terminal
+	// budgetFactor sets the pause after a reload on a tick. The next one
+	// waits this many times as long as the last one took.
+	budgetFactor = 20
+	retryFirst   = time.Second // the first wait after a failure
+	retryMax     = time.Minute // the longest wait after a failure
 )
 
-// onTick reloads the current tab if its content changes.
+// retry sets the wait before the next reload after the error err. Each
+// failure doubles the wait, from 1 s to 60 s. A reload with no error
+// clears the wait.
+func (m *model) retry(err error) {
+	if err == nil {
+		m.retryWait, m.retryAt = 0, time.Time{}
+		return
+	}
+	wait := max(m.retryWait, retryFirst)
+	m.retryWait = min(2*wait, retryMax)
+	m.retryAt = time.Now().Add(wait)
+	m.reloadOwed = true
+}
+
+// changed tells what the watcher sees. Without a watcher, or after an
+// error of the watcher, it tells that both change.
+func (m *model) changed() vcs.Change {
+	all := vcs.Change{Files: true, Refs: true}
+	if m.watch == nil {
+		return all
+	}
+	start := time.Now()
+	ch, err := m.watch.Changed(m.ctx)
+	m.log.Debug("watch", "took", time.Since(start), "files", ch.Files, "refs", ch.Refs)
+	if err != nil {
+		m.log.Warn("watch failed", "err", err)
+		return all
+	}
+	return ch
+}
+
+// onTick reloads the current tab if the watcher sees a change. On the
+// Changes tab, a reload waits for the pause after the last one, and for
+// the wait after a failure.
 func (m *model) onTick() tea.Cmd {
 	m.ticks++
-	every := 1
-	if !m.focused {
-		every = blurredTicks
-	}
-	if m.ticks%every == 0 {
-		switch m.tab {
-		case tabChanges:
-			m.reloadIfChanged()
-		case tabFiles:
-			if m.ticks%filesTicks == 0 {
-				m.reloadFiles() // reloadFiles renders the file too
-			} else {
-				m.refreshViewer()
-			}
-		}
+	ch := m.changed()
+	m.reloadOwed = m.reloadOwed || ch.Files || ch.Refs
+	m.filesOwed = m.filesOwed || ch.Files
+	now := time.Now()
+	switch {
+	case m.tab == tabChanges && m.reloadOwed && !now.Before(m.reloadAt) && !now.Before(m.retryAt):
+		m.reloadIfChanged()
+		m.reloadAt = time.Now().Add(budgetFactor * time.Since(now))
+	case m.tab == tabFiles && m.filesOwed:
+		m.reloadFiles() // reloadFiles renders the file too
+	case m.tab == tabFiles:
+		m.refreshViewer()
 	}
 	if m.status != "" && time.Now().After(m.statusTill) {
 		m.status = ""

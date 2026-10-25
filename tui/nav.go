@@ -292,7 +292,7 @@ func (m *model) setTab(t tab) {
 	}
 	switch t {
 	case tabFiles:
-		if m.allFiles == nil {
+		if m.allFiles == nil || m.filesOwed {
 			m.reloadFiles()
 		}
 	case tabChanges:

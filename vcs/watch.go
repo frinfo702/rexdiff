@@ -1,0 +1,277 @@
+package vcs
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"syscall"
+	"time"
+)
+
+// budgetFactor sets the pause after a check of a [Watcher]. The next check
+// waits this many times as long as the last check took. Thus the checks
+// use less than 1/21 of a core. herdr-reviewr uses the same factor.
+const budgetFactor = 20
+
+// Watcher tells, without a git process, if the working tree or the refs
+// can have changed. It compares the file status of the files that git
+// lists, of their directories, and of the git files. It runs git only
+// after a directory or a git file changes.
+//
+// A Watcher does not see a change of the global core.excludesFile, or a
+// copy that keeps the size and the modification time of a file.
+type Watcher struct {
+	r              *Repo
+	gitDir, common string           // absolute paths
+	now            func() time.Time // the clock, which a test can set
+	next           time.Time        // no check before this time
+
+	started bool
+	listed  bool     // files and dirs are from the last list
+	files   []string // the absolute paths that git lists
+	dirs    []string // the root and each directory above a listed path
+
+	// The sums of the last check.
+	list, refs, index, dirSum, fileSum uint64
+}
+
+// Change tells what can have changed since the last call to
+// [Watcher.Changed].
+type Change struct {
+	Files bool // the working tree or the index
+	Refs  bool // HEAD, a ref, or the config
+}
+
+// Watch returns a Watcher of the repository. Its first call to
+// [Watcher.Changed] reports a change of both.
+func (r *Repo) Watch(ctx context.Context) (*Watcher, error) {
+	gitDir, err := r.gitPath(ctx, "--git-dir")
+	if err != nil {
+		return nil, err
+	}
+	common, err := r.gitPath(ctx, "--git-common-dir")
+	if err != nil {
+		return nil, err
+	}
+	return &Watcher{r: r, gitDir: gitDir, common: common, now: time.Now}, nil
+}
+
+// gitPath returns the absolute path that rev-parse gives for flag.
+func (r *Repo) gitPath(ctx context.Context, flag string) (string, error) {
+	out, err := r.run(ctx, nil, "rev-parse", "--path-format=absolute", flag)
+	return strings.TrimSuffix(out, "\n"), err
+}
+
+// Changed tells what can have changed since the last call. The first call
+// reports a change of both. After a call that takes the time d, Changed
+// reports no change for 20 times d. A change in that time shows in the
+// next call after it.
+func (w *Watcher) Changed(ctx context.Context) (Change, error) {
+	start := w.now()
+	if start.Before(w.next) {
+		return Change{}, nil
+	}
+	defer func() {
+		end := w.now()
+		w.next = end.Add(budgetFactor * end.Sub(start))
+	}()
+
+	refs, index := w.sumRefs(), w.sumIndex()
+	dirs := sumPaths(w.dirs)
+	listed := false
+	list := w.list
+	if !w.listed || dirs != w.dirSum || index != w.index {
+		var err error
+		if list, err = w.relist(ctx); err != nil {
+			return Change{}, err
+		}
+		dirs, listed = sumPaths(w.dirs), true
+	}
+	files := sumFiles(w.files)
+	ch := Change{
+		Files: index != w.index || list != w.list || files != w.fileSum,
+		Refs:  refs != w.refs,
+	}
+	if ch.Files && !listed {
+		// An edit of a .gitignore file can change the list.
+		var err error
+		if list, err = w.relist(ctx); err != nil {
+			return Change{}, err
+		}
+		dirs, files = sumPaths(w.dirs), sumFiles(w.files)
+	}
+	if !w.started {
+		w.started, ch = true, Change{Files: true, Refs: true}
+	}
+	w.list, w.refs, w.index, w.dirSum, w.fileSum = list, refs, index, dirs, files
+	return ch, nil
+}
+
+// relist reads the list of the files and their directories again. It
+// returns the sum of the list.
+func (w *Watcher) relist(ctx context.Context) (uint64, error) {
+	w.listed = false
+	paths, err := w.r.lsFiles(ctx, "-co", "--deduplicate", "--exclude-standard")
+	if err != nil {
+		return 0, err
+	}
+	root := w.r.root
+	seen := map[string]bool{root: true}
+	w.dirs = append(w.dirs[:0], root)
+	w.files = w.files[:0]
+	s := newSum()
+	for _, p := range paths {
+		s.str(p)
+		// git lists a nested repository with a slash at the end.
+		p = filepath.Join(root, strings.TrimSuffix(p, "/"))
+		w.files = append(w.files, p)
+		for d := filepath.Dir(p); !seen[d]; d = filepath.Dir(d) {
+			seen[d] = true
+			w.dirs = append(w.dirs, d)
+		}
+	}
+	w.listed = true
+	return uint64(s), nil
+}
+
+// sumRefs returns the sum of the files that change with HEAD, a ref, or
+// the config.
+func (w *Watcher) sumRefs() uint64 {
+	paths := []string{
+		filepath.Join(w.gitDir, "HEAD"),
+		filepath.Join(w.gitDir, "logs", "HEAD"),
+		filepath.Join(w.common, "packed-refs"),
+		filepath.Join(w.common, "FETCH_HEAD"),
+		filepath.Join(w.common, "config"),
+		filepath.Join(w.common, "reftable", "tables.list"),
+	}
+	// The branch of HEAD has its own file. The branches are in the common
+	// directory, which the worktrees of the repository share.
+	if b, err := os.ReadFile(paths[0]); err == nil {
+		ref, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: ")
+		if ok && !strings.Contains(ref, "..") {
+			paths = append(paths, filepath.Join(w.common, filepath.FromSlash(ref)))
+		}
+	}
+	return sumPaths(paths)
+}
+
+// sumIndex returns the sum of the files that change the list of files.
+func (w *Watcher) sumIndex() uint64 {
+	return sumPaths([]string{w.r.index, filepath.Join(w.common, "info", "exclude")})
+}
+
+// sumPaths returns the sum of the path, the size, the modification time,
+// the mode, and the inode of each file. It does not follow a symbolic
+// link.
+func sumPaths(paths []string) uint64 {
+	s := newSum()
+	for _, p := range paths {
+		s.stat(p)
+	}
+	return uint64(s)
+}
+
+// sumFiles is like sumPaths. For a directory, it also adds the git files
+// of the nested repository or the submodule in it, because a commit there
+// does not change the directory.
+func sumFiles(paths []string) uint64 {
+	s := newSum()
+	for _, p := range paths {
+		if s.stat(p) {
+			s.nested(p)
+		}
+	}
+	return uint64(s)
+}
+
+// sum is an FNV-64a hash. It does not allocate, as hash/fnv does for a
+// string.
+type sum uint64
+
+func newSum() sum { return 14695981039346656037 }
+
+func (s *sum) byte(b byte) { *s = (*s ^ sum(b)) * 1099511628211 }
+
+// str adds v and a NUL, so that two strings do not join.
+func (s *sum) str(v string) {
+	for i := range len(v) {
+		s.byte(v[i])
+	}
+	s.byte(0)
+}
+
+func (s *sum) num(v uint64) {
+	for range 8 {
+		s.byte(byte(v))
+		v >>= 8
+	}
+}
+
+// stat adds the path and the file status of p. A missing file adds a
+// marker. stat reports whether p is a directory.
+func (s *sum) stat(p string) (isDir bool) {
+	s.str(p)
+	fi, err := os.Lstat(p)
+	if err != nil {
+		s.num(0)
+		return false
+	}
+	s.num(uint64(fi.Size()))
+	s.num(uint64(fi.ModTime().UnixNano()))
+	s.num(uint64(fi.Mode()))
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
+		s.num(st.Ino)
+	}
+	return fi.IsDir()
+}
+
+// nested adds the git files of the repository in the directory p, if p
+// has one. A commit there changes HEAD or its log, and the directory of
+// the git files.
+func (s *sum) nested(p string) {
+	dotGit := filepath.Join(p, ".git")
+	fi, err := os.Lstat(dotGit)
+	if err != nil {
+		return
+	}
+	s.str(dotGit)
+	dir := dotGit
+	if !fi.IsDir() {
+		// A submodule has a file "gitdir: <path>" in place of a directory.
+		b, err := os.ReadFile(dotGit)
+		gd, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir: ")
+		if err != nil || !ok {
+			return
+		}
+		if dir = gd; !filepath.IsAbs(dir) {
+			dir = filepath.Join(p, dir)
+		}
+	}
+	for _, f := range []string{dir, filepath.Join(dir, "HEAD"), filepath.Join(dir, "logs", "HEAD")} {
+		fi, err := os.Lstat(f)
+		if err != nil {
+			s.num(0)
+			continue
+		}
+		s.num(uint64(fi.Size()))
+		s.num(uint64(fi.ModTime().UnixNano()))
+	}
+}
+
+// lsFiles runs git ls-files with args and returns the listed paths.
+func (r *Repo) lsFiles(ctx context.Context, args ...string) ([]string, error) {
+	out, err := r.run(ctx, nil, slices.Concat([]string{"ls-files", "-z"}, args)...)
+	if err != nil {
+		return nil, err
+	}
+	var ps []string
+	for p := range strings.SplitSeq(out, "\x00") {
+		if p != "" {
+			ps = append(ps, p)
+		}
+	}
+	return ps, nil
+}
