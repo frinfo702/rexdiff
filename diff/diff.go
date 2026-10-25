@@ -83,6 +83,17 @@ type Options struct {
 	Signs bool
 	// Theme sets the colours.
 	Theme Theme
+	// Cache keeps the syntax colours between renders. If Cache is nil, the
+	// render keeps nothing.
+	Cache *Cache
+}
+
+// Cache keeps the syntax colours of the lines, so that a new render of the
+// same lines is fast, for example after a sideways scroll. The zero value
+// is an empty Cache. A Cache is not safe for concurrent use.
+type Cache struct {
+	lines diffview.Cache                  // the lines of Render
+	file  struct{ path, src, out string } // the last file of RenderFile
 }
 
 // tabWidth is the number of spaces that replace a tab.
@@ -110,6 +121,9 @@ func Render(path, old, new string, o Options) *Diff {
 		Width(o.Width).
 		TabWidth(tabWidth).
 		XOffset(o.Offset)
+	if o.Cache != nil {
+		dv = dv.Cache(&o.Cache.lines)
+	}
 	if o.Expanded != nil {
 		dv = dv.Expand(func(f diffview.Fold) bool { return o.Expanded(foldOf(f)) })
 	}

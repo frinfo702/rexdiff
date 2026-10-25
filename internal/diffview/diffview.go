@@ -74,18 +74,50 @@ type View struct {
 	// The View keeps the lexer, because to match a file name is slow.
 	cachedLexer chroma.Lexer
 
-	// syntaxCache keeps the highlighted lines, so that the View highlights
-	// each equal line once.
-	syntaxCache map[syntaxKey]string
+	cache *Cache // the highlighted lines
+}
+
+// Cache keeps highlighted lines, so that chroma highlights each line once.
+// Views that share a Cache share the work. The zero value is an empty
+// Cache. A Cache is not safe for concurrent use.
+type Cache struct {
+	lines map[syntaxKey]string
+	size  int // the bytes of the lines and their sources
+}
+
+// maxCacheSize limits the memory of a Cache, in bytes. A full Cache
+// empties.
+const maxCacheSize = 32 << 20
+
+// put keeps the highlighted line s for key k.
+func (c *Cache) put(k syntaxKey, s string) {
+	// A source is part of the whole file. A copy lets the file go.
+	k.source = strings.Clone(k.source)
+	n := len(k.source) + len(s)
+	if c.lines == nil || c.size+n > maxCacheSize {
+		c.lines, c.size = make(map[syntaxKey]string), 0
+	}
+	c.lines[k] = s
+	c.size += n
 }
 
 // New returns a View with the unified layout and a tab width of 8.
 func New() *View {
 	return &View{
-		layout:      layoutUnified,
-		tabWidth:    defaultTabWidth,
-		syntaxCache: make(map[syntaxKey]string),
+		layout:   layoutUnified,
+		tabWidth: defaultTabWidth,
+		cache:    &Cache{},
 	}
+}
+
+// Cache sets the cache of the highlighted lines. A nil c gives the View a
+// new Cache.
+func (v *View) Cache(c *Cache) *View {
+	if c == nil {
+		c = &Cache{}
+	}
+	v.cache = c
+	return v
 }
 
 // Split sets the split layout: the old lines on the left, the new lines on
@@ -109,11 +141,10 @@ func (v *View) After(path, content string) *View {
 	return v
 }
 
-// clearCaches clears the lexer, the syntax cache, and the diff. Call it when
-// the content changes.
+// clearCaches clears the lexer and the diff. Call it when the content
+// changes.
 func (v *View) clearCaches() {
 	v.cachedLexer = nil
-	clear(v.syntaxCache)
 	v.isComputed = false
 }
 
@@ -526,16 +557,17 @@ func hunkLineCounts(h *udiff.Hunk) (before, after int) {
 }
 
 // highlightCode returns source with syntax colours on the background
-// bgColor. The syntax cache keeps the result, so highlightCode highlights
-// each equal line once. If chroma fails, it returns source as it is.
+// bgColor. The cache keeps the result. If chroma fails, it returns source
+// as it is.
 func (v *View) highlightCode(source string, bgColor color.Color) string {
 	// Chroma makes a lone CR a line break, so show it as a symbol first.
 	source = strings.ReplaceAll(source, "\r", "\u240d")
-	key := newSyntaxKey(source, bgColor)
-	if cached, ok := v.syntaxCache[key]; ok {
+	lexer := v.chromaLexer()
+	key := newSyntaxKey(lexer.Config().Name, source, bgColor)
+	if cached, ok := v.cache.lines[key]; ok {
 		return cached
 	}
-	it, err := v.chromaLexer().Tokenise(nil, source)
+	it, err := lexer.Tokenise(nil, source)
 	if err != nil {
 		return source
 	}
@@ -545,22 +577,23 @@ func (v *View) highlightCode(source string, bgColor color.Color) string {
 		return source
 	}
 	out := b.String()
-	v.syntaxCache[key] = out
+	v.cache.put(key, out)
 	return out
 }
 
-// syntaxKey is the key of the syntax cache: the source and its background
-// colour. noColor is true for no background, because lipgloss.NoColor has
-// the same RGBA value as black.
+// syntaxKey is the key of a [Cache]: the lexer, the source, and its
+// background colour. noColor is true for no background, because
+// lipgloss.NoColor has the same RGBA value as black.
 type syntaxKey struct {
-	source     string
-	noColor    bool
-	r, g, b, a uint32
+	lexer, source string
+	noColor       bool
+	r, g, b, a    uint32
 }
 
-// newSyntaxKey returns the cache key of source on the background bgColor.
-func newSyntaxKey(source string, bgColor color.Color) syntaxKey {
-	k := syntaxKey{source: source}
+// newSyntaxKey returns the cache key of source, highlighted with the lexer
+// of that name on the background bgColor.
+func newSyntaxKey(lexer, source string, bgColor color.Color) syntaxKey {
+	k := syntaxKey{lexer: lexer, source: source}
 	if _, none := bgColor.(lipgloss.NoColor); bgColor == nil || none {
 		k.noColor = true
 		return k

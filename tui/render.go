@@ -86,6 +86,7 @@ func (m *model) diffOptions(xoff int) diff.Options {
 			Green:      m.green,
 			Red:        m.red,
 		},
+		Cache: &m.cache,
 	}
 }
 

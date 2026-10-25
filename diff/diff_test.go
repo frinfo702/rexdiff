@@ -348,3 +348,34 @@ func TestWrap(t *testing.T) {
 		}
 	}
 }
+
+// TestCache checks that a shared [diff.Cache] gives the same lines as no
+// cache: for other offsets, for other languages, and for new content.
+func TestCache(t *testing.T) {
+	const src = "def f(): # a comment\n\treturn 1\n"
+	renders := []struct {
+		path, old, new string
+		file           bool // RenderFile, of new
+		offset         int
+	}{
+		{path: "a.go", old: src, new: src + "x\n"},
+		{path: "a.go", old: src, new: src + "x\n", offset: 4},
+		{path: "a.py", old: src, new: src + "x\n"},
+		{path: "a.py", new: src, file: true},
+		{path: "a.py", new: src + "y\n", file: true},
+		{path: "a.go", new: src + "y\n", file: true},
+	}
+	var c diff.Cache
+	for _, r := range renders {
+		render := func(c *diff.Cache) []string {
+			o := diff.Options{Width: 40, Offset: r.offset, Cache: c}
+			if r.file {
+				return diff.RenderFile(r.path, r.new, o).Lines
+			}
+			return diff.Render(r.path, r.old, r.new, o).Lines
+		}
+		if got, want := render(&c), render(nil); !slices.Equal(got, want) {
+			t.Errorf("%+v: with the cache\n%q\nwant\n%q", r, got, want)
+		}
+	}
+}

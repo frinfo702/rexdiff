@@ -26,7 +26,7 @@ func RenderFile(path, src string, o Options) *Diff {
 		"\r", "\u240d",
 		"\t", strings.Repeat(" ", tabWidth),
 	).Replace(src)
-	hl := strings.Split(highlight(path, src), "\n")
+	hl := strings.Split(o.Cache.highlight(path, src), "\n")
 	hl = hl[:min(len(hl), len(Lines(src)))] // chroma can add a line break at the end
 	digits := len(strconv.Itoa(len(hl)))
 	numWidth := digits + 2 // a space on each side of the number
@@ -74,9 +74,21 @@ func fileLineParts(l string, code int, o Options) []string {
 	return []string{ansi.TruncateLeft(l, o.Offset, "")}
 }
 
-// highlight colours the whole file at once, so that tokens that span lines
-// get the correct colour. If it cannot highlight src, it returns src with
-// its control characters replaced.
+// highlight returns highlight(path, src), and keeps it for the next call.
+// A nil c keeps nothing.
+func (c *Cache) highlight(path, src string) string {
+	if c == nil {
+		return highlight(path, src)
+	}
+	if f := &c.file; f.path != path || f.src != src {
+		f.path, f.src, f.out = path, src, highlight(path, src)
+	}
+	return c.file.out
+}
+
+// highlight colours src, the whole file at path, at once, so that tokens
+// that span lines get the correct colour. If it cannot highlight src, it
+// returns src with its control characters replaced.
 func highlight(path, src string) string {
 	it, err := diffview.Lexer(path, src).Tokenise(nil, src)
 	if err != nil {

@@ -220,6 +220,7 @@ type model struct {
 	listHidden bool
 	focusList  bool // the keys j and k move in the file list
 	listW      int
+	cache      diff.Cache // the syntax colours, so that a sideways scroll is fast
 
 	comments diff.Comments
 	editor   textarea.Model
