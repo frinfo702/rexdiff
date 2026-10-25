@@ -243,7 +243,7 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 	case !m.sampled && !msg.send:
 		// Without a list, the turns do not start. Thus list again later.
 		m.log.Warn("agent list failed", "err", msg.err)
-		m.sampleAt = m.now().Add(backoff(&m.sampleWait))
+		m.sampleRetry.fail(m.now())
 	}
 	m.observeTurn()
 	if !msg.send {

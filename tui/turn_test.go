@@ -231,9 +231,9 @@ func TestSampleRetry(t *testing.T) {
 	clk := setClock(&m)
 	log := logRex(t, &m) // its output is no list
 	m = step(t, m, m.listAgents(agentsMsg{})())
-	if m.sampled || m.sampleAt.IsZero() || m.sampleWait != 2*time.Second {
+	if m.sampled || m.sampleRetry.at.IsZero() || m.sampleRetry.wait != 2*time.Second {
 		t.Fatalf("after a failed list: sampled %v, at %v, wait %v; want a retry",
-			m.sampled, m.sampleAt, m.sampleWait)
+			m.sampled, m.sampleRetry.at, m.sampleRetry.wait)
 	}
 	clk.advance(time.Second - time.Nanosecond)
 	if got := tickAgents(t, &m); len(got) != 0 || rexLists(t, log) != 1 {
@@ -246,8 +246,8 @@ func TestSampleRetry(t *testing.T) {
 		t.Fatalf("a tick after the wait: %d lists, %d rex lists; want 1 that fails, 2",
 			len(got), rexLists(t, log))
 	}
-	if m = step(t, m, got[0]); m.sampleWait != 4*time.Second {
-		t.Errorf("after a second failure: wait %v, want 4s", m.sampleWait)
+	if m = step(t, m, got[0]); m.sampleRetry.wait != 4*time.Second {
+		t.Errorf("after a second failure: wait %v, want 4s", m.sampleRetry.wait)
 	}
 	m = step(t, m, sample("p", "pi", dir))
 	clk.advance(2 * time.Second)

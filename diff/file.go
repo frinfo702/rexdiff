@@ -18,6 +18,7 @@ const lineNumberColor = "8"
 // RenderFile shows src, the content of the file at path, with line numbers
 // and syntax colours. Each row is a [KindEqual] row, with the same line
 // number on the two sides. The line numbers count as the [SideNew] side.
+// RenderFile uses only the Width, Offset, Wrap, and Cache fields of o.
 func RenderFile(path, src string, o Options) *Diff {
 	// Chroma makes a lone CR a line break. RenderFile shows a lone CR as a
 	// symbol, so that the lines are the same as [Lines] gives.
@@ -25,7 +26,7 @@ func RenderFile(path, src string, o Options) *Diff {
 	src = strings.NewReplacer(
 		"\r\n", "\n",
 		"\r", "\u240d",
-		"\t", strings.Repeat(" ", tabWidth),
+		"\t", strings.Repeat(" ", diffview.TabWidth),
 	).Replace(src)
 	hl := strings.Split(o.Cache.fileColours(path, src), "\n")
 	lines := 0

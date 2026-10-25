@@ -119,10 +119,12 @@ func (p *pane) side(x int) (s diff.Side, onNumber bool) {
 	return p.diff.SideAt(x)
 }
 
-// changed is a changed file with its line counts.
+// changed is a changed file with its line counts and the hash of its old
+// content, which names its folds.
 type changed struct {
 	vcs.File
 	adds, dels int
+	oldHash    uint64
 }
 
 // turnState is a turn of the agents in the repository. It keeps a
@@ -196,19 +198,17 @@ type model struct {
 
 	// watch tells when the files or the refs change, or is nil. If it is
 	// nil, a tick reloads the current tab every pollEvery, after polled.
-	// After a failure of the watcher, a tick starts it again at watchAt.
-	watch     *vcs.Watcher
-	polled    time.Time
-	watchAt   time.Time
-	watchWait time.Duration // the wait after the next failure, or 0
+	// After a failure of the watcher, a tick starts it again.
+	watch      *vcs.Watcher
+	polled     time.Time
+	watchRetry retryTimer
 	// reloadOwed is true if a change is seen but the Changes tab does not
 	// show it yet. A reload waits until reloadAt, after the pause of the
-	// last one, and until retryAt, after a failure.
-	reloadOwed bool
-	filesOwed  bool // the same for the list of all files
-	reloadAt   time.Time
-	retryAt    time.Time
-	retryWait  time.Duration // the wait after the next failure, or 0
+	// last one, and until the retry, after a failure.
+	reloadOwed  bool
+	filesOwed   bool // the same for the list of all files
+	reloadAt    time.Time
+	reloadRetry retryTimer
 
 	tab   tab
 	scope Scope
@@ -229,10 +229,9 @@ type model struct {
 	// sampled is true after the first list of the agents. An edge before
 	// it can be wrong, so the tracker gets no states before it.
 	sampled bool
-	// After a failed list, a tick lists the agents again at sampleAt.
-	// Each failure doubles the wait, as in herdr-reviewr.
-	sampleAt   time.Time
-	sampleWait time.Duration // the wait after the next failure, or 0
+	// After a failed list, a tick lists the agents again, as in
+	// herdr-reviewr.
+	sampleRetry retryTimer
 	// agentsHere tells if an agent works in the repository, or is nil if
 	// the program does not know.
 	agentsHere *bool
@@ -284,6 +283,8 @@ type model struct {
 	// can set a longer time.
 	grepBudget time.Duration
 	find       findState
+	findLines  splitLines // the lines that find searches
+	md         mdRenderer // the last markdown renderer
 	drag       dragState
 	click      clickChain
 	help       help.Model
@@ -515,14 +516,21 @@ func (m *model) loadChanges(force bool) {
 	if f := m.changedFile(); f != nil {
 		selPath = f.Path
 	}
+	prev := make(map[string]changed, len(m.files))
+	for _, c := range m.files {
+		prev[c.Path] = c
+	}
 	m.files = make([]changed, len(files))
 	m.shownTrees, m.changeSel, m.changes.note = trees, -1, ""
 	for i, f := range files {
 		c := &m.files[i]
-		c.File = f
-		if !f.Binary && !f.TooBig {
+		if p, ok := prev[f.Path]; ok && p.Old == f.Old && p.New == f.New {
+			*c = p // the same change, so the counts stay
+		} else if !f.Binary && !f.TooBig {
 			c.adds, c.dels = diff.Count(f.Old, f.New)
+			c.oldHash = hash(f.Old)
 		}
+		c.File = f
 		if f.Path == selPath {
 			m.changeSel = i
 		}
@@ -775,12 +783,22 @@ const (
 // herdr-reviewr.
 const pollEvery = 5 * time.Second
 
-// backoff returns the wait before the next try after a failure, and
-// doubles *wait. The waits go from retryFirst to retryMax.
-func backoff(wait *time.Duration) time.Duration {
-	w := max(*wait, retryFirst)
-	*wait = min(2*w, retryMax)
-	return w
+// retryTimer tells when to try again after a failure. Each failure
+// doubles the wait, from retryFirst to retryMax.
+type retryTimer struct {
+	at   time.Time     // the next try, or zero
+	wait time.Duration // the wait after the next failure, or 0
+}
+
+// fail sets the next try after a failure at now.
+func (r *retryTimer) fail(now time.Time) {
+	w := max(r.wait, retryFirst)
+	r.at, r.wait = now.Add(w), min(2*w, retryMax)
+}
+
+// due reports whether a try waits and its time is at or before now.
+func (r *retryTimer) due(now time.Time) bool {
+	return !r.at.IsZero() && !now.Before(r.at)
 }
 
 // retry sets the wait before the next reload after the error err. Each
@@ -788,10 +806,10 @@ func backoff(wait *time.Duration) time.Duration {
 // clears the wait.
 func (m *model) retry(err error) {
 	if err == nil {
-		m.retryWait, m.retryAt = 0, time.Time{}
+		m.reloadRetry = retryTimer{}
 		return
 	}
-	m.retryAt = m.now().Add(backoff(&m.retryWait))
+	m.reloadRetry.fail(m.now())
 	m.reloadOwed = true
 }
 
@@ -800,7 +818,7 @@ func (m *model) retry(err error) {
 func (m *model) dropWatch(err error) {
 	m.log.Warn("watch failed", "err", err)
 	m.watch = nil
-	m.watchAt = m.now().Add(backoff(&m.watchWait))
+	m.watchRetry.fail(m.now())
 }
 
 // startWatch starts the watcher of the repository. The watcher uses the
@@ -811,7 +829,7 @@ func (m *model) startWatch() error {
 		return err
 	}
 	w.SetClock(m.now)
-	m.watch, m.watchAt = w, time.Time{}
+	m.watch, m.watchRetry.at = w, time.Time{}
 	return nil
 }
 
@@ -821,7 +839,7 @@ func (m *model) startWatch() error {
 func (m *model) changed() vcs.Change {
 	all := vcs.Change{Files: true, Refs: true}
 	now := m.now()
-	if m.watch == nil && !m.watchAt.IsZero() && !now.Before(m.watchAt) {
+	if m.watch == nil && m.watchRetry.due(now) {
 		if err := m.startWatch(); err != nil {
 			m.dropWatch(err)
 		}
@@ -841,7 +859,7 @@ func (m *model) changed() vcs.Change {
 		m.polled = now
 		return all
 	}
-	m.watchWait = 0
+	m.watchRetry = retryTimer{}
 	return ch
 }
 
@@ -866,8 +884,8 @@ func (m *model) onTick() tea.Cmd {
 	if ch.Refs && m.watch != nil {
 		cmds = append(cmds, m.refsChanged())
 	}
-	if m.rex != nil && !m.sampled && !m.sampleAt.IsZero() && !now.Before(m.sampleAt) {
-		m.sampleAt = time.Time{} // one list at a time
+	if m.rex != nil && !m.sampled && m.sampleRetry.due(now) {
+		m.sampleRetry.at = time.Time{} // one list at a time
 		cmds = append(cmds, m.listAgents(agentsMsg{}))
 	}
 	if m.tab == tabPR && m.now().Sub(m.prf.polled) >= prPoll {
@@ -889,7 +907,7 @@ func (m *model) reloadDue() {
 	}
 	now := m.now()
 	switch {
-	case m.tab == tabChanges && m.reloadOwed && !now.Before(m.reloadAt) && !now.Before(m.retryAt):
+	case m.tab == tabChanges && m.reloadOwed && !now.Before(m.reloadAt) && !now.Before(m.reloadRetry.at):
 		m.reloadIfChanged()
 		end := m.now()
 		m.reloadAt = end.Add(budgetFactor * end.Sub(now))

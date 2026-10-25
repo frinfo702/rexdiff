@@ -98,9 +98,6 @@ type Cache struct {
 	file  struct{ path, src, out string } // the last file of RenderFile
 }
 
-// tabWidth is the number of spaces that replace a tab.
-const tabWidth = 4
-
 // Diff is the rendered output. Lines[i] is the screen line for Rows[i].
 // Lines is empty when there is nothing to show, for example when the two
 // versions are the same.
@@ -127,7 +124,6 @@ func Render(path, old, new string, o Options) *Diff {
 		Before(path, old).
 		After(path, new).
 		Width(o.Width).
-		TabWidth(tabWidth).
 		XOffset(o.Offset)
 	if o.Cache != nil {
 		dv = dv.Cache(&o.Cache.lines)
@@ -144,7 +140,8 @@ func Render(path, old, new string, o Options) *Diff {
 	if o.Wrap {
 		dv = dv.Wrap()
 	}
-	dv = o.Theme.apply(dv)
+	dv = dv.Style(diffview.TerminalStyle(o.Theme.Background, o.Theme.Foreground,
+		o.Theme.Green, o.Theme.Red, o.Theme.dark()))
 	out, rows, g := dv.Render()
 
 	d := &Diff{split: o.Split, src: [2]string{old, new}, wrap: o.Wrap}

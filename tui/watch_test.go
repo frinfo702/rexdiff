@@ -80,19 +80,19 @@ func TestTickRetries(t *testing.T) {
 	clk := setClock(&m)
 	path := os.Getenv("PATH")
 	noGit(t)
-	if m = press(t, m, "r"); m.retryAt.IsZero() || !strings.HasPrefix(m.status, "refresh failed: ") {
+	if m = press(t, m, "r"); m.reloadRetry.at.IsZero() || !strings.HasPrefix(m.status, "refresh failed: ") {
 		t.Fatalf("after a failed reload: retry at %v, status %q; want a wait, a flash",
-			m.retryAt, m.status)
+			m.reloadRetry.at, m.status)
 	}
 	t.Setenv("PATH", path)
-	retryAt := m.retryAt
-	if m = step(t, m, tickMsg{}); m.retryAt != retryAt {
-		t.Errorf("a tick in the wait: retry at %v, want %v", m.retryAt, retryAt)
+	retryAt := m.reloadRetry.at
+	if m = step(t, m, tickMsg{}); m.reloadRetry.at != retryAt {
+		t.Errorf("a tick in the wait: retry at %v, want %v", m.reloadRetry.at, retryAt)
 	}
 	clk.advance(retryFirst)
 	m = step(t, m, tickMsg{})
-	if !m.retryAt.IsZero() || m.retryWait != 0 {
-		t.Errorf("after a good reload, retryAt %v, retryWait %v; want zero", m.retryAt, m.retryWait)
+	if !m.reloadRetry.at.IsZero() || m.reloadRetry.wait != 0 {
+		t.Errorf("after a good reload, retryAt %v, retryWait %v; want zero", m.reloadRetry.at, m.reloadRetry.wait)
 	}
 }
 
@@ -105,7 +105,7 @@ func TestRetryBackoff(t *testing.T) {
 	for i, w := range want {
 		before := m.now()
 		m.retry(errors.New("fail"))
-		got := m.retryAt.Sub(before).Round(time.Second)
+		got := m.reloadRetry.at.Sub(before).Round(time.Second)
 		if got != time.Duration(w)*time.Second {
 			t.Errorf("failure %d: wait %v, want %ds", i+1, got, w)
 		}

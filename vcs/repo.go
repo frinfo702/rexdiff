@@ -59,7 +59,8 @@ func Open(ctx context.Context, dir string) (*Repo, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.root = strings.TrimSuffix(root, "\n")
+	// Resolve the links once, so Contains and Owns compare real paths.
+	r.root = evalSymlinks(strings.TrimSuffix(root, "\n"))
 	index, err := r.run(ctx, nil,
 		"rev-parse", "--path-format=absolute", "--git-path", "index")
 	if err != nil {
@@ -511,9 +512,8 @@ func (r *Repo) ReadFile(path string) (string, error) {
 // follows symbolic links, so /tmp and /private/tmp on macOS are the same.
 // Contains does not run git, thus it does not see a nested repository.
 func (r *Repo) Contains(dir string) bool {
-	root := evalSymlinks(r.root)
 	dir = evalSymlinks(dir)
-	return dir == root || strings.HasPrefix(dir, root+string(filepath.Separator))
+	return dir == r.root || strings.HasPrefix(dir, r.root+string(filepath.Separator))
 }
 
 // Owns reports whether dir is in the working tree of r, and not in another
@@ -532,7 +532,7 @@ func (r *Repo) Owns(ctx context.Context, dir string) (bool, error) {
 		return false, err
 	}
 	top := strings.TrimSuffix(out, "\n")
-	return top != "" && evalSymlinks(top) == evalSymlinks(r.root), nil
+	return top != "" && evalSymlinks(top) == r.root, nil
 }
 
 // evalSymlinks returns p with its symbolic links resolved, or p if that

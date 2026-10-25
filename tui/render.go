@@ -193,6 +193,18 @@ const (
 	noteTooBig = "file too large to show"
 )
 
+// fileNote returns the note for a file that ReadFile does not read, and
+// reports whether err has a note.
+func fileNote(err error) (string, bool) {
+	switch {
+	case errors.Is(err, vcs.ErrBinary):
+		return noteBinary, true
+	case errors.Is(err, vcs.ErrTooBig):
+		return noteTooBig, true
+	}
+	return "", false
+}
+
 // renderChanges shows the selected file in the Changes tab.
 func (m *model) renderChanges() {
 	p := &m.changes
@@ -218,7 +230,7 @@ func (m *model) renderChanges() {
 	case m.showsMarkdown(f):
 		m.setMarkdown(p, f.New)
 	default:
-		if o := m.folds[f.Path]; o != nil && o.Old != hash(f.Old) {
+		if o := m.folds[f.Path]; o != nil && o.Old != f.oldHash {
 			delete(m.folds, f.Path)
 		}
 		o := m.diffOptions(p.xoff)
@@ -260,13 +272,11 @@ func (m *model) refreshViewer() {
 	}
 	m.viewed, m.viewedPath = content, path
 	p.path = path
+	note, isNote := fileNote(err)
 	switch {
-	case errors.Is(err, vcs.ErrBinary):
+	case isNote:
 		p.path = ""
-		p.set([]string{dimStyle.Render("  " + noteBinary)}, nil)
-	case errors.Is(err, vcs.ErrTooBig):
-		p.path = ""
-		p.set([]string{dimStyle.Render("  " + noteTooBig)}, nil)
+		p.set([]string{dimStyle.Render("  " + note)}, nil)
 	case err != nil:
 		m.log.Debug("read file", "path", path, "err", err)
 		p.path = ""
@@ -279,11 +289,16 @@ func (m *model) refreshViewer() {
 }
 
 // markdown returns a glamour renderer for the terminal theme, or nil. The
-// renderer wraps at wrap columns.
+// renderer wraps at wrap columns. The model keeps the last renderer,
+// because a new one is slow to make.
 func (m *model) markdown(wrap int) *glamour.TermRenderer {
 	style := "dark"
 	if m.bg != nil && !m.dark {
 		style = "light"
+	}
+	md := &m.md
+	if md.r != nil && md.style == style && md.wrap == wrap {
+		return md.r
 	}
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStandardStyle(style),
@@ -292,7 +307,15 @@ func (m *model) markdown(wrap int) *glamour.TermRenderer {
 	if err != nil {
 		return nil
 	}
+	*md = mdRenderer{r: r, style: style, wrap: wrap}
 	return r
+}
+
+// mdRenderer is a glamour renderer with its style and wrap width.
+type mdRenderer struct {
+	r     *glamour.TermRenderer
+	style string
+	wrap  int
 }
 
 // renderMarkdown returns the lines of src, rendered with r. If r is nil or

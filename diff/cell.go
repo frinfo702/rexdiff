@@ -86,7 +86,7 @@ func (d *Diff) segment(i int, s Side) string {
 // expand returns line as the screen shows it, with the tabs as spaces and
 // the control characters as symbols.
 func expand(line string) string {
-	return diffview.Escape(strings.ReplaceAll(line, "\t", strings.Repeat(" ", tabWidth)))
+	return diffview.Escape(strings.ReplaceAll(line, "\t", strings.Repeat(" ", diffview.TabWidth)))
 }
 
 // runeAt returns the index of the first rune of the grapheme cluster of
@@ -96,7 +96,7 @@ func runeAt(line string, col int) int {
 	i, c := 0, 0
 	for line != "" {
 		g, _ := ansi.FirstGraphemeCluster(line, ansi.GraphemeWidth)
-		w := tabWidth
+		w := diffview.TabWidth
 		if g != "\t" {
 			w = ansi.StringWidth(diffview.Escape(g))
 		}

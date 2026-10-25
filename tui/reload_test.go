@@ -110,8 +110,8 @@ func TestWatchRestarts(t *testing.T) {
 	clk.advance(retryFirst)
 	path := os.Getenv("PATH")
 	noGit(t)
-	if m = step(t, m, tickMsg{}); m.watch != nil || !m.watchAt.After(m.now()) {
-		t.Fatalf("a failed start: watcher %v, next try %v; want none, a wait", m.watch, m.watchAt)
+	if m = step(t, m, tickMsg{}); m.watch != nil || !m.watchRetry.at.After(m.now()) {
+		t.Fatalf("a failed start: watcher %v, next try %v; want none, a wait", m.watch, m.watchRetry.at)
 	}
 	t.Setenv("PATH", path)
 	if m = step(t, m, tickMsg{}); m.watch != nil {
@@ -129,8 +129,8 @@ func TestWatchErrorRestarts(t *testing.T) {
 	m, dir := watched(t)
 	noGit(t)
 	testgit.WriteFile(t, dir, "new.go", "package a\n") // the watcher lists the files again
-	if m = step(t, m, tickMsg{}); m.watch != nil || m.watchAt.IsZero() {
+	if m = step(t, m, tickMsg{}); m.watch != nil || m.watchRetry.at.IsZero() {
 		t.Errorf("after an error of the watcher: watcher %v, next try %v; want none, a try",
-			m.watch, m.watchAt)
+			m.watch, m.watchRetry.at)
 	}
 }

@@ -418,7 +418,7 @@ func (m *model) expandFold(f diff.Fold) {
 	}
 	o := m.folds[file.Path]
 	if o == nil {
-		o = &openFolds{Old: hash(file.Old)}
+		o = &openFolds{Old: file.oldHash}
 		m.folds[file.Path] = o
 	}
 	o.Ranges = append(o.Ranges, [2]int{f.Old, f.Old + f.Lines - 1})

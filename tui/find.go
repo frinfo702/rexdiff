@@ -99,12 +99,27 @@ func (m *model) paneSource() (old, new []string) {
 	switch m.tab {
 	case tabChanges:
 		if f := m.changedFile(); f != nil {
-			return diff.Lines(f.Old), diff.Lines(f.New)
+			return m.findLines.of(f.Old, f.New)
 		}
 	case tabFiles:
-		return nil, diff.Lines(m.viewed)
+		return m.findLines.of("", m.viewed)
 	}
 	return nil, nil
+}
+
+// splitLines keeps the lines of the last two sides, so a find does not
+// split the file again on each frame.
+type splitLines struct {
+	old, new           string
+	oldLines, newLines []string
+}
+
+// of returns the lines of old and new.
+func (s *splitLines) of(old, new string) ([]string, []string) {
+	if old != s.old || new != s.new {
+		*s = splitLines{old, new, diff.Lines(old), diff.Lines(new)}
+	}
+	return s.oldLines, s.newLines
 }
 
 // findHits returns the lines of the pane that match q, in order. It

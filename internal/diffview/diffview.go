@@ -17,11 +17,13 @@ import (
 )
 
 const (
-	leadingSymbolsSize = 2 // the width of a symbol, such as symInsert
-	lineNumPadding     = 1 // the space on each side of a line number
-	defaultTabWidth    = 8
+	leadingSymbolsSize = 2   // the width of a symbol, such as symInsert
+	lineNumPadding     = 1   // the space on each side of a line number
 	ellipsis           = "…" // shows where a line is cut
 )
+
+// TabWidth is the number of spaces that replace a tab.
+const TabWidth = 4
 
 // These symbols are at the start of the code of a line. A bar in the colour
 // of the line marks each changed line. [View.Signs] shows + and - in place
@@ -47,15 +49,14 @@ const (
 
 // View draws the difference between two versions of a file.
 type View struct {
-	layout   layout
-	before   file
-	after    file
-	width    int
-	xOffset  int
-	style    Style
-	tabWidth int
-	wrap     bool // wrap long lines instead of cutting them
-	signs    bool // mark a changed line with + or -, not with a bar
+	layout  layout
+	before  file
+	after   file
+	width   int
+	xOffset int
+	style   Style
+	wrap    bool // wrap long lines instead of cutting them
+	signs   bool // mark a changed line with + or -, not with a bar
 
 	isComputed bool
 	err        error
@@ -107,13 +108,9 @@ func (c *Cache) put(k syntaxKey, s string) {
 	c.size += n
 }
 
-// New returns a View with the unified layout and a tab width of 8.
+// New returns a View with the unified layout.
 func New() *View {
-	return &View{
-		layout:   layoutUnified,
-		tabWidth: defaultTabWidth,
-		cache:    &Cache{},
-	}
+	return &View{layout: layoutUnified, cache: &Cache{}}
 }
 
 // Cache makes v keep its highlighted lines in c. A nil c gives v a new
@@ -170,12 +167,6 @@ func (v *View) XOffset(xOffset int) *View {
 	return v
 }
 
-// TabWidth sets the number of spaces that replace a tab.
-func (v *View) TabWidth(tabWidth int) *View {
-	v.tabWidth = tabWidth
-	return v
-}
-
 // Render returns the rendered diff, one row for each of its lines, and the
 // columns of the line numbers.
 func (v *View) Render() (string, []Row, Geometry) {
@@ -221,7 +212,7 @@ func (v *View) normalizeLineEndings() {
 // replaceTabs replaces the tabs in the lines of the diff with spaces. It runs
 // after computeDiff, so that a change from a tab to spaces is a change.
 func (v *View) replaceTabs() {
-	spaces := strings.Repeat(" ", v.tabWidth)
+	spaces := strings.Repeat(" ", TabWidth)
 	for _, h := range v.unified.Hunks {
 		for i := range h.Lines {
 			h.Lines[i].Content = strings.ReplaceAll(h.Lines[i].Content, "\t", spaces)
