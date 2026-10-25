@@ -109,14 +109,10 @@ func (t *fileListTree) setExpanded(dir string, want bool) bool {
 // changes.
 func (t *fileListTree) reveal(path string) bool {
 	changed := false
-	for dir := path; ; {
-		i := strings.LastIndexByte(dir, '/')
-		if i < 0 {
-			return changed
-		}
-		dir = dir[:i]
+	for dir, _, ok := strings.CutLast(path, "/"); ok; dir, _, ok = strings.CutLast(dir, "/") {
 		changed = t.setExpanded(dir, true) || changed
 	}
+	return changed
 }
 
 // list returns the file list of the current tab, or nil on the PR tab.

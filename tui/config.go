@@ -210,7 +210,7 @@ func configError(err error) error {
 	if !ok {
 		return fmt.Errorf("config: %w", err)
 	}
-	key := strings.ReplaceAll(strings.TrimPrefix(string(se.JSONPointer), "/"), "/", ".")
+	key := strings.Join(slices.Collect(se.JSONPointer.Tokens()), ".")
 	if errors.Is(err, json.ErrUnknownName) {
 		return fmt.Errorf("config: unknown key %q", key)
 	}

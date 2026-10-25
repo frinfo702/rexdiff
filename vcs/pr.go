@@ -136,7 +136,9 @@ func remoteHost(u string) string {
 	} else if a, _, ok := strings.Cut(u, ":"); ok {
 		auth = a
 	}
-	auth = auth[strings.LastIndex(auth, "@")+1:]
+	if _, h, ok := strings.CutLast(auth, "@"); ok {
+		auth = h
+	}
 	host, _, _ := strings.Cut(auth, ":")
 	return strings.ToLower(host)
 }

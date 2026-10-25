@@ -219,10 +219,11 @@ func (r *Repo) notIgnored(ctx context.Context, paths []string) ([]string, error)
 	if err != nil {
 		return nil, err
 	}
-	ignored := strings.Split(out, "\x00")
-	return slices.DeleteFunc(paths, func(p string) bool {
-		return slices.Contains(ignored, "./"+p)
-	}), nil
+	ignored := map[string]bool{}
+	for p := range strings.SplitSeq(out, "\x00") {
+		ignored[p] = true
+	}
+	return slices.DeleteFunc(paths, func(p string) bool { return ignored["./"+p] }), nil
 }
 
 // sumRefs returns the sum of the files that change with HEAD, a ref, or
@@ -240,8 +241,8 @@ func (w *Watcher) sumRefs() uint64 {
 	// directory, which the worktrees of the repository share.
 	if b, err := os.ReadFile(paths[0]); err == nil {
 		ref, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: ")
-		if ok && !strings.Contains(ref, "..") {
-			paths = append(paths, filepath.Join(w.common, filepath.FromSlash(ref)))
+		if p, err := filepath.Localize(ref); ok && err == nil { // no ".." or "/" at the start
+			paths = append(paths, filepath.Join(w.common, p))
 		}
 	}
 	return sumPaths(paths)

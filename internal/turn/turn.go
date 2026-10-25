@@ -4,7 +4,11 @@
 // come from herdr-reviewr.
 package turn
 
-import "github.com/rednafi/rexdiff/rex"
+import (
+	"slices"
+
+	"github.com/rednafi/rexdiff/rex"
+)
 
 // state is the work state of a repository. fold makes it from the states
 // of all the agents in the repository.
@@ -27,14 +31,10 @@ func rests(s rex.State) bool { return s == rex.StateIdle || s == rex.StateDone }
 // fold returns the state of a repository whose agents are in the states
 // states. One working agent makes the repository work.
 func fold(states ...rex.State) state {
-	isHeld := false
-	for _, s := range states {
-		if s == rex.StateWorking {
-			return working
-		}
-		isHeld = isHeld || !rests(s)
+	if slices.Contains(states, rex.StateWorking) {
+		return working
 	}
-	if isHeld {
+	if slices.ContainsFunc(states, func(s rex.State) bool { return !rests(s) }) {
 		return held
 	}
 	return resting

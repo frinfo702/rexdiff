@@ -109,11 +109,9 @@ func (cs *Comments) Remove(id int) {
 
 // All returns the comments, sorted by path and then by start line.
 func (cs *Comments) All() []*Comment {
-	all := slices.Clone(cs.items)
-	slices.SortStableFunc(all, func(a, b *Comment) int {
+	return slices.SortedStableFunc(slices.Values(cs.items), func(a, b *Comment) int {
 		return cmp.Or(strings.Compare(a.Path, b.Path), cmp.Compare(a.Start, b.Start))
 	})
-	return all
 }
 
 // SetOldRev sets the Rev of each comment that [Comments.UnmarshalJSON]

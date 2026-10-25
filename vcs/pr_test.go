@@ -249,5 +249,5 @@ func fakePath(t *testing.T, dir string) {
 	if err := os.Symlink(p, filepath.Join(dir, "git")); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+":/bin:/usr/bin")
+	t.Setenv("PATH", strings.Join([]string{dir, "/bin", "/usr/bin"}, string(os.PathListSeparator)))
 }

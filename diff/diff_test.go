@@ -239,7 +239,7 @@ func markColours(lines []string) []string {
 			if i < 0 {
 				break
 			}
-			sgr := l[strings.LastIndex(l[:i], "\x1b[")+2 : i]
+			_, sgr, _ := strings.CutLast(l[:i], "\x1b[")
 			fg, _, _ := strings.Cut(strings.TrimSuffix(sgr, "m"), ";")
 			out = append(out, fg)
 			l = l[i+1:]

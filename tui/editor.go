@@ -78,8 +78,8 @@ func (m *model) runWindowEditor(path, script string) tea.Cmd {
 		if err == nil {
 			return nil
 		}
-		lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
-		if last := lines[len(lines)-1]; last != "" {
+		s := strings.TrimSpace(stderr.String())
+		if last := s[strings.LastIndexByte(s, '\n')+1:]; last != "" {
 			err = fmt.Errorf("%w: %s", err, last)
 		}
 		return editorDoneMsg{window: true, err: err}

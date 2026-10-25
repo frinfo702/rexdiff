@@ -31,16 +31,15 @@ func (d *Diff) Cell(row, x int) (s Side, line, index int, ok bool) {
 	if onNumber || line == 0 || x < d.codeAt[s] {
 		return 0, 0, 0, false
 	}
-	lines := Lines(d.src[s])
-	if line > len(lines) {
+	text, ok := lineAt(d.src[s], line)
+	if !ok {
 		return 0, 0, 0, false
 	}
-	text := lines[line-1]
 	col := x - d.codeAt[s] + d.offset
 	if d.wrap {
 		start, width := d.segmentStart(row, s, text)
 		if col >= width { // the blank cells after a wrapped part
-			return s, line, len([]rune(text)), true
+			return s, line, utf8.RuneCountInString(text), true
 		}
 		col += start
 	}
@@ -108,4 +107,14 @@ func runeAt(line string, col int) int {
 		line = line[len(g):]
 	}
 	return i
+}
+
+// lineAt returns line n of src, from 1, as [Lines] splits it.
+func lineAt(src string, n int) (string, bool) {
+	for l := range strings.Lines(src) {
+		if n--; n == 0 {
+			return strings.TrimSuffix(strings.TrimSuffix(l, "\n"), "\r"), true
+		}
+	}
+	return "", false
 }

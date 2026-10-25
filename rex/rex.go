@@ -89,7 +89,7 @@ func (c *Client) runRex(ctx context.Context, args ...string) ([]byte, error) {
 }
 
 // runError is a failed run of rex. Its text is the first line that rex
-// writes to stderr. It wraps the error of the process, for errors.As.
+// writes to stderr. It wraps the error of the process.
 type runError struct {
 	msg string
 	err error
@@ -423,7 +423,7 @@ func (c *Client) watchOnce(ctx context.Context, again bool, fn func(Event)) {
 		fn(Event{Reconnect: true})
 	}
 	lines := bufio.NewScanner(out)
-	lines.Buffer(make([]byte, maxEventLine), maxEventLine)
+	lines.Buffer(nil, maxEventLine)
 	for lines.Scan() {
 		if ev, ok := parseEvent(lines.Bytes()); ok {
 			fn(ev)
