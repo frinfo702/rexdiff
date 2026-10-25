@@ -39,15 +39,10 @@ func TestCommands(t *testing.T) {
 		{"", "myeditor --wait", `myeditor --wait +12 '/r/a b.go'`, true},
 	}
 	for _, tt := range tests {
-		var got editor.Command
-		if tt.template != "" {
-			got = editor.Template(tt.template, abs, 12)
-		} else {
-			got = editor.Program(tt.editor, abs, 12)
-		}
-		if got.Script != tt.script || got.Window != tt.window {
-			t.Errorf("editor %q%q = %+v, want script %q, window %v",
-				tt.template, tt.editor, got, tt.script, tt.window)
+		got, err := editor.Resolve(tt.template, "", tt.editor, "", abs, 12)
+		if err != nil || got.Script != tt.script || got.Window != tt.window {
+			t.Errorf("editor %q%q = %+v, %v; want script %q, window %v",
+				tt.template, tt.editor, got, err, tt.script, tt.window)
 		}
 	}
 }
@@ -63,12 +58,41 @@ func TestCommandProgram(t *testing.T) {
 		{`""`, ""},
 		{"'' vim", ""},
 	}
+	const noProgram = "the editor command names no program"
 	for _, tt := range tests {
-		if got := editor.Program(tt.command, "/a", 1).Program; got != tt.want {
-			t.Errorf("Program(%q).Program = %q, want %q", tt.command, got, tt.want)
+		for _, c := range []struct{ template, env string }{{tt.command, ""}, {"", tt.command}} {
+			got, err := editor.Resolve(c.template, "", c.env, "", "/a", 1)
+			switch {
+			case tt.want == "" && (err == nil || err.Error() != noProgram):
+				t.Errorf("Resolve(%q, %q) error = %v, want %q", c.template, c.env, err, noProgram)
+			case tt.want != "" && got.Program != tt.want:
+				t.Errorf("Resolve(%q, %q).Program = %q, want %q", c.template, c.env, got.Program, tt.want)
+			}
 		}
-		if got := editor.Template(tt.command, "/a", 1).Program; got != tt.want {
-			t.Errorf("Template(%q).Program = %q, want %q", tt.command, got, tt.want)
+	}
+}
+
+// TestResolveOrder checks that the settings come first, then $VISUAL,
+// $EDITOR, and core.editor. A blank value does not count.
+func TestResolveOrder(t *testing.T) {
+	tests := []struct {
+		template, visual, env, git string
+		want                       string
+	}{
+		{"zed {file}", "vim", "nano", "hx", "zed"},
+		{"", "vim", "nano", "hx", "vim"},
+		{"", " ", "nano", "hx", "nano"},
+		{"", "", "\t", "hx", "hx"},
+	}
+	for _, tt := range tests {
+		got, err := editor.Resolve(tt.template, tt.visual, tt.env, tt.git, "/a", 1)
+		if err != nil || got.Program != tt.want {
+			t.Errorf("Resolve(%q, %q, %q, %q) = %q, %v; want %q",
+				tt.template, tt.visual, tt.env, tt.git, got.Program, err, tt.want)
 		}
+	}
+	const noEditor = "no editor: set `editor` in rexdiff.lua, $EDITOR, or git's core.editor"
+	if _, err := editor.Resolve("", " ", "", "\n", "/a", 1); err == nil || err.Error() != noEditor {
+		t.Errorf("Resolve with no editor: error = %v, want %q", err, noEditor)
 	}
 }

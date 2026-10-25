@@ -2,7 +2,6 @@ package tui
 
 import (
 	"bytes"
-	"cmp"
 	"errors"
 	"fmt"
 	"os"
@@ -24,23 +23,13 @@ import (
 // background. The messages are the same as in herdr-reviewr.
 func (m *model) openEditor(path string, line int) tea.Cmd {
 	abs := filepath.Join(m.repo.Root(), path)
-	var ed editor.Command
-	if m.cfg.Editor != "" {
-		ed = editor.Template(m.cfg.Editor, abs, line)
-	} else {
-		e := cmp.Or(
-			strings.TrimSpace(os.Getenv("VISUAL")),
-			strings.TrimSpace(os.Getenv("EDITOR")),
-			strings.TrimSpace(m.repo.Editor(m.ctx)),
-		)
-		if e == "" {
-			m.flash("no editor: set `editor` in rexdiff.lua, $EDITOR, or git's core.editor")
-			return nil
-		}
-		ed = editor.Program(e, abs, line)
+	var git string
+	if m.cfg.Editor == "" {
+		git = m.repo.Editor(m.ctx)
 	}
-	if ed.Program == "" {
-		m.flash("the editor command names no program")
+	ed, err := editor.Resolve(m.cfg.Editor, os.Getenv("VISUAL"), os.Getenv("EDITOR"), git, abs, line)
+	if err != nil {
+		m.flash(err.Error())
 		return nil
 	}
 	// The editor makes the file again when it saves, so do not open a

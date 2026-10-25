@@ -1,9 +1,11 @@
-// Package editor makes the sh command that opens a file at a line in a
-// text editor. It also tells if the editor opens a window or draws in the
-// terminal.
+// Package editor picks the text editor of the user, and makes the sh
+// command that opens a file at a line in it. It also tells if the editor
+// opens a window or draws in the terminal.
 package editor
 
 import (
+	"cmp"
+	"errors"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -18,11 +20,32 @@ type Command struct {
 	Window  bool   // the editor opens a window, not a terminal editor
 }
 
-// Template returns the command that opens file at line with template,
+// Resolve returns the command that opens file at line. It uses template,
+// the editor command of the settings, if it is not empty. Else it uses the
+// first of visual, env, and git that is not blank. They are $VISUAL,
+// $EDITOR, and core.editor. Each error is a message for the user.
+func Resolve(template, visual, env, git, file string, line int) (Command, error) {
+	var c Command
+	if template != "" {
+		c = fromTemplate(template, file, line)
+	} else {
+		e := cmp.Or(strings.TrimSpace(visual), strings.TrimSpace(env), strings.TrimSpace(git))
+		if e == "" {
+			return Command{}, errors.New("no editor: set `editor` in rexdiff.lua, $EDITOR, or git's core.editor")
+		}
+		c = fromEditor(e, file, line)
+	}
+	if c.Program == "" {
+		return Command{}, errors.New("the editor command names no program")
+	}
+	return c, nil
+}
+
+// fromTemplate returns the command that opens file at line with template,
 // a command that the user writes. The template gets file in place of
 // {file}, and line in place of {line}. Without {file}, file goes at the
 // end.
-func Template(template, file string, line int) Command {
+func fromTemplate(template, file string, line int) Command {
 	r := strings.NewReplacer("{file}", ShellQuote(file), "{line}", strconv.Itoa(line))
 	script := r.Replace(template)
 	if !strings.Contains(template, "{file}") {
@@ -31,10 +54,10 @@ func Template(template, file string, line int) Command {
 	return Command{script, program(template), dialectOf(template).window}
 }
 
-// Program returns the command that opens file at line in an editor.
-// command starts the editor, for example the value of $EDITOR. Program
+// fromEditor returns the command that opens file at line in an editor.
+// command starts the editor, for example the value of $EDITOR. fromEditor
 // adds file and line in the form that the editor expects.
-func Program(command, file string, line int) Command {
+func fromEditor(command, file string, line int) Command {
 	d := dialectOf(command)
 	n, f := strconv.Itoa(line), ShellQuote(file)
 	at := ShellQuote(file + ":" + n)
