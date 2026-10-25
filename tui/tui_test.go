@@ -187,7 +187,9 @@ func TestComment(t *testing.T) {
 		t.Fatalf("after c: mode %v, want the comment box", m.mode)
 	}
 	m = press(t, m, "h", "i", "enter")
-	// The split layout uses two rows for the same change.
+	// The split layout uses two rows for the same change. It needs a wide
+	// pane.
+	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
 	m = press(t, m, "|", "home", "]", "v", "j", "c", "o", "k", "enter")
 
 	cs := m.comments.All()
@@ -559,7 +561,8 @@ func TestConfigFlags(t *testing.T) {
 	if m := newModel(t.Context(), o, cfg); m.scope != ScopeLastTurn {
 		t.Errorf("scope %q; want the flag, last-turn", m.scope)
 	}
-	m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.reload()
+	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40}) // wide enough for split
 	m = press(t, m, "X")
 	if m.split {
 		t.Errorf("after the key X of the configuration: split %v, want false",

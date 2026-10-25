@@ -512,7 +512,7 @@ func (m *model) footerLine() string {
 		k:       m.keys,
 		mode:    m.mode,
 		tab:     m.tab,
-		split:   m.split,
+		split:   m.splitShown(),
 		visual:  m.cur().anchor >= 0,
 		finding: m.find.active(),
 		onFold:  m.onFold(),

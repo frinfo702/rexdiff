@@ -65,6 +65,8 @@ are gone, rexdiff marks the comment as stale.
 | `1` `2` `3` | changes, all files, or pull request |
 | `?` | all keys |
 
+Side by side needs 135 columns. A narrower pane shows one column.
+
 ## Configure
 
 Edit the settings at the top of `~/.config/rex/rexdiff.lua`:

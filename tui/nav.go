@@ -226,8 +226,16 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.rerender()
 		}
 	case key.Matches(msg, k.Split):
-		m.split = !m.split
-		m.rerender()
+		// As in herdr-reviewr, | acts only if the file can show in split
+		// at this width. Only a pane that is too narrow tells why.
+		shown := m.splitShown()
+		switch {
+		case shown || m.codeWidth() >= splitMinWidth && m.splitAllowed():
+			m.split = !shown
+			m.rerender()
+		case m.splitAllowed():
+			m.flash("too narrow for split")
+		}
 	case key.Matches(msg, k.NavPosition):
 		m.listLeft = !m.listLeft
 	case key.Matches(msg, k.NavHide):

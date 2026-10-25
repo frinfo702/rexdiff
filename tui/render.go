@@ -73,6 +73,36 @@ func (m *model) rerender() {
 	}
 }
 
+// splitMinWidth is the narrowest code width that shows the split layout.
+// It is the same as in herdr-reviewr: two halves of 60 columns, each with
+// its line numbers, and a column between them.
+const splitMinWidth = 135
+
+// splitAllowed reports whether the current file can show in the split
+// layout. The file must be a diff in the Changes tab, with lines on both
+// sides and a change. Rendered markdown cannot split.
+func (m *model) splitAllowed() bool {
+	if m.tab != tabChanges {
+		return false
+	}
+	f := m.changedFile()
+	return f != nil && !f.Binary && !f.TooBig && !m.showsMarkdown(f) &&
+		f.Old != "" && f.New != "" && f.Old != f.New
+}
+
+// splitShown reports whether the current file shows in the split layout.
+// The user must choose split, and the pane must be wide enough. The choice
+// stays, so a wider pane shows split again.
+func (m *model) splitShown() bool {
+	return m.split && m.codeWidth() >= splitMinWidth && m.splitAllowed()
+}
+
+// showsMarkdown reports whether the Changes tab shows f as rendered
+// markdown.
+func (m *model) showsMarkdown(f *changed) bool {
+	return m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted
+}
+
 // diffOptions returns the options to render a diff with sideways scroll
 // xoff.
 func (m *model) diffOptions(xoff int) diff.Options {
@@ -80,7 +110,7 @@ func (m *model) diffOptions(xoff int) diff.Options {
 		Width:  m.codeWidth(),
 		Offset: xoff,
 		Wrap:   m.wrap,
-		Split:  m.split,
+		Split:  m.splitShown(),
 		Signs:  m.cfg.DiffSigns,
 		Theme: diff.Theme{
 			Background: m.bg,
@@ -127,7 +157,7 @@ func (m *model) renderChanges() {
 			note = "renamed from " + termtext.Quote(f.From) + ", no change to the content"
 		}
 		p.setNote(note)
-	case m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted:
+	case m.showsMarkdown(f):
 		m.setMarkdown(p, f.New)
 	default:
 		if o := m.folds[f.Path]; o != nil && o.Old != hash(f.Old) {
