@@ -3,6 +3,7 @@ package vcs_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,5 +219,37 @@ func TestWatcherBudget(t *testing.T) {
 	now = now.Add(200 * time.Millisecond)
 	if got := changed(t, w); !got.Files {
 		t.Errorf("call after the pause: %+v, want Files", got)
+	}
+}
+
+// TestWatcherUntrackedDir checks that a new file in an untracked directory
+// that git lists no file in is a change. A new file in an ignored
+// directory in it is not.
+func TestWatcherUntrackedDir(t *testing.T) {
+	tests := []struct {
+		name, setup, edit string
+		want              bool
+	}{
+		{"empty", "e/", "e/c.txt", true},
+		{"only ignored files", "g/ignored.txt", "g/c.txt", true},
+		{"empty below empty", "d/e/", "d/e/c.txt", true},
+		{"ignored below untracked", "u/build/", "u/build/c.txt", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, dir := newRepo(t)
+			if d, ok := strings.CutSuffix(tt.setup, "/"); ok {
+				if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				write(t, dir, tt.setup, "x\n")
+			}
+			w := newWatcher(t, r)
+			write(t, dir, tt.edit, "c\n")
+			if got := changed(t, w); got.Files != tt.want {
+				t.Errorf("after a new %s: %+v, want Files %v", tt.edit, got, tt.want)
+			}
+		})
 	}
 }

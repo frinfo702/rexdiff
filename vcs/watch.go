@@ -131,12 +131,22 @@ func (w *Watcher) Changed(ctx context.Context) (Change, error) {
 // returns the sum of the list.
 func (w *Watcher) relist(ctx context.Context) (uint64, error) {
 	w.listed = false
-	paths, err := w.r.lsFiles(ctx, "-co", "--deduplicate", "--exclude-standard")
+	paths, err := w.r.lsFiles(ctx, listArgs...)
+	if err != nil {
+		return 0, err
+	}
+	untracked, err := w.r.untrackedDirs(ctx)
 	if err != nil {
 		return 0, err
 	}
 	root := w.r.root
 	seen := map[string]bool{root: true}
+	addDirs := func(p string) {
+		for d := p; !seen[d]; d = filepath.Dir(d) {
+			seen[d] = true
+			w.dirs = append(w.dirs, d)
+		}
+	}
 	w.dirs = append(w.dirs[:0], root)
 	w.files = w.files[:0]
 	s := newSum()
@@ -145,13 +155,70 @@ func (w *Watcher) relist(ctx context.Context) (uint64, error) {
 		// git lists a nested repository with a slash at the end.
 		p = filepath.Join(root, strings.TrimSuffix(p, "/"))
 		w.files = append(w.files, p)
-		for d := filepath.Dir(p); !seen[d]; d = filepath.Dir(d) {
-			seen[d] = true
-			w.dirs = append(w.dirs, d)
-		}
+		addDirs(filepath.Dir(p))
+	}
+	for _, d := range untracked {
+		addDirs(filepath.Join(root, d))
 	}
 	w.listed = true
 	return uint64(s), nil
+}
+
+// untrackedDirs returns the untracked directories, relative to the root,
+// and each directory below them that git does not ignore. git lists no
+// file in a directory that is empty or has only ignored files. A new file
+// there changes only that directory, thus the [Watcher] must watch it.
+// untrackedDirs does not go into a nested repository.
+func (r *Repo) untrackedDirs(ctx context.Context) ([]string, error) {
+	ps, err := r.lsFiles(ctx, "-o", "--directory", "--exclude-standard")
+	if err != nil {
+		return nil, err
+	}
+	var level, dirs []string
+	for _, p := range ps {
+		if d, ok := strings.CutSuffix(p, "/"); ok {
+			level = append(level, d)
+		}
+	}
+	for len(level) > 0 {
+		dirs = append(dirs, level...)
+		var next []string
+		for _, d := range level {
+			abs := filepath.Join(r.root, filepath.FromSlash(d))
+			if _, err := os.Lstat(filepath.Join(abs, ".git")); err == nil {
+				continue // a nested repository
+			}
+			des, _ := os.ReadDir(abs)
+			for _, de := range des {
+				if de.IsDir() {
+					next = append(next, d+"/"+de.Name())
+				}
+			}
+		}
+		if level, err = r.notIgnored(ctx, next); err != nil {
+			return nil, err
+		}
+	}
+	return dirs, nil
+}
+
+// notIgnored returns the paths that git does not ignore.
+func (r *Repo) notIgnored(ctx context.Context, paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	in := strings.NewReader(strings.Join(paths, "\x00"))
+	out, err := r.runInput(ctx, nil, in, "check-ignore", "-z", "--stdin")
+	if exitedWith(err, 1) {
+		return paths, nil // git ignores none
+	}
+	if err != nil {
+		return nil, err
+	}
+	ignored := strings.Split(out, "\x00")
+	return slices.DeleteFunc(paths, func(p string) bool {
+		return slices.Contains(ignored, p)
+	}), nil
 }
 
 // sumRefs returns the sum of the files that change with HEAD, a ref, or

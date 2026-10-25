@@ -132,6 +132,11 @@ type Entry struct {
 	Ignored bool
 }
 
+// listArgs are the arguments of git ls-files that list the tracked and
+// the untracked files. In a merge conflict, git lists a path once for each
+// stage. --deduplicate lists it once.
+var listArgs = []string{"-co", "--deduplicate", "--exclude-standard"}
+
 // Files returns the tracked and the untracked files, and the ignored paths,
 // sorted by path.
 func (r *Repo) Files(ctx context.Context) ([]Entry, error) {
@@ -139,9 +144,7 @@ func (r *Repo) Files(ctx context.Context) ([]Entry, error) {
 		args    []string
 		ignored bool
 	}{
-		// In a merge conflict, git lists a path once for each stage.
-		// --deduplicate lists it once.
-		{[]string{"-co", "--deduplicate", "--exclude-standard"}, false},
+		{listArgs, false},
 		{[]string{"-oi", "--exclude-standard", "--directory"}, true},
 	}
 	var es []Entry
