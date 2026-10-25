@@ -2,6 +2,7 @@ package diff
 
 import (
 	"cmp"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"slices"
@@ -189,7 +190,8 @@ type savedComments struct {
 
 // MarshalJSON encodes the comments with their code and their diff rows,
 // so that UnmarshalJSON restores the same comments, for example after a
-// restart.
+// restart. Bytes that are not UTF-8, for example in a Latin-1 file,
+// become U+FFFD.
 func (cs *Comments) MarshalJSON() ([]byte, error) {
 	saved := savedComments{Last: cs.last}
 	for _, c := range cs.items {
@@ -199,7 +201,7 @@ func (cs *Comments) MarshalJSON() ([]byte, error) {
 			Code: c.code, Snippet: c.snippet,
 		})
 	}
-	return json.Marshal(saved)
+	return json.Marshal(saved, jsontext.AllowInvalidUTF8(true))
 }
 
 // UnmarshalJSON reads comments that MarshalJSON wrote.

@@ -1,6 +1,7 @@
 package diff_test
 
 import (
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -241,5 +242,32 @@ func TestCommentsJSON(t *testing.T) {
 	c := cs2.Find(1)
 	if c == nil || c.Anchor != (diff.Anchor{InDiff: true}) || c.Start != 2 {
 		t.Errorf("comment of an old file = %+v, want lines 2-3 on a diff", c)
+	}
+}
+
+// TestCommentsJSONLatin1 checks that a comment on a file that is not UTF-8,
+// for example a Latin-1 file, survives a JSON round trip. The bytes that
+// are not UTF-8 become U+FFFD.
+func TestCommentsJSONLatin1(t *testing.T) {
+	const path = "caf\xe9.txt"
+	var cs diff.Comments
+	c := commentOn(path, diff.SideNew, "caf\xe9 cr\xe8me\n", 1, 1)
+	c.Text = "na\xefve"
+	cs.Add(c)
+	b, err := json.Marshal(&cs)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var back diff.Comments
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	got := back.Find(1)
+	if got == nil {
+		t.Fatal("Find(1) = nil after a round trip")
+	}
+	want := "caf\uFFFD.txt:1\n caf\uFFFD cr\uFFFDme\nna\uFFFDve"
+	if r := review(*got); r != want {
+		t.Errorf("Review after a round trip = %q, want %q", r, want)
 	}
 }
