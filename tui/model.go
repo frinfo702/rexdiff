@@ -599,16 +599,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handle does the work of Update. Update then checks for a restart.
 func (m *model) handle(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
-	switch msg.(type) {
-	case tea.KeyPressMsg, tea.MouseClickMsg: // these can move the cursor
-		m.changes.free, m.viewer.free, m.prPane.free = false, false, false
-	}
-	switch msg.(type) {
-	case tea.KeyPressMsg, tea.WindowSizeMsg: // these end a chain of clicks
-		m.click = clickChain{}
-	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		m.click = clickChain{}
 		m.w, m.h = msg.Width, msg.Height
 		m.rerender()
 	case tea.FocusMsg:
@@ -649,6 +642,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case editorDoneMsg:
 		m.onEditorDone(msg)
 	case tea.MouseClickMsg:
+		m.followCursor()
 		return m.onClick(msg.Mouse())
 	case tea.MouseMotionMsg:
 		m.onDrag(msg.Mouse())
@@ -659,10 +653,18 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case tea.PasteMsg:
 		cmd = m.onPaste(msg.Content)
 	case tea.KeyPressMsg:
+		m.click = clickChain{}
+		m.followCursor()
 		return m.onKey(msg)
 	}
 	m.ensureVisible()
 	return cmd
+}
+
+// followCursor makes the panes keep the cursor on the screen again. A key
+// or a click can move the cursor.
+func (m *model) followCursor() {
+	m.changes.free, m.viewer.free, m.prPane.free = false, false, false
 }
 
 // onKey gives a key to the part of the screen that takes the keys.
