@@ -201,7 +201,7 @@ func TestFoldsSurviveRestart(t *testing.T) {
 // split layout and with wrap.
 func TestClickFold(t *testing.T) {
 	for _, keys := range [][]string{nil, {"|"}, {"w"}} {
-		m := step(t, newFoldModel(t), tea.WindowSizeMsg{Width: 200, Height: 70})
+		m := step(t, newFoldModel(t), tea.WindowSizeMsg{Width: 210, Height: 70})
 		m = press(t, m, keys...)
 		tail := slices.IndexFunc(m.changes.rows, func(r diff.Row) bool { return r.Fold.Lines == 7 })
 		m = click(t, m, m.mainX()+10, screenY(t, m, tail))

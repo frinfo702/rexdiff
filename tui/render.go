@@ -4,6 +4,7 @@ package tui
 // file viewer, and Markdown.
 
 import (
+	"cmp"
 	"errors"
 	"slices"
 	"strings"
@@ -20,11 +21,13 @@ import (
 // left of the main pane.
 const gutter = 2
 
-// The sizes of the file list, as in herdr-reviewr. At a side, the width
-// stays between listMinPct and listMaxSidePct of the screen width. Above
-// or below, the list takes listStackPct of the body rows by default, and
-// stays between listMinPct and listMaxStackPct.
+// The sizes of the file list, as in herdr-reviewr. At a side, the list
+// takes listSidePct of the screen width by default, and stays between
+// listMinPct and listMaxSidePct. Above or below, the list takes
+// listStackPct of the body rows by default, and stays between listMinPct
+// and listMaxStackPct.
 const (
+	listSidePct     = 32
 	listStackPct    = 25
 	listMinPct      = 15
 	listMaxSidePct  = 60
@@ -36,7 +39,10 @@ const (
 func (m *model) listShown() bool { return !m.listHidden && m.tab != tabPR }
 
 // sideWidth returns the width of the file list at a side, in columns.
-func (m *model) sideWidth() int { return m.clampSide(m.listW) }
+// Without a width in columns, the list takes listSidePct of the screen.
+func (m *model) sideWidth() int {
+	return m.clampSide(cmp.Or(m.listW, m.w*listSidePct/100))
+}
 
 // clampSide returns w within the bounds of the width of the file list at
 // a side.
@@ -58,12 +64,16 @@ func (m *model) listWidth() int {
 
 // listHeight returns the number of body rows that the file list takes
 // above or below the main pane, with its rule. The body has h rows. It
-// returns 0 if the list does not show there.
+// returns 0 if the list does not show there, or if the rule leaves no
+// row for the list.
 func (m *model) listHeight(h int) int {
 	if !m.listShown() || !m.listPos.stacked() {
 		return 0
 	}
-	return splitAxis(h, m.listPct)
+	if lh := splitAxis(h, m.listPct); lh > 1 {
+		return lh
+	}
+	return 0
 }
 
 // mainWidth returns the width of the main pane, with its gutter.
@@ -230,7 +240,7 @@ func (p *pane) setNote(note string) {
 // renderViewer shows the selected file in the Files tab, even if the file
 // does not change.
 func (m *model) renderViewer() {
-	m.viewer.path = "" // no file has the path "", so refreshViewer renders
+	m.viewedPath = "" // no file has the path "", so refreshViewer renders
 	m.refreshViewer()
 }
 
@@ -239,16 +249,16 @@ func (m *model) renderViewer() {
 func (m *model) refreshViewer() {
 	p := &m.viewer
 	if m.allSel >= len(m.allFiles) {
-		p.path = ""
+		p.path, m.viewedPath = "", ""
 		p.set(nil, nil)
 		return
 	}
 	path := m.allFiles[m.allSel].Path
 	content, err := m.repo.ReadFile(path)
-	if err == nil && content == m.viewed && p.path == path {
+	if err == nil && content == m.viewed && m.viewedPath == path {
 		return
 	}
-	m.viewed = content
+	m.viewed, m.viewedPath = content, path
 	p.path = path
 	switch {
 	case errors.Is(err, vcs.ErrBinary):

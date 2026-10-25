@@ -57,8 +57,8 @@ func TestListPositions(t *testing.T) {
 func TestListSizes(t *testing.T) {
 	m, _ := newTestModel(t) // 120 columns
 	m = press(t, m, "<")
-	if got := m.sideWidth(); got != 36 {
-		t.Errorf("one grow from 32 columns: width %d, want 36", got)
+	if got := m.sideWidth(); got != 42 {
+		t.Errorf("one grow from 38 columns: width %d, want 42", got)
 	}
 	for range 20 {
 		m = press(t, m, "<")

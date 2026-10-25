@@ -204,7 +204,7 @@ func TestComment(t *testing.T) {
 	m = press(t, m, "h", "i", "enter")
 	// The split layout uses two rows for the same change. It needs a wide
 	// pane.
-	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
+	m = step(t, m, tea.WindowSizeMsg{Width: 210, Height: 40})
 	m = press(t, toTop(press(t, m, "|")), "]", "v", "j", "c", "o", "k", "enter")
 
 	cs := m.comments.All()
@@ -670,7 +670,7 @@ func TestWrap(t *testing.T) {
 		t.Fatalf("w: wrap %v, %d lines, want more than %d",
 			m.wrap, len(m.changes.lines), cut)
 	}
-	if v := view(m); !strings.Contains(v, "x + 1") {
+	if v := view(m); !strings.Contains(v, "+ 1") {
 		t.Errorf("view got:\n%s\nwant the end of the long line", v)
 	}
 	// The cursor moves by source lines.
@@ -695,7 +695,7 @@ func TestWrap(t *testing.T) {
 	i := slices.IndexFunc(lines, func(l string) bool {
 		return strings.Contains(l, "💬 ok")
 	})
-	if i < 1 || !strings.Contains(lines[i-1], "x + 1") {
+	if i < 1 || !strings.Contains(lines[i-1], "+ 1") {
 		t.Errorf("view got:\n%s\nwant the comment below the end of the line",
 			view(m))
 	}

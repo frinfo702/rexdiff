@@ -31,28 +31,28 @@ func TestSplitNeedsWidth(t *testing.T) {
 // TestSplitFollowsWidth checks that split shows again when the pane gets
 // wide again.
 func TestSplitFollowsWidth(t *testing.T) {
-	m := newSplitModel(t, 200)
+	m := newSplitModel(t, 210)
 	if !m.splitShown() {
-		t.Fatalf("width 200 (code %d): unified shows, want split", m.codeWidth())
+		t.Fatalf("width 210 (code %d): unified shows, want split", m.codeWidth())
 	}
 	if m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40}); m.splitShown() {
 		t.Error("after a resize to 120: split shows, want unified")
 	}
-	if m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40}); !m.splitShown() {
-		t.Error("after a resize to 200: unified shows, want split")
+	if m = step(t, m, tea.WindowSizeMsg{Width: 210, Height: 40}); !m.splitShown() {
+		t.Error("after a resize to 210: unified shows, want split")
 	}
 	if m = press(t, m, "|"); m.split || m.splitShown() {
-		t.Error("| at width 200: split shows, want unified")
+		t.Error("| at width 210: split shows, want unified")
 	}
 	if m = press(t, m, "|"); !m.splitShown() {
-		t.Error("| again at width 200: unified shows, want split")
+		t.Error("| again at width 210: unified shows, want split")
 	}
 }
 
 // TestSplitAddedFile checks that a file with lines on one side shows one
 // column, and that | does nothing.
 func TestSplitAddedFile(t *testing.T) {
-	m := newSplitModel(t, 200)
+	m := newSplitModel(t, 210)
 	m = press(t, m, "b") // the branch scope adds b.go
 	i := -1
 	for j, f := range m.files {

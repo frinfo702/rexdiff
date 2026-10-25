@@ -111,7 +111,8 @@ collapsed in all files. There, a collapsed directory with a change has a dot.
 Ignored directories are dim and read their files when you expand them. An
 expanded one shows new and removed files.
 
-At a side, the file list takes 15% to 60% of the width. Above or below, it takes
+At a side, the file list takes 32% of the width, and `<` `>` change that from 15%
+to 60%. Above or below, it takes
 a quarter of the rows, and `<` `>` change that from 15% to 50%.
 
 Side by side needs 135 columns. A narrower pane shows one column.
@@ -148,7 +149,8 @@ Other settings:
 - `default_scope`
 - `markdown_view`
 - `file_list`: `right`, `bottom`, `left`, or `top`
-- `file_list_width`: the width of the file list at a side, in columns
+- `file_list_width`: the width of the file list at a side, in columns. Without
+  it, the list takes 32% of the width
 - `diff_signs`: `true` marks changed lines with `+` and `-`, in place of a coloured bar
 - `review_prefix`
 - `url_opener`

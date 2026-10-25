@@ -92,7 +92,7 @@ type config struct {
 	// top.
 	FileList position `json:"file_list"`
 	// FileListWidth is the width of the file list at a side, in columns.
-	// It is minListWidth or more.
+	// It is minListWidth or more, or 0 if the text does not set it.
 	FileListWidth int `json:"file_list_width"`
 	// DiffSigns marks a changed line with + or -, in place of a bar.
 	DiffSigns bool `json:"diff_signs"`
@@ -172,11 +172,10 @@ const minListWidth = 16
 // set.
 func defaultConfig() config {
 	return config{
-		Layout:        LayoutUnified,
-		DefaultScope:  ScopeUncommitted,
-		MarkdownView:  markdownViewSource,
-		FileList:      positionRight,
-		FileListWidth: 32,
+		Layout:       LayoutUnified,
+		DefaultScope: ScopeUncommitted,
+		MarkdownView: markdownViewSource,
+		FileList:     positionRight,
 	}
 }
 
@@ -246,7 +245,7 @@ var jsonKinds = map[jsontext.Kind]string{
 // check returns an error for the first value that rexdiff does not accept.
 // set has the keys that the text sets.
 func (c config) check(set map[string]jsontext.Value) error {
-	if err := c.checkChoices(); err != nil {
+	if err := c.checkChoices(set); err != nil {
 		return err
 	}
 	if err := c.checkTexts(set); err != nil {
@@ -259,8 +258,9 @@ func (c config) check(set map[string]jsontext.Value) error {
 }
 
 // checkChoices checks the values that have fixed choices or a range. They
-// are the layout, the scope, the markdown view, and the file list.
-func (c config) checkChoices() error {
+// are the layout, the scope, the markdown view, and the file list. set
+// has the keys that the text sets.
+func (c config) checkChoices(set map[string]jsontext.Value) error {
 	choices := []struct {
 		key, value string
 		allowed    []string
@@ -275,7 +275,7 @@ func (c config) checkChoices() error {
 			return invalid(k.key, "one of "+strings.Join(k.allowed, ", "), k.value)
 		}
 	}
-	if c.FileListWidth < minListWidth {
+	if set["file_list_width"] != nil && c.FileListWidth < minListWidth {
 		want := strconv.Itoa(minListWidth) + " or more"
 		return invalid("file_list_width", want, strconv.Itoa(c.FileListWidth))
 	}

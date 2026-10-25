@@ -684,8 +684,8 @@ func (m *model) listY() int {
 // listRows returns the number of lines of the file list, with its title.
 func (m *model) listRows() int {
 	h := m.bodyHeight()
-	if lh := m.listHeight(h); lh > 0 {
-		return lh - 1
+	if m.listPos.stacked() {
+		return max(m.listHeight(h)-1, 0)
 	}
 	return h
 }

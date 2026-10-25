@@ -244,7 +244,10 @@ type model struct {
 	allFiles   []vcs.Entry // the Files tab
 	allSel     int
 	fileTree   navTree
-	viewed     string // the content in the Files tab, to notice edits
+	// viewed and viewedPath are the content and the path in the Files
+	// tab, to notice edits. The path of the pane is "" for Markdown.
+	viewed     string
+	viewedPath string
 
 	changes, viewer, prPane pane
 	pr                      prState
@@ -261,9 +264,11 @@ type model struct {
 	// crossing to the file at armedPath. Else it is 0.
 	armed     int
 	armedPath string
-	listW     int        // the width of the file list at a side, in columns
-	listPct   int        // the share of the body rows, above or below
-	cache     diff.Cache // the syntax colours, for a fast sideways scroll
+	// listW is the width of the file list at a side, in columns, or 0 for
+	// the default share of the width.
+	listW   int
+	listPct int        // the share of the body rows, above or below
+	cache   diff.Cache // the syntax colours, for a fast sideways scroll
 
 	comments diff.Comments
 	editor   textarea.Model
