@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"charm.land/glamour/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/internal/termtext"
@@ -163,7 +164,7 @@ func (m *model) refreshViewer() {
 	}
 	path := m.allFiles[m.allSel].Path
 	content, err := m.repo.ReadFile(path)
-	if content == m.viewed && p.path == path {
+	if err == nil && content == m.viewed && p.path == path {
 		return
 	}
 	m.viewed = content
@@ -175,6 +176,10 @@ func (m *model) refreshViewer() {
 	case errors.Is(err, vcs.ErrTooBig):
 		p.path = ""
 		p.set([]string{dimStyle.Render("  " + noteTooBig)}, nil)
+	case err != nil:
+		m.log.Debug("read file", "path", path, "err", err)
+		p.path = ""
+		p.set([]string{dimStyle.Render("  couldn't read this file")}, nil)
 	case m.rendered && isMarkdown(path):
 		m.setMarkdown(p, content)
 	default:
@@ -208,6 +213,35 @@ func renderMarkdown(r *glamour.TermRenderer, src string) []string {
 		}
 	}
 	return strings.Split(strings.TrimRight(src, "\n"), "\n")
+}
+
+// markdownSource returns the markdown text of the current file. ok is
+// false if the file is not markdown, or if it has no text to render.
+func (m *model) markdownSource() (src string, ok bool) {
+	switch m.tab {
+	case tabChanges:
+		f := m.changedFile()
+		if f == nil || !isMarkdown(f.Path) || f.Status == vcs.StatusDeleted {
+			return "", false
+		}
+		src = f.New
+	case tabFiles:
+		if m.allSel >= len(m.allFiles) || !isMarkdown(m.allFiles[m.allSel].Path) {
+			return "", false
+		}
+		src = m.viewed
+	}
+	return src, src != ""
+}
+
+// rendersNothing reports whether the markdown src renders no text.
+func (m *model) rendersNothing(src string) bool {
+	for _, l := range renderMarkdown(m.markdown(m.codeWidth()-2), termtext.Plain(src)) {
+		if strings.TrimSpace(ansi.Strip(l)) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // setMarkdown shows src as rendered markdown. The rendered lines take no

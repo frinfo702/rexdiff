@@ -328,6 +328,10 @@ func (m *model) emptyNote() string {
 		return p.note
 	case m.tab == tabPR && m.pr.loading:
 		return "loading the pull request…"
+	case m.tab == tabFiles && len(m.allFiles) == 0:
+		return "no files"
+	case m.tab == tabFiles && p.path != "":
+		return "empty file"
 	}
 	return ""
 }

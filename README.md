@@ -60,6 +60,8 @@ are gone, rexdiff marks the comment as stale.
 | `s` | send the comments to the agent |
 | `y` | copy the comments |
 | `\|` | side by side |
+| `:` | go to a line (`0` first, `$` last) |
+| `m` | rendered markdown |
 | `1` `2` `3` | changes, all files, or pull request |
 | `?` | all keys |
 

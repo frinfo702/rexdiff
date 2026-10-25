@@ -198,6 +198,10 @@ func TestComment(t *testing.T) {
 	if got, want := m.comments.Review(""), rows+"hi\n\n"+rows+"ok"; got != want {
 		t.Errorf("Review got:\n%s\nwant:\n%s", got, want)
 	}
+	if m.status != "comment added" {
+		t.Errorf("after a save: status %q, want \"comment added\"", m.status)
+	}
+	m.status = "" // the status hides the count
 	if !shows(m, "💬 hi", "2 unsent comments") {
 		t.Errorf("view got:\n%s\nwant the comments", view(m))
 	}

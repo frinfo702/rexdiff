@@ -323,6 +323,15 @@ func (m *model) updateOverlay(msg tea.KeyPressMsg) tea.Cmd {
 	if !ov.hasInput() {
 		return m.updateList(msg)
 	}
+	if ov.kind == overlayGoto {
+		if !lineKey(msg) {
+			return nil
+		}
+		// "$" stands alone, and a digit after "$" starts a number.
+		if msg.Text == "$" || (msg.Text != "" && ov.input.Value() == "$") {
+			ov.input.SetValue("")
+		}
+	}
 	if ov.kind == overlayCommits && key.Matches(msg, k.Mark) {
 		if ov.mark >= 0 {
 			ov.mark = -1
@@ -353,6 +362,7 @@ func (m *model) updateList(msg tea.KeyPressMsg) tea.Cmd {
 	case ov.kind == overlayComments && key.Matches(msg, k.Delete):
 		if it := ov.selected(); it != nil {
 			m.comments.Remove(it.comment)
+			m.flash("comment deleted")
 			if m.comments.Len() == 0 {
 				m.closeOverlay()
 				return nil
@@ -535,7 +545,7 @@ func (m *model) overlayRows(inner int) (rows []string, start int) {
 	case ov.err != "":
 		rows = append(rows, delStyle.Render("  "+termtext.Quote(ov.err)))
 	case len(ov.shown) == 0 && ov.kind != overlayGoto && ov.kind != overlayFind:
-		rows = append(rows, dimStyle.Render("  nothing matches"))
+		rows = append(rows, dimStyle.Render("  no matches"))
 	}
 	return rows, start
 }

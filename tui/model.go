@@ -350,8 +350,9 @@ func (m *model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// flashTime is how long a flash shows in the footer.
-const flashTime = 6 * time.Second
+// flashTime is how long a flash shows in the footer. herdr-reviewr uses
+// the same time.
+const flashTime = 4 * time.Second
 
 // flash shows s in the footer for a short time. The text can come from Rex
 // or from git, so flash quotes it if it has control characters.
@@ -440,7 +441,7 @@ func (m *model) reloadIfChanged() {
 		m.changes.cur, m.changes.top, m.changes.anchor = 0, 0, -1
 	}
 	if len(m.files) == 0 {
-		m.changes.note = "no changes in this scope · watching…"
+		m.changes.note = "no changes"
 	}
 	m.renderChanges()
 }
@@ -599,6 +600,10 @@ func (m *model) onPaste(text string) tea.Cmd {
 	switch {
 	case m.mode == modeComment:
 		m.editor.InsertString(text)
+	case m.mode == modeOverlay && m.overlay != nil && m.overlay.kind == overlayGoto:
+		if n, ok := pastedLine(text); ok {
+			m.overlay.input.SetValue(n)
+		}
 	case m.mode == modeOverlay && m.overlay != nil && m.overlay.hasInput():
 		m.overlay.input.SetValue(m.overlay.input.Value() + text)
 		return m.inputChanged()

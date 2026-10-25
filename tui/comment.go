@@ -128,10 +128,19 @@ func (m *model) updateComment(msg tea.KeyPressMsg) tea.Cmd {
 		if d.editID > 0 {
 			m.comments.Remove(d.editID)
 		}
-		if text := strings.TrimSpace(m.editor.Value()); text != "" {
+		text := strings.TrimSpace(m.editor.Value())
+		switch {
+		case text != "":
 			c := d.Comment
 			c.Text, c.Stale = text, false
 			m.comments.Add(c)
+			if d.editID > 0 {
+				m.flash("comment updated")
+			} else {
+				m.flash("comment added")
+			}
+		case d.editID > 0:
+			m.flash("comment deleted")
 		}
 		m.closeComment()
 		return nil

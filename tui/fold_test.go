@@ -102,9 +102,7 @@ func TestExpandFold(t *testing.T) {
 // moves the cursor to the line.
 func TestGotoLineInFold(t *testing.T) {
 	m := newFoldModel(t)
-	m = press(t, m, ":")
-	m = step(t, m, tea.KeyPressMsg{Text: "20", Code: '2'})
-	m = press(t, m, "enter")
+	m = press(t, m, ":", "2", "0", "enter")
 	p := &m.changes
 	if r := p.rows[p.cur]; r.New != 20 {
 		t.Errorf("the cursor is on %+v, want line 20", r)

@@ -1,8 +1,8 @@
 package tui
 
 import (
-	"fmt"
 	"hash/fnv"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -184,6 +184,7 @@ func (m *model) commentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.Delete):
 		if c := m.commentAtCursor(); c != nil {
 			m.comments.Remove(c.ID)
+			m.flash("comment deleted")
 		}
 	case key.Matches(msg, k.NextComment):
 		m.stepComment(1)
@@ -214,8 +215,16 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, k.GotoLine):
 		m.openInput(overlayGoto, "go to line (:0 first, :$ last)", "")
 	case key.Matches(msg, k.Rendered):
-		m.rendered = !m.rendered
-		m.rerender()
+		// As in herdr-reviewr, m acts only on a markdown file with text.
+		src, ok := m.markdownSource()
+		switch {
+		case !ok:
+		case m.rendersNothing(src):
+			m.flash("nothing here renders")
+		default:
+			m.rendered = !m.rendered
+			m.rerender()
+		}
 	case key.Matches(msg, k.Split):
 		m.split = !m.split
 		m.rerender()
@@ -515,7 +524,7 @@ func (m *model) runFind(q string) {
 	// The rows of a wrapped line make one hit.
 	m.find.hits = slices.Compact(m.find.hits)
 	if !m.find.active() {
-		m.flash("no match for " + q)
+		m.flash("no matches")
 		return
 	}
 	atCursor := func(h int) bool { return h >= p.cur }
@@ -523,37 +532,110 @@ func (m *model) runFind(q string) {
 	p.cur = m.find.hits[m.find.i]
 }
 
-// gotoLine moves the cursor to the line number in s. If s is "0", the
-// cursor goes to the first row. If s is "$", it goes to the last row.
+// gotoLine moves the cursor to the line in s, as herdr-reviewr does. s is
+// digits or "$" for the last line. The line is clamped to the file, so
+// "0" is the first line. The line numbers are of the new side, or of the
+// old side if no row has a new line. gotoLine opens the fold that has the
+// line. Without line numbers, for example in rendered markdown, s is the
+// row on the screen.
 func (m *model) gotoLine(s string) {
 	p := m.cur()
-	switch s = strings.TrimSpace(s); s {
-	case "0":
-		p.cur = 0
-		return
-	case "$":
-		p.cur = max(len(p.lines)-1, 0)
+	n, ok := lineNumber(s)
+	if !ok || len(p.rows) == 0 {
 		return
 	}
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		m.flash("not a line number: " + s)
+	side := diff.SideOld
+	if slices.ContainsFunc(p.rows, func(r diff.Row) bool { return r.New > 0 }) {
+		side = diff.SideNew
+	}
+	last := 0
+	for _, r := range p.rows {
+		last = max(last, r.Line(side), foldEnd(r.Fold, side))
+	}
+	if last == 0 {
+		p.cur = min(max(n, 1), len(p.rows)) - 1
 		return
 	}
+	n = min(max(n, 1), last)
 	if m.tab == tabChanges {
-		// Show the fold that has line n.
 		for _, r := range p.rows {
-			if f := r.Fold; n >= f.New && n < f.New+f.Lines {
+			if f := r.Fold; f.Lines > 0 && n >= foldStart(f, side) && n <= foldEnd(f, side) {
 				m.expandFold(f)
 				break
 			}
 		}
 	}
-	for i, r := range p.rows {
-		if r.New == n || (r.New == 0 && r.Old == n) {
-			p.cur = i
-			return
+	p.cur = lineRow(p.rows, n, side)
+}
+
+// lineRow returns the row of line n on side. If no row has the line, it
+// returns the first row with a larger line, else the last row with a
+// line.
+func lineRow(rows []diff.Row, n int, side diff.Side) int {
+	if i := slices.IndexFunc(rows, func(r diff.Row) bool { return r.Line(side) == n }); i >= 0 {
+		return i
+	}
+	if i := slices.IndexFunc(rows, func(r diff.Row) bool { return r.Line(side) > n }); i >= 0 {
+		return i
+	}
+	for i, r := range slices.Backward(rows) {
+		if r.Line(side) > 0 {
+			return i
 		}
 	}
-	m.flash(fmt.Sprintf("line %d isn't shown", n))
+	return len(rows) - 1
+}
+
+// foldStart and foldEnd return the first and the last line of fold f on
+// side. foldEnd returns 0 for no fold.
+func foldStart(f diff.Fold, side diff.Side) int {
+	if side == diff.SideOld {
+		return f.Old
+	}
+	return f.New
+}
+
+func foldEnd(f diff.Fold, side diff.Side) int {
+	if f.Lines == 0 {
+		return 0
+	}
+	return foldStart(f, side) + f.Lines - 1
+}
+
+// lineNumber returns the line in s, the text of the go-to-line prompt. "$"
+// gives the largest int. ok is false if s is not digits or "$".
+func lineNumber(s string) (n int, ok bool) {
+	if s == "$" {
+		return math.MaxInt, true
+	}
+	if s == "" || strings.Trim(s, "0123456789") != "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		n = math.MaxInt // too many digits
+	}
+	return n, true
+}
+
+// lineKey reports whether the go-to-line prompt takes the key msg. It
+// takes a digit, "$", and the keys that move in the text or delete.
+func lineKey(msg tea.KeyPressMsg) bool {
+	if msg.Mod&^tea.ModShift != 0 {
+		return false
+	}
+	switch msg.Code {
+	case tea.KeyBackspace, tea.KeyDelete, tea.KeyLeft, tea.KeyRight, tea.KeyHome, tea.KeyEnd:
+		return true
+	}
+	return len(msg.Text) == 1 && strings.Contains("0123456789$", msg.Text)
+}
+
+// pastedLine returns the line in pasted text for the go-to-line prompt.
+// It removes the quotes, the brackets, and the punctuation around the
+// text. ok is false if the rest is not digits or "$".
+func pastedLine(text string) (line string, ok bool) {
+	line = strings.Trim(strings.TrimSpace(text), "`'\"“”‘’()[]<>:.,;")
+	_, ok = lineNumber(line)
+	return line, ok
 }
