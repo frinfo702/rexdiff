@@ -1,0 +1,77 @@
+# Development
+
+You need Go at the version in `go.mod`, git, and golangci-lint v2.15.0. Older
+golangci-lint releases can fail on newer Go.
+
+```sh
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+```
+
+## Run a change in Rex
+
+```sh
+./dev.sh
+```
+
+`dev.sh` builds rexdiff and opens the Rex session `rexreview-test`, with a pane labelled
+"agent" and rexdiff beside it. Run it again after each change, and it replaces the old
+pane. The log goes to `/tmp/rexdiff.log`.
+
+It shows `/tmp/rexreview-demo` by default. Set `REXDIFF_DEMO` for another repository.
+It needs fish and python3.
+
+Outside Rex, `go run ./cmd/rexdiff` works in any git repository but cannot send
+comments.
+
+## Checks
+
+CI runs these checks:
+
+```sh
+golangci-lint fmt
+golangci-lint run
+go test -race -count=1 ./...
+go fix -diff ./...
+go mod tidy -diff
+```
+
+On a clean tree, `go fix` and `go mod tidy` print nothing.
+
+## Tests
+
+[test.md](test.md) describes the tests. They need git, and nothing else:
+
+```sh
+go test ./...                    # all tests
+go test -run TestSearch ./test/  # one black-box test
+```
+
+Two settings also use a real Rex. Neither changes your Rex config.
+
+```sh
+REX_BIN_DIR=$(dirname $(which rex)) go test ./test/  # check the installed Lua with rex
+REXDIFF_REX=$(which rex) go test -run TestRealRex ./test/
+```
+
+`TestRealRex` opens a Rex session of its own and closes it at the end. If Rex
+changes its output, record `test/testdata/rex` again as its README says.
+
+A fuzz test saves a failing input in `testdata/fuzz`. Commit that file with the fix.
+
+## Release
+
+```sh
+gh release create v0.3.0
+```
+
+GitHub Actions runs the tests, builds the binaries, and updates the Homebrew cask.
+
+## Rules
+
+- Write short, plain comments that match the existing code.
+- Text from git, Rex, or a pull request can contain escape codes. Clean it with
+  `internal/termtext` before you show it.
+- `internal/diffview` is copied from crush. Record each change to it in
+  `internal/VENDORED.md`.
+- When the right behaviour is unclear, follow herdr-reviewr.
+- Write commit messages in this form: `fix(tui): keep the view on failed reloads`.
