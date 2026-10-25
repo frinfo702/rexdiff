@@ -198,6 +198,8 @@ type Match struct {
 // Grep returns at most limit lines of the tracked and the untracked files
 // that contain the text q. The search ignores case and binary files. When
 // it finds limit lines, it stops git, and more tells if there are others.
+// At the deadline of ctx, Grep stops git and returns the lines that it
+// finds before it, with more set to true.
 func (r *Repo) Grep(ctx context.Context, q string, limit int) (ms []Match, more bool, err error) {
 	if strings.Contains(q, "\n") {
 		// git reads each line of q as a pattern. A match is one line, so no
@@ -217,6 +219,9 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int) (ms []Match, more 
 		return nil, false, err
 	}
 	if err := cmd.Start(); err != nil {
+		if pastDeadline(ctx) {
+			return nil, true, nil
+		}
 		if errors.Is(err, exec.ErrNotFound) {
 			err = errors.New("git isn't installed")
 		}
@@ -228,15 +233,20 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int) (ms []Match, more 
 	}
 	err = cmd.Wait()
 	switch {
+	case err == nil, more, exitedWith(err, 1): // done, stopped, or no match
+		return ms, more, nil
+	case pastDeadline(ctx):
+		return ms, true, nil
 	case ctx.Err() != nil:
 		return nil, false, ctx.Err()
-	case more, exitedWith(err, 1): // stopped, or no match
-		return ms, more, nil
-	case err != nil:
-		msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
-		return nil, false, fmt.Errorf("git grep: %w", &runError{cmp.Or(msg, err.Error()), err})
 	}
-	return ms, false, nil
+	msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
+	return nil, false, fmt.Errorf("git grep: %w", &runError{cmp.Or(msg, err.Error()), err})
+}
+
+// pastDeadline reports whether ctx ends at its deadline.
+func pastDeadline(ctx context.Context) bool {
+	return errors.Is(ctx.Err(), context.DeadlineExceeded)
 }
 
 // readMatches reads at most limit matches of "git grep -n -z". Each match

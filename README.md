@@ -115,7 +115,9 @@ that show.
 | `q` | quit, or ask first if comments are unsent |
 | `Q` | when `q` asks first, quit and drop the comments. Else it does nothing |
 
-The search shows up to 50 files and 200 lines of code, then "… more". With no
+The search shows up to 50 files and 200 lines of code, then "… more". A code
+search stops after 80 ms and shows the lines that it found, with a `+` after the
+count. With no
 query, it lists the files you opened from the search in this session first.
 The preview below the results shows the file, with the match in the middle.
 

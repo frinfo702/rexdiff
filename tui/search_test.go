@@ -2,12 +2,16 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/rednafi/rexdiff/internal/search"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -283,5 +287,32 @@ func TestSearchPreviewFile(t *testing.T) {
 	m = openQuery(t, m, "qqqq")
 	if !shows(m, "─ preview ─", "no preview") {
 		t.Errorf("view got:\n%s\nwant \"no preview\"", view(m))
+	}
+}
+
+// TestSearchBudget checks that a code search past its time budget shows
+// the matches that it finds by then, with a "+" in the chip.
+// TestGrepDeadline in vcs checks the matches.
+func TestSearchBudget(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.grepBudget = search.CodeBudget
+	m = press(t, m, "/")
+	bin := t.TempDir()
+	// The fake git prints one match, then hangs.
+	script := "#!/bin/sh\nprintf 'a.go\\0001\\000hit\\n'\nexec /bin/sleep 10\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	m.overlay.input.SetValue("hit")
+	cmd := m.inputChanged()
+	start := time.Now()
+	msg := cmd()
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("the code search takes %v, want about %v", d, search.CodeBudget)
+	}
+	// On a slow machine, the budget can end before the match.
+	if m = step(t, m, msg); !shows(m, "code 1+") && !shows(m, "code 0+") {
+		t.Errorf("view got:\n%s\nwant the chip \"code 1+\"", view(m))
 	}
 }

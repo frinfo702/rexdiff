@@ -1,6 +1,7 @@
 package vcs_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rednafi/rexdiff/vcs"
 )
@@ -365,5 +367,38 @@ func TestPullRequestBadJSON(t *testing.T) {
 				t.Errorf("PullRequest: err = %v, want %v", err, tt.want)
 			}
 		})
+	}
+}
+
+// TestGrepDeadline checks that Grep returns the matches that it finds
+// before the deadline of ctx, with more set, as herdr-reviewr does with
+// its time budget. A cancel is still an error.
+func TestGrepDeadline(t *testing.T) {
+	r, _ := newRepo(t)
+	bin := t.TempDir()
+	// The fake git prints one match, then hangs.
+	script := "#!/bin/sh\nprintf 'a.go\\0001\\000hit\\n'\nexec /bin/sleep 10\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer cancel()
+	ms, more, err := r.Grep(ctx, "hit", 10)
+	if err != nil || !more || len(ms) != 1 || ms[0].Text != "hit" {
+		t.Errorf("Grep past the deadline = %+v, %v, %v; want the hit, more, no error", ms, more, err)
+	}
+
+	ctx, cancel = context.WithTimeout(t.Context(), 0)
+	defer cancel()
+	if ms, more, err := r.Grep(ctx, "hit", 10); err != nil || !more || len(ms) != 0 {
+		t.Errorf("Grep after the deadline = %+v, %v, %v; want none, more, no error", ms, more, err)
+	}
+
+	ctx, stop := context.WithCancel(t.Context())
+	stop()
+	if _, _, err := r.Grep(ctx, "hit", 10); !errors.Is(err, context.Canceled) {
+		t.Errorf("Grep after a cancel: error %v, want context.Canceled", err)
 	}
 }

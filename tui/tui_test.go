@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -41,6 +42,7 @@ func newTestModel(t testing.TB) (model, string) {
 		t.Fatal(err)
 	}
 	m := newModel(t.Context(), Options{Repo: repo}, defaultConfig())
+	m.grepBudget = time.Minute // a slow test machine does not cut the searches
 	m.reload()
 	m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	return m, dir

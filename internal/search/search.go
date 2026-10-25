@@ -4,6 +4,7 @@ package search
 
 import (
 	"slices"
+	"time"
 
 	"github.com/sahilm/fuzzy"
 )
@@ -16,6 +17,11 @@ const (
 	// shows.
 	CodeLimit = 200
 )
+
+// CodeBudget is the time that a code search takes at most. After it, the
+// search shows the lines that it finds, and a "+" tells that there can be
+// others.
+const CodeBudget = 80 * time.Millisecond
 
 // Files returns at most limit of paths that match q, the best match
 // first, and the number of all the matches. For an empty q, the paths in

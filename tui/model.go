@@ -17,6 +17,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/search"
 	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/internal/turn"
 	"github.com/rednafi/rexdiff/rex"
@@ -279,6 +280,9 @@ type model struct {
 	// session, the last pick first.
 	recent     []string
 	grepCancel context.CancelFunc // stops the code search that runs
+	// grepBudget is the time of a code search, search.CodeBudget. A test
+	// can set a longer time.
+	grepBudget time.Duration
 	find       findState
 	drag       dragState
 	click      clickChain
@@ -303,21 +307,22 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	ta.KeyMap.InsertNewline.SetKeys(defaultKeys().Newline.Keys()...)
 
 	m := model{
-		ctx:      ctx,
-		repo:     o.Repo,
-		rex:      o.Rex,
-		log:      o.Log,
-		notice:   o.Notice,
-		updater:  o.Updater,
-		w:        120,
-		h:        40,
-		focused:  true,
-		base:     o.Base,
-		baseFlag: o.Base != "",
-		wrap:     o.Wrap,
-		editor:   ta,
-		help:     newHelp(),
-		agents:   map[string]*agentState{},
+		ctx:        ctx,
+		repo:       o.Repo,
+		rex:        o.Rex,
+		log:        o.Log,
+		notice:     o.Notice,
+		updater:    o.Updater,
+		w:          120,
+		h:          40,
+		focused:    true,
+		base:       o.Base,
+		baseFlag:   o.Base != "",
+		wrap:       o.Wrap,
+		editor:     ta,
+		help:       newHelp(),
+		agents:     map[string]*agentState{},
+		grepBudget: search.CodeBudget,
 	}
 	if m.log == nil {
 		m.log = slog.New(slog.DiscardHandler)
