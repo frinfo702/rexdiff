@@ -49,12 +49,12 @@ func clearFile(t *testing.T, path string) {
 
 // TestMultiClickCopies checks that a double click copies the word, a
 // triple click copies the source line, and a double click on the file list
-// copies the path.
+// copies the path. A double click off a word copies nothing.
 func TestMultiClickCopies(t *testing.T) {
 	tests := []struct {
 		name, needle string
 		n            int
-		want         string
+		want         string // the copy, or "" for no copy
 	}{
 		{"double", "return", 2, "return"},
 		{"double on one letter", "x := 2", 2, "x"},
@@ -72,12 +72,18 @@ func TestMultiClickCopies(t *testing.T) {
 			m := base
 			x, y := codeCell(t, m, tt.needle)
 			m = clicks(t, m, tt.n, x, y)
-			got, _ := os.ReadFile(out)
-			if string(got) != tt.want {
-				t.Errorf("clipboard %q, want %q", got, tt.want)
+			got, err := os.ReadFile(out)
+			if tt.want == "" {
+				if !errors.Is(err, fs.ErrNotExist) || m.status != "" {
+					t.Errorf("clipboard %q (%v), status %q; want no copy", got, err, m.status)
+				}
+				return
 			}
-			if tt.want != "" && m.status != "copied "+plural(len([]rune(tt.want)), "char") {
-				t.Errorf("status %q, want the count of chars", m.status)
+			if err != nil || string(got) != tt.want {
+				t.Errorf("clipboard %q (%v), want %q", got, err, tt.want)
+			}
+			if want := "copied " + plural(len([]rune(tt.want)), "char"); m.status != want {
+				t.Errorf("status %q, want %q", m.status, want)
 			}
 		})
 	}
@@ -87,8 +93,9 @@ func TestMultiClickCopies(t *testing.T) {
 		m := base
 		y := m.listY() + 1 + slices.Index(rowNames(m), "a.go")
 		m = clicks(t, m, 2, m.listX()+3, y)
-		if got, _ := os.ReadFile(out); string(got) != "a.go" || m.status != "copied 4 chars" {
-			t.Errorf("clipboard %q, status %q; want a.go, copied 4 chars", got, m.status)
+		got, err := os.ReadFile(out)
+		if err != nil || string(got) != "a.go" || m.status != "copied 4 chars" {
+			t.Errorf("clipboard %q (%v), status %q; want a.go, copied 4 chars", got, err, m.status)
 		}
 	})
 }

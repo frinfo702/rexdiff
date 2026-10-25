@@ -81,24 +81,29 @@ func step(tb testing.TB, m model, msg tea.Msg) model {
 // that the key types, such as "j".
 func press(t *testing.T, m model, keys ...string) model {
 	t.Helper()
+	for _, k := range keys {
+		m = step(t, m, keyMsg(t, k))
+	}
+	return m
+}
+
+// keyMsg returns the press of the key k. k is as in press.
+func keyMsg(t *testing.T, k string) tea.KeyPressMsg {
+	t.Helper()
 	named := map[string]rune{
 		"enter": tea.KeyEnter,
 		"esc":   tea.KeyEscape,
 		"home":  tea.KeyHome,
 		"end":   tea.KeyEnd,
 	}
-	for _, k := range keys {
-		code, ok := named[k]
-		switch {
-		case ok:
-			m = step(t, m, tea.KeyPressMsg{Code: code})
-		case len(k) > 1 && strings.Trim(k, "abcdefghijklmnopqrstuvwxyz") == "":
-			t.Fatalf("press: no key is named %q", k)
-		default:
-			m = step(t, m, tea.KeyPressMsg{Code: []rune(k)[0], Text: k})
-		}
+	code, ok := named[k]
+	switch {
+	case ok:
+		return tea.KeyPressMsg{Code: code}
+	case len(k) > 1 && strings.Trim(k, "abcdefghijklmnopqrstuvwxyz") == "":
+		t.Fatalf("press: no key is named %q", k)
 	}
-	return m
+	return tea.KeyPressMsg{Code: []rune(k)[0], Text: k}
 }
 
 // toTop moves the cursor of the current pane to the first row.
@@ -276,13 +281,73 @@ func TestPRChecks(t *testing.T) {
 }
 
 // TestSmallScreens checks that every key works on screens down to 1x1 and
-// that the view fits the screen.
+// that the view fits the screen. Each key must have its effect, so a key
+// that does nothing on a small screen fails.
 func TestSmallScreens(t *testing.T) {
 	t.Parallel()
-	keys := []string{
-		"w", "j", "v", "j", "c", "\x1b[31mx\x07", "enter", "f", "F", "]", "[", "n", "N",
-		"|", "p", "m", "t", "b", "u", "G", "esc", "/", "a", "esc", ":", "2", "enter", "?",
-		"esc", "2", "j", "m", "3", "1", "x", "d", "y", "s", "esc", "q", "esc", "home",
+	type check func(before, after model, cmd tea.Cmd) bool
+	moved := func(b, a model, _ tea.Cmd) bool { return a.cur().cur != b.cur().cur }
+	isMode := func(md mode) check {
+		return func(_, a model, _ tea.Cmd) bool { return a.mode == md }
+	}
+	isOverlay := func(k overlayKind) check {
+		return func(_, a model, _ tea.Cmd) bool { return a.overlay != nil && a.overlay.kind == k }
+	}
+	isScope := func(sc Scope) check { return func(_, a model, _ tea.Cmd) bool { return a.scope == sc } }
+	isTab := func(tb tab) check { return func(_, a model, _ tea.Cmd) bool { return a.tab == tb } }
+	isFile := func(i int) check { return func(_, a model, _ tea.Cmd) bool { return a.changeSel == i } }
+	flashes := func(text string) check {
+		return func(_, a model, _ tea.Cmd) bool { return a.status == text }
+	}
+	closed := func(_, a model, _ tea.Cmd) bool { return a.overlay == nil && a.mode == modeNormal }
+	steps := []struct {
+		key  string
+		want string
+		ok   check
+	}{
+		{"b", "the branch scope", isScope(ScopeBranch)},
+		{"f", "the next file", isFile(1)},
+		{"F", "the first file", isFile(0)},
+		{"w", "wrap off", func(b, a model, _ tea.Cmd) bool { return a.wrap != b.wrap }},
+		{"j", "a move", moved},
+		{"v", "a selection", func(_, a model, _ tea.Cmd) bool { return a.cur().anchor >= 0 }},
+		{"j", "a move", moved},
+		{"c", "the comment box", isMode(modeComment)},
+		{"\x1b[31mx\x07", "text in the box", func(_, a model, _ tea.Cmd) bool { return a.editor.Value() != "" }},
+		{"enter", "a comment", func(_, a model, _ tea.Cmd) bool { return a.comments.Len() == 1 && a.mode == modeNormal }},
+		{"k", "a move up", moved},
+		{"]", "a move to the change", moved},
+		{"]", "a crossing armed", func(_, a model, _ tea.Cmd) bool { return a.armed == 1 }},
+		{"]", "the next file", isFile(1)},
+		{"[", "a crossing armed", func(_, a model, _ tea.Cmd) bool { return a.armed == -1 }},
+		{"[", "the first file", isFile(0)},
+		{"n", "a move to the comment", moved},
+		{"|", "split, or too narrow", func(b, a model, _ tea.Cmd) bool {
+			return a.split != b.split || a.status == "too narrow for split"
+		}},
+		{"p", "the list moves", func(b, a model, _ tea.Cmd) bool { return a.listPos != b.listPos }},
+		{"t", "the last-turn scope", isScope(ScopeLastTurn)},
+		{"u", "the uncommitted scope", isScope(ScopeUncommitted)},
+		{"G", "the commit picker", isOverlay(overlayCommits)},
+		{"esc", "no overlay", closed},
+		{"/", "the search", isOverlay(overlaySearch)},
+		{"a", "a query", func(_, a model, _ tea.Cmd) bool { return a.overlay.input.Value() == "a" }},
+		{"esc", "no overlay", closed},
+		{":", "go to line", isOverlay(overlayGoto)},
+		{"2", "a line number", func(_, a model, _ tea.Cmd) bool { return a.overlay.input.Value() == "2" }},
+		{"enter", "no overlay", closed},
+		{"?", "all keys", func(_, a model, _ tea.Cmd) bool { return a.help.ShowAll }},
+		{"esc", "the short keys", func(_, a model, _ tea.Cmd) bool { return !a.help.ShowAll }},
+		{"2", "the Files tab", isTab(tabFiles)},
+		{"j", "a move in the file", moved},
+		{"3", "the PR tab", isTab(tabPR)},
+		{"1", "the Changes tab", isTab(tabChanges)},
+		{"s", "no agent", flashes("not inside Rex, press y to copy")},
+		{"y", "a copy", func(_, _ model, cmd tea.Cmd) bool { return cmd != nil }},
+		{"q", "the quit prompt", isOverlay(overlayQuit)},
+		{"esc", "no overlay", closed},
+		{"d", "no comment", func(_, a model, _ tea.Cmd) bool { return a.comments.Len() == 0 }},
+		{"q", "a quit", func(_, _ model, cmd tea.Cmd) bool { return quits(cmd) }},
 	}
 	sizes := []struct{ w, h int }{
 		{0, 0}, {1, 1}, {2, 2}, {10, 3}, {20, 5}, {40, 4}, {200, 6},
@@ -292,16 +357,21 @@ func TestSmallScreens(t *testing.T) {
 			t.Parallel()
 			m, _ := newTestModel(t)
 			m = step(t, m, tea.WindowSizeMsg{Width: size.w, Height: size.h})
-			for _, k := range keys {
-				m = press(t, m, k)
+			for _, st := range steps {
+				before := m
+				next, cmd := m.Update(keyMsg(t, st.key))
+				m = *next.(*model)
+				if !st.ok(before, m, cmd) {
+					t.Fatalf("after %q: want %s", st.key, st.want)
+				}
 				lines := strings.Split(view(m), "\n")
 				if len(lines) > max(size.h, 1) {
-					t.Errorf("after %q: %d lines, want %d or fewer", k, len(lines), max(size.h, 1))
+					t.Errorf("after %q: %d lines, want %d or fewer", st.key, len(lines), max(size.h, 1))
 				}
 				for _, l := range lines {
 					if w := ansi.StringWidth(l); w > max(size.w, 1) {
 						t.Errorf("after %q: line width %d, want %d or fewer: %q",
-							k, w, max(size.w, 1), l)
+							st.key, w, max(size.w, 1), l)
 						break
 					}
 				}

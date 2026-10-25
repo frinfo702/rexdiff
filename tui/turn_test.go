@@ -1,7 +1,11 @@
 package tui
 
 import (
+	"errors"
+	"io/fs"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -225,26 +229,44 @@ func tickAgents(t *testing.T, m *model) []agentsMsg {
 func TestSampleRetry(t *testing.T) {
 	m, dir := newTestModel(t)
 	clk := setClock(&m)
-	logRex(t, &m) // its output is no list
+	log := logRex(t, &m) // its output is no list
 	m = step(t, m, m.listAgents(agentsMsg{})())
 	if m.sampled || m.sampleAt.IsZero() || m.sampleWait != 2*time.Second {
 		t.Fatalf("after a failed list: sampled %v, at %v, wait %v; want a retry",
 			m.sampled, m.sampleAt, m.sampleWait)
 	}
-	if got := tickAgents(t, &m); len(got) != 0 {
-		t.Errorf("a tick before the wait lists %d times, want 0", len(got))
+	clk.advance(time.Second - time.Nanosecond)
+	if got := tickAgents(t, &m); len(got) != 0 || rexLists(t, log) != 1 {
+		t.Errorf("a tick before the wait: %d lists, %d rex lists; want 0, 1",
+			len(got), rexLists(t, log))
 	}
-	clk.advance(time.Second)
+	clk.advance(time.Nanosecond)
 	got := tickAgents(t, &m)
-	if len(got) != 1 || got[0].err == nil {
-		t.Fatalf("a tick after the wait lists %d times, want 1 that fails", len(got))
+	if len(got) != 1 || got[0].err == nil || rexLists(t, log) != 2 {
+		t.Fatalf("a tick after the wait: %d lists, %d rex lists; want 1 that fails, 2",
+			len(got), rexLists(t, log))
 	}
 	if m = step(t, m, got[0]); m.sampleWait != 4*time.Second {
 		t.Errorf("after a second failure: wait %v, want 4s", m.sampleWait)
 	}
 	m = step(t, m, sample("p", "pi", dir))
 	clk.advance(2 * time.Second)
-	if !m.sampled || len(tickAgents(t, &m)) != 0 {
-		t.Errorf("after a good list: sampled %v, want true and no more lists", m.sampled)
+	if got := tickAgents(t, &m); !m.sampled || len(got) != 0 || rexLists(t, log) != 2 {
+		t.Errorf("after a good list: sampled %v, %d lists, %d rex lists; want true, 0, 2",
+			m.sampled, len(got), rexLists(t, log))
 	}
+}
+
+// rexLists returns the number of the lists of the blocks in the log of
+// logRex.
+func rexLists(t *testing.T, log string) int {
+	t.Helper()
+	b, err := os.ReadFile(log)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(b), "session.list_blocks")
 }

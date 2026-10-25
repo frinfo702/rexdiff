@@ -2,7 +2,9 @@ package tui
 
 import (
 	"errors"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,15 +26,29 @@ func watched(t *testing.T) (m model, dir string) {
 }
 
 // TestTickRunsNoGitWhenIdle checks that a tick runs no git process while
-// nothing changes.
+// nothing changes. A git on PATH logs each call.
 func TestTickRunsNoGitWhenIdle(t *testing.T) {
-	m, _ := watched(t)
-	noGit(t)
+	m, dir := watched(t)
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	log := filepath.Join(bin, "git.log")
+	testgit.Script(t, bin, "git", `echo "$*" >> '`+log+"'\nexec '"+gitPath+"' \"$@\"\n")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	for range 3 {
 		m = step(t, m, tickMsg{})
 	}
-	if shows(m, "isn't installed") {
-		t.Errorf("view got:\n%s\nwant no git error", view(m))
+	if b, err := os.ReadFile(log); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("idle ticks run git:\n%s(%v)\nwant no call", b, err)
+	}
+	testgit.WriteFile(t, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 42\n}\n")
+	if m = step(t, m, tickMsg{}); !shows(m, "return 42") {
+		t.Errorf("view got:\n%s\nwant the edit", view(m))
+	}
+	if _, err := os.Stat(log); err != nil {
+		t.Errorf("a tick after an edit runs no git through the log: %v", err)
 	}
 }
 

@@ -122,7 +122,7 @@ func TestEditorError(t *testing.T) {
 	}{
 		{"fails", code + " -g {file}", os.Getenv("PATH"), "editor failed: exit status 3: code: no such file"},
 		// sh is not in PATH.
-		{"cannot start", code + " -g {file}", "", "editor failed: "},
+		{"cannot start", code + " -g {file}", "", `editor failed: exec: "sh": executable file not found in $PATH`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -133,8 +133,8 @@ func TestEditorError(t *testing.T) {
 			if cmd != nil {
 				m = step(t, m, cmd())
 			}
-			if !shows(m, tt.want) {
-				t.Errorf("view got:\n%s\nwant %q in the footer", view(m), tt.want)
+			if m.status != tt.want || !shows(m, tt.want) {
+				t.Errorf("status %q, view got:\n%s\nwant %q in the footer", m.status, view(m), tt.want)
 			}
 		})
 	}
