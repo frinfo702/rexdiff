@@ -149,10 +149,12 @@ type dragState struct {
 }
 
 // draft is the comment that the user writes. It is a new comment, or an
-// edit of the comment with ID editID.
+// edit of the comment with ID editID. An edit from the comment list goes
+// back to the list at row listRow. Else listRow is -1.
 type draft struct {
 	diff.Comment
-	editID int
+	editID  int
+	listRow int
 }
 
 // prState is the content of the PR tab.

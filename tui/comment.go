@@ -83,16 +83,13 @@ func (p *pane) span(a, b int) (lo, hi int) {
 	return min(a, b), p.end(max(a, b))
 }
 
-// startComment opens the comment box for the selection, or for the cursor
-// line. On a line that has a comment, it edits the comment.
+// startComment opens the comment box for a new comment on the selection,
+// or on the cursor line. A line can have more than one comment.
 func (m *model) startComment(pref diff.Side) tea.Cmd {
 	p := m.cur()
 	t := m.target(p.cur, pref)
 	if t == nil {
 		return nil
-	}
-	if c := m.comments.At(p.path, t.side, t.line); c != nil && p.anchor < 0 {
-		return m.editComment(c)
 	}
 	lo, hi := p.selection()
 	c := diff.NewComment(
@@ -102,7 +99,7 @@ func (m *model) startComment(pref diff.Side) tea.Cmd {
 		m.contentFor(p.path, diff.SideOld),
 		m.contentFor(p.path, diff.SideNew),
 	)
-	m.draft = &draft{Comment: c}
+	m.draft = &draft{Comment: c, listRow: -1}
 	m.editor.SetValue("")
 	m.mode = modeComment
 	// Put the cursor on the last line of the range, so that the box opens
@@ -111,9 +108,10 @@ func (m *model) startComment(pref diff.Side) tea.Cmd {
 	return m.editor.Focus()
 }
 
-// editComment opens the comment box with the text of c.
-func (m *model) editComment(c *diff.Comment) tea.Cmd {
-	m.draft = &draft{Comment: *c, editID: c.ID}
+// editComment opens the comment box with the text of c. After the edit,
+// the comment list opens at listRow, if listRow is 0 or more.
+func (m *model) editComment(c *diff.Comment, listRow int) tea.Cmd {
+	m.draft = &draft{Comment: *c, editID: c.ID, listRow: listRow}
 	m.editor.SetValue(c.Text)
 	m.mode = modeComment
 	cursorToLine(m.cur(), c.Side, c.End)
@@ -124,23 +122,23 @@ func (m *model) editComment(c *diff.Comment) tea.Cmd {
 func (m *model) updateComment(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, m.keys.Save):
+		// As in herdr-reviewr, blank text cancels. An edit keeps the
+		// comment.
 		d := m.draft
-		if d.editID > 0 {
-			m.comments.Remove(d.editID)
-		}
 		text := strings.TrimSpace(m.editor.Value())
 		switch {
-		case text != "":
+		case text == "":
+		case d.editID > 0:
+			m.comments.Remove(d.editID)
 			c := d.Comment
 			c.Text, c.Stale = text, false
 			m.comments.Add(c)
-			if d.editID > 0 {
-				m.flash("comment updated")
-			} else {
-				m.flash("comment added")
-			}
-		case d.editID > 0:
-			m.flash("comment deleted")
+			m.flash("comment updated")
+		default:
+			c := d.Comment
+			c.Text = text
+			m.comments.Add(c)
+			m.flash("comment added")
 		}
 		m.closeComment()
 		return nil
@@ -153,11 +151,17 @@ func (m *model) updateComment(msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-// closeComment closes the comment box and clears the selection.
+// closeComment closes the comment box and clears the selection. After an
+// edit from the comment list, it opens the list again.
 func (m *model) closeComment() {
+	row := m.draft.listRow
 	m.mode, m.draft = modeNormal, nil
 	m.cur().anchor = -1
 	m.editor.Blur()
+	if row >= 0 && m.comments.Len() > 0 {
+		m.openCommentList()
+		m.overlay.cur = min(row, len(m.overlay.shown)-1)
+	}
 }
 
 // newLineNear returns the new line of row i. A row with no new line, such
@@ -181,7 +185,7 @@ func newLineNear(rows []diff.Row, i int) int {
 // opens the file in an editor at the cursor line.
 func (m *model) editOrOpen() tea.Cmd {
 	if c := m.commentAtCursor(); c != nil {
-		return m.editComment(c)
+		return m.editComment(c, -1)
 	}
 	p := m.cur()
 	if p.path == "" {

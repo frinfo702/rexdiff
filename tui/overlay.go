@@ -265,19 +265,22 @@ func (m *model) openCommitPicker() {
 	m.open(ov)
 }
 
-// openCommentList lists the comments, to jump to one or to delete one.
+// openCommentList lists the comments, to jump to one, edit one, delete
+// one, or send or copy them all.
 func (m *model) openCommentList() {
 	if m.comments.Len() == 0 {
 		m.flash("no comments yet")
 		return
 	}
-	ov := newOverlay(overlayComments, "comments: enter to jump, d to delete")
+	ov := newOverlay(overlayComments, "")
 	m.fillCommentList(ov)
 	m.open(ov)
 }
 
-// fillCommentList sets the comments as the items of ov.
+// fillCommentList sets the comments as the items of ov, and the count in
+// the title, as in herdr-reviewr.
 func (m *model) fillCommentList(ov *overlay) {
+	ov.title = fmt.Sprintf("Comments (%d)", m.comments.Len())
 	var items []pickItem
 	for _, c := range m.comments.All() {
 		tag := ""
@@ -298,8 +301,11 @@ func (m *model) fillCommentList(ov *overlay) {
 // updateOverlay handles a key while an overlay is open.
 func (m *model) updateOverlay(msg tea.KeyPressMsg) tea.Cmd {
 	ov, k := m.overlay, overlayKeys
-	if ov.kind == overlayQuit {
+	switch ov.kind {
+	case overlayQuit:
 		return m.updateQuit(msg)
+	case overlayComments:
+		return m.updateCommentList(msg)
 	}
 	switch {
 	case key.Matches(msg, k.Close):
@@ -365,6 +371,47 @@ func (m *model) updateQuit(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+// updateCommentList handles a key in the comment list. The keys are those
+// of herdr-reviewr. Enter also jumps to the comment.
+func (m *model) updateCommentList(msg tea.KeyPressMsg) tea.Cmd {
+	ov, k := m.overlay, m.keys
+	it := ov.selected()
+	switch {
+	case key.Matches(msg, k.Comments, k.Cancel):
+		m.closeOverlay()
+	case key.Matches(msg, overlayKeys.Choose):
+		return m.chooseOverlay()
+	case key.Matches(msg, k.Down):
+		ov.down()
+	case key.Matches(msg, k.Up):
+		ov.up()
+	case key.Matches(msg, k.Send):
+		return m.startSend()
+	case key.Matches(msg, k.Copy):
+		return m.copyComments()
+	case key.Matches(msg, k.Edit) && it != nil:
+		c := m.comments.Find(it.comment)
+		if c == nil {
+			return nil
+		}
+		row := ov.cur
+		m.closeOverlay()
+		m.jumpTo(c.Path, c.Side, c.Start)
+		m.focusList = false
+		m.ensureVisible()
+		return m.editComment(c, row)
+	case key.Matches(msg, k.Delete) && it != nil:
+		m.comments.Remove(it.comment)
+		m.flash("comment deleted")
+		if m.comments.Len() == 0 {
+			m.closeOverlay()
+			return nil
+		}
+		m.fillCommentList(ov)
+	}
+	return nil
+}
+
 // updateList handles a key in an overlay that has no input. In the agent
 // picker, the digits 1 to 9 pick an agent.
 func (m *model) updateList(msg tea.KeyPressMsg) tea.Cmd {
@@ -375,16 +422,6 @@ func (m *model) updateList(msg tea.KeyPressMsg) tea.Cmd {
 		ov.down()
 	case key.Matches(msg, k.ListUp):
 		ov.up()
-	case ov.kind == overlayComments && key.Matches(msg, k.Delete):
-		if it := ov.selected(); it != nil {
-			m.comments.Remove(it.comment)
-			m.flash("comment deleted")
-			if m.comments.Len() == 0 {
-				m.closeOverlay()
-				return nil
-			}
-			m.fillCommentList(ov)
-		}
 	case ov.kind == overlayAgents && digit:
 		if i := int(s[0] - '1'); i < len(ov.shown) {
 			ov.cur = i
@@ -521,6 +558,9 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 		rows, start := m.overlayRows(inner)
 		listY = len(lines) + 1 - start // 1 for the border
 		lines = append(lines, rows...)
+		if ov.kind == overlayComments {
+			lines = append(lines, "", truncate(dimStyle.Render(m.listHint()), inner))
+		}
 	}
 	box = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -539,6 +579,15 @@ func (m *model) quitHint() string {
 	k, n := m.keys, m.comments.Len()
 	return fmt.Sprintf("%s quit (%d pending) · esc cancel · %s send %d · %s copy",
 		k.QuitDiscard.Help().Key, n, k.Send.Help().Key, n, k.Copy.Help().Key)
+}
+
+// listHint returns the keys of the comment list, as the footer of
+// herdr-reviewr shows them.
+func (m *model) listHint() string {
+	k := m.keys
+	return fmt.Sprintf("%s send %d · esc close · %s copy · %s edit · %s delete · enter jump",
+		k.Send.Help().Key, m.comments.Len(), k.Copy.Help().Key, k.Edit.Help().Key,
+		k.Delete.Help().Key)
 }
 
 // overlayRows renders the rows of the list of the overlay that fit the

@@ -759,7 +759,7 @@ func TestTallLine(t *testing.T) {
 	}
 
 	// A cursor on the line shows its first rows. The comment box shows below
-	// the last row. A c on a line with a comment edits the comment.
+	// the last row. An e on a line with a comment edits the comment.
 	m = step(t, m, tea.WindowSizeMsg{Width: 30, Height: 12})
 	m = toTop(m)
 	for m.changes.rows[m.changes.cur].New != 4 {
@@ -768,7 +768,7 @@ func TestTallLine(t *testing.T) {
 	if v := view(m); !strings.Contains(v, "return x") {
 		t.Errorf("view got:\n%s\nwant the first rows of the line", v)
 	}
-	m = press(t, m, "c", "o", "k", "enter", "c", "z", "z")
+	m = press(t, m, "c", "o", "k", "enter", "e", "z", "z")
 	lines := strings.Split(view(m), "\n")
 	has := func(s string) func(string) bool {
 		return func(l string) bool { return strings.Contains(l, s) }

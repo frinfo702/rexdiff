@@ -56,7 +56,10 @@ are gone, rexdiff marks the comment as stale.
 | `]` `[` | next or previous change |
 | `→` or click | show the unchanged lines of a fold (`⋯ 12 unmodified lines`) |
 | `f` `F` | next or previous file |
-| `c` | comment |
+| `c` | new comment, also on a line that has one |
+| `e` | edit the comment at the cursor, else open the file in the editor |
+| `d` | delete the comment at the cursor |
+| `l` | list the comments: `e` edit, `d` delete, `s` send, `y` copy, enter jump |
 | `s` | send the comments to the agent |
 | `y` | copy the comments and clear them, as a send does |
 | `\|` | side by side |
@@ -67,6 +70,8 @@ are gone, rexdiff marks the comment as stale.
 | `q` | quit, or ask first if comments are unsent |
 
 Side by side needs 135 columns. A narrower pane shows one column.
+
+An edit with blank text keeps the comment as it was.
 
 When `q` asks first, `Q` quits, `s` sends, `y` copies, and any other key closes the
 question.

@@ -137,9 +137,11 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 		return nil
 	case len(here) == 1:
 		return m.deliver(here[0])
-	case m.mode != modeNormal:
+	case m.mode != modeNormal && !m.inCommentList():
 		// The user can open the comment box or an overlay while the agents
-		// load. A picker on top can hide the box and lose the comment.
+		// load. A picker on top can hide the box and lose the comment. The
+		// picker can take the place of the comment list, as in
+		// herdr-reviewr.
 		m.flash("several agents: close the box, then press s to pick one")
 		return nil
 	}
@@ -264,18 +266,23 @@ func (m *model) onCopied(msg copiedMsg) {
 	}
 }
 
+// inCommentList tells if the comment list is open.
+func (m *model) inCommentList() bool {
+	return m.mode == modeOverlay && m.overlay != nil && m.overlay.kind == overlayComments
+}
+
 // clearComments removes the comments ids after a send or a copy. An open
 // comment list shows the rest, or closes if no comment stays.
 func (m *model) clearComments(ids []int) {
 	for _, id := range ids {
 		m.comments.Remove(id)
 	}
-	if ov := m.overlay; ov != nil && ov.kind == overlayComments {
+	if m.inCommentList() {
 		if m.comments.Len() == 0 {
 			m.closeOverlay()
 			return
 		}
-		m.fillCommentList(ov)
+		m.fillCommentList(m.overlay)
 	}
 }
 

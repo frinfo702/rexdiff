@@ -173,11 +173,13 @@ func (m *model) commentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if m.target(p.cur, diff.SideNew) != nil {
 			p.anchor = p.cur
 		}
-	case key.Matches(msg, k.Comment):
+	case key.Matches(msg, k.Comment) && !m.focusList:
+		// As in herdr-reviewr, a new comment and a delete need the focus
+		// on the diff.
 		return m.startComment(diff.SideNew), true
 	case key.Matches(msg, k.Edit):
 		return m.editOrOpen(), true
-	case key.Matches(msg, k.Delete):
+	case key.Matches(msg, k.Delete) && !m.focusList:
 		if c := m.commentAtCursor(); c != nil {
 			m.comments.Remove(c.ID)
 			m.flash("comment deleted")

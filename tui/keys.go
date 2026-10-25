@@ -123,8 +123,8 @@ func defaultKeys() keyMap {
 type overlayKeyMap struct {
 	Choose, Close, Up, Down key.Binding
 
-	// ListDown, ListUp, and Delete work in the lists that have no input.
-	ListDown, ListUp, Delete key.Binding
+	// ListDown and ListUp work in the agent picker.
+	ListDown, ListUp key.Binding
 
 	// Mark starts or clears a range in the commit picker.
 	Mark key.Binding
@@ -139,7 +139,6 @@ var overlayKeys = overlayKeyMap{
 	Down:     key.NewBinding(key.WithKeys("down", "ctrl+n", "ctrl+j", "tab")),
 	ListDown: key.NewBinding(key.WithKeys("j")),
 	ListUp:   key.NewBinding(key.WithKeys("k")),
-	Delete:   key.NewBinding(key.WithKeys("d")),
 	Mark:     key.NewBinding(key.WithKeys("space")),
 }
 
