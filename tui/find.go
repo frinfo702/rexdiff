@@ -186,27 +186,21 @@ func (m *model) stepFind(d int) {
 	cursorToLine(p, diff.SideNew, h.line)
 }
 
-// findRows returns the rows of the hits that show, for the marks in the
-// gutter.
-func (m *model) findRows() map[int]bool {
+// shownHits returns the hits of the query in the find band, or nil if
+// the band is closed.
+func (m *model) shownHits() []findHit {
 	if m.mode != modeFind {
 		return nil
 	}
-	rows := map[int]bool{}
-	for _, h := range m.findHits(m.find.input.Value()) {
-		if h.line == 0 {
-			rows[h.row] = true
-		}
-	}
-	return rows
+	return m.findHits(m.find.input.Value())
 }
 
 // findBand renders the find band: the query, and the count at the right.
-// The count is "i/n" on a hit, n off a hit, or "no matches".
-func (m *model) findBand() string {
+// The count is "i/n" on a hit, n off a hit, or "no matches". hits are the
+// hits of the query.
+func (m *model) findBand(hits []findHit) string {
 	count := ""
-	if q := m.find.input.Value(); q != "" {
-		hits := m.findHits(q)
+	if m.find.input.Value() != "" {
 		before, on := m.findPlace(hits)
 		switch {
 		case len(hits) == 0:

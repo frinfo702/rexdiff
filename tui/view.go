@@ -331,8 +331,9 @@ func fitName(p string, room int) string {
 }
 
 // mainLines renders the visible part of the main pane. rowAt[y] is the row
-// on screen line y, or -1 for a note, a comment, or the comment box.
-func (m *model) mainLines(h int) (lines []string, rowAt []int) {
+// on screen line y, or -1 for a note, a comment, or the comment box. hits
+// are the find hits that get a mark. The marks do not change rowAt.
+func (m *model) mainLines(h int, hits []findHit) (lines []string, rowAt []int) {
 	p := m.cur()
 	if note := m.emptyNote(); note != "" {
 		return []string{"", "  " + dimStyle.Render(note)}, []int{-1, -1}
@@ -350,12 +351,17 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 			add(l, -1)
 		}
 	}
-	hits := m.findRows()
+	marked := map[int]bool{}
+	for _, h := range hits {
+		if h.line == 0 { // a hit in a fold has no row of its own
+			marked[h.row] = true
+		}
+	}
 	for i := p.top; i < len(p.lines) && len(lines) < h; i++ {
 		// A wrapped line shows its marks on its first row, and its
 		// comments below its last row.
 		t := m.target(i, diff.SideNew)
-		add(m.rowMark(i, t, lo, hi, hits[i])+p.lines[i], i)
+		add(m.rowMark(i, t, lo, hi, marked[i])+p.lines[i], i)
 		if t != nil && p.end(i) == i {
 			addBelow(m.commentsBelow(t))
 		}
@@ -480,7 +486,7 @@ func (m *model) ensureVisible() {
 	p.top = max(p.top, last-h+1)
 	p.top = min(last, p.top, max(len(p.lines)-1, 0))
 	for p.top < last {
-		_, rowAt := m.mainLines(h)
+		_, rowAt := m.mainLines(h, nil)
 		idx := slices.Index(rowAt, p.end(p.cur))
 		if idx >= 0 && idx+1+box <= h {
 			return
@@ -490,12 +496,13 @@ func (m *model) ensureVisible() {
 }
 
 // footer renders the notice, the status, and the help of the keys. The
-// notice wraps, so that the user can read all of it.
-func (m *model) footer() string {
+// notice wraps, so that the user can read all of it. hits are the hits of
+// the find band.
+func (m *model) footer(hits []findHit) string {
 	if m.notice != "" {
-		return delStyle.Render(wrapWords(m.notice, m.w)) + "\n" + m.footerLine()
+		return delStyle.Render(wrapWords(m.notice, m.w)) + "\n" + m.footerLine(hits)
 	}
-	return m.footerLine()
+	return m.footerLine(hits)
 }
 
 // wrapWords breaks s into lines of width w or less, at spaces only.
@@ -531,9 +538,9 @@ func wrapWords(s string, w int) string {
 
 // footerLine renders the status and the help of the keys, or the find
 // band.
-func (m *model) footerLine() string {
+func (m *model) footerLine(hits []findHit) string {
 	if m.mode == modeFind {
-		return m.findBand()
+		return m.findBand(hits)
 	}
 	m.help.SetWidth(m.w)
 	var badge string
@@ -571,7 +578,7 @@ func (m *model) footerLine() string {
 }
 
 // bodyHeight returns the number of lines between the header and the footer.
-func (m *model) bodyHeight() int { return m.heightAbove(m.footer()) }
+func (m *model) bodyHeight() int { return m.heightAbove(m.footer(m.shownHits())) }
 
 // heightAbove returns the height of the body above footer.
 func (m *model) heightAbove(footer string) int {
@@ -580,12 +587,13 @@ func (m *model) heightAbove(footer string) int {
 
 // View renders the screen.
 func (m *model) View() tea.View {
-	footer := m.footer()
+	hits := m.shownHits()
+	footer := m.footer(hits)
 	h := m.heightAbove(footer)
 	hdr, _ := m.header()
 
 	mh := m.mainHeightOf(h)
-	ml, _ := m.mainLines(mh)
+	ml, _ := m.mainLines(mh, hits)
 	main := box(ml, m.mainWidth(), mh)
 	body := main
 	rule := dimStyle.Render(strings.Repeat("─", m.w))

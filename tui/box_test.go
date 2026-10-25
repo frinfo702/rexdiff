@@ -13,7 +13,7 @@ import (
 // boxShows reports whether the comment box of m shows in the main pane.
 func boxShows(m model) bool {
 	p, h := m.cur(), m.mainHeight()
-	_, rowAt := m.mainLines(h)
+	_, rowAt := m.mainLines(h, nil)
 	i := slices.Index(rowAt, p.end(p.cur))
 	return m.mode == modeComment && i >= 0 && i+1+lipgloss.Height(m.editor.View()) <= h
 }

@@ -67,7 +67,7 @@ func (m *model) clickMain(mouse tea.Mouse) tea.Cmd {
 	if y < 0 || y >= h || mouse.X < m.mainX() || mouse.X >= m.mainX()+m.mainWidth() {
 		return nil
 	}
-	_, rowAt := m.mainLines(h)
+	_, rowAt := m.mainLines(h, nil)
 	if y >= len(rowAt) || rowAt[y] < 0 {
 		return nil
 	}
@@ -118,7 +118,7 @@ func (m *model) onDrag(mouse tea.Mouse) {
 		p.top = min(p.top+1, max(len(p.lines)-1, 0))
 		p.cur = max(min(p.top+h-1, len(p.lines)-1), 0)
 	default:
-		_, rowAt := m.mainLines(h)
+		_, rowAt := m.mainLines(h, nil)
 		for yy := min(y, len(rowAt)-1); yy >= 0; yy-- {
 			if rowAt[yy] >= 0 {
 				p.cur = rowAt[yy]

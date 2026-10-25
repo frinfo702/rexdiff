@@ -322,7 +322,7 @@ func TestDragAfterReload(t *testing.T) {
 // screenY returns the screen line of row i of the current pane.
 func screenY(t *testing.T, m model, i int) int {
 	t.Helper()
-	_, rowAt := m.mainLines(m.mainHeight())
+	_, rowAt := m.mainLines(m.mainHeight(), nil)
 	y := slices.Index(rowAt, i)
 	if y < 0 {
 		t.Fatalf("row %d is not on the screen, want it on the screen", i)
@@ -359,7 +359,7 @@ func TestClickOldNumber(t *testing.T) {
 func TestClickCommentBox(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "]", "c", "h", "i")
-	_, rowAt := m.mainLines(m.mainHeight())
+	_, rowAt := m.mainLines(m.mainHeight(), nil)
 	box := bodyY + slices.Index(rowAt, m.changes.cur) + 1
 	clicks := []struct {
 		where string
