@@ -91,13 +91,14 @@ needs gh, glab, or az, and you must be logged in.
 
 ## Settings
 
-The settings are at the top of `~/.config/rex/rexdiff.lua`:
+The settings are at the top of `rexdiff.lua`, next to Rex's `init.lua`. That is
+`~/.config/rex/` unless `REX_CONFIG` or `XDG_CONFIG_HOME` moves it.
 
 ```lua
 local settings = {
   key = "shift+cmd+r",   -- toggle key, or false for none
   placement = "split",   -- split, zoomed, tab, or overlay
-  layout = "split",      -- unified or split
+  layout = "unified",    -- or split
   editor = "code -g {file}:{line}",
   keybindings = { send = { "S" } },
 }
@@ -129,7 +130,7 @@ your login shell. With zsh, set them in `~/.zprofile`, not `~/.zshrc`.
 | `u` `b` `t` | uncommitted, branch, or last-turn changes |
 | `g` `G` | commits scope, or pick commits |
 | `B` | pick the base branch |
-| `1` `2` `3` | changes, all files, or pull request |
+| `1` `2` `3` | the Changes, Files, or PR tab |
 | `v` | select lines |
 | `c` | comment |
 | `e` | edit the comment, or open the file in your editor |
@@ -146,7 +147,7 @@ your login shell. With zsh, set them in `~/.zprofile`, not `~/.zshrc`.
 | `p` | move the file list |
 | `<` `>` | resize the file list |
 | `o` | open the pull request in the browser |
-| `r` | reload |
+| `r` | refresh |
 | `U` | update rexdiff |
 | `?` | all keys |
 | `q` `Q` | quit, or quit and drop unsent comments |
@@ -180,7 +181,7 @@ changes just as a turn starts, rexdiff cannot tell what the turn changed, and sa
 
 A comment stays on its line numbers and keeps the code it was made on. It shows only in
 the view where you made it (changes or all files) and on the same commits. If its file
-leaves the changes, or is deleted, the comment list marks it (stale). An edit with blank
+leaves the changes, or is deleted, the comment list marks it "stale". An edit with blank
 text keeps the comment as it was.
 
 When `q` asks before quitting, `Q` quits and drops the comments, `s` sends, `y` copies,
@@ -207,7 +208,8 @@ column.
 ### Base and commits
 
 rexdiff keeps the base pick and the last turn in `refs/worktree/rexdiff/`, so they
-survive a restart. With `--base`, the base picker does not open. The commit picker lists
+survive a restart. With `-base`, the base picker does not open. `rexdiff -h` lists the
+flags. The commit picker lists
 the branch's own commits (first parent only), or the last 50 on the base branch.
 
 ### Copy and editor
@@ -217,15 +219,16 @@ code to copy lines, double-click for a word, triple-click for a line, and double
 file in the list to copy its path.
 
 A terminal editor, such as `nvim`, opens in a new pane beside rexdiff. A window editor,
-such as `code`, opens in its own window. An editor rexdiff doesn't know opens in a pane.
+such as `code`, opens in its own window. An editor that rexdiff does not know opens in a pane.
 To open it in a window, start it with `open`, for example `editor = "open -a Zed {file}"`.
 
-A key in `keybindings` is one character, or `left`, `right`, `up`, `down`, `pageup`, or
+`keybindings` takes the action names of herdr-reviewr, and also `focus` (switch pane)
+and `update`. A key is one character, or `left`, `right`, `up`, `down`, `pageup`, or
 `pagedown`, alone or after `ctrl+` or `alt+`. Binding one key to two actions is an error.
 
 ## Problems
 
-- "not inside Rex": rexdiff started outside Rex and cannot send. Press `y` to copy, or
+- "not in Rex": rexdiff started outside Rex and cannot send. Press `y` to copy, or
   open rexdiff with Shift+Cmd+R.
 - "no agent in this session": start the agent in the same Rex session.
 - "no editor": set `editor` in the settings, or set `$EDITOR` in `~/.zprofile`. rexdiff

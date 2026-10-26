@@ -21,13 +21,13 @@ echo 'config reloaded'
 
 // TestScripts runs the scripts in testdata/script. A script runs the
 // rexdiff binary and a fake rex. The fake writes its arguments to
-// $WORK/rex.log, and fails if $REX_FAIL is set. If Rex is installed,
-// $REALREX is its rex, and the condition [realrex] is true.
+// $WORK/rex.log, and fails if $REX_FAIL is set. If REXDIFF_REX is the
+// path of a real rex, $REALREX is that rex, and the condition [realrex] is
+// true.
 func TestScripts(t *testing.T) {
 	bin := filepath.Dir(binary(t))
-	realRex := filepath.Join(os.Getenv("REX_BIN_DIR"), "rex")
-	_, err := os.Stat(realRex)
-	hasRex := os.Getenv("REX_BIN_DIR") != "" && err == nil
+	realRex := os.Getenv("REXDIFF_REX")
+	hasRex := realRex != ""
 	testscript.Run(t, testscript.Params{
 		Dir:                 "testdata/script",
 		RequireExplicitExec: true,

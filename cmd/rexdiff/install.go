@@ -44,7 +44,7 @@ const defaultSettings = `-- "rexdiff install" wrote this file. To remove it, run
 local settings = {
   -- key = "shift+cmd+r", -- the key of the toggle, or false for none
   -- placement = "split", -- split, zoomed, tab, or overlay
-  -- layout = "split",
+  -- layout = "unified", -- or split
 }
 
 `

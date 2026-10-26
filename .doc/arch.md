@@ -72,12 +72,14 @@ only after one of them changes.
 Bubble Tea handles keys and timers on one goroutine, so the model has no locks.
 
 A reload runs git and redraws the screen on that goroutine, so a large repository
-stalls the screen while it runs. Fetching the pull request, listing agents, searching
-code, and sending run on other goroutines and report back with a message.
+stalls the screen while it runs. Each call to Rex or to a forge, and each code search,
+runs on another goroutine with a time limit and reports back with a message.
 
 A turn starts when an agent in the repository starts working, and ends when every agent
 is idle. At the start of a turn, rexdiff saves a snapshot of the working tree. The
-last-turn scope compares against it.
+last-turn scope compares against it. If a file changes between the time that Rex reports
+the start and the snapshot, the snapshot can hold that change. Then rexdiff drops the
+turn, as herdr-reviewr does.
 
 ## State
 

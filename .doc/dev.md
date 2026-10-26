@@ -28,18 +28,19 @@ comments.
 CI runs these checks:
 
 ```sh
-golangci-lint fmt
-golangci-lint run
+go vet ./...
 go test -race -count=1 ./...
+golangci-lint run
 go fix -diff ./...
 go mod tidy -diff
+go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 ```
 
 On a clean tree, `go fix` and `go mod tidy` print nothing. [test.md](test.md) describes
 the tests. To also run them against a real Rex:
 
 ```sh
-REX_BIN_DIR=$(dirname $(which rex)) REXDIFF_REX=$(which rex) go test ./test/
+REXDIFF_REX=$(which rex) go test ./test/
 ```
 
 ## Release
