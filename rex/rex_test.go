@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rednafi/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/rex"
 )
 
 // fakeRex writes a shell script that answers like the rex tool, with

@@ -72,6 +72,11 @@ type config struct {
 	FileList position `json:"file_list"`
 	// FileListWidth is in columns, minListWidth or more.
 	FileListWidth int `json:"file_list_width"`
+	// GuideAgent is the command that writes the Guide tab, for example
+	// "claude -p". It reads the prompt on its standard input and prints
+	// the answer. "" picks the first of claude, pi, and codex that is
+	// installed.
+	GuideAgent string `json:"guide_agent"`
 	// DiffSigns marks a changed line with + or -, in place of a bar.
 	DiffSigns bool `json:"diff_signs"`
 	// FocusAgent tells if the focus moves to the agent after a send. Nil
@@ -110,6 +115,8 @@ type keybindings struct {
 	ScopeCommits     []string `json:"scope-commits"`
 	BasePick         []string `json:"base-pick"`
 	CommitPick       []string `json:"commit-pick"`
+	TabOverview      []string `json:"tab-overview"`
+	TabGuide         []string `json:"tab-guide"`
 	TabChanges       []string `json:"tab-changes"`
 	TabAllFiles      []string `json:"tab-all-files"`
 	TabPR            []string `json:"tab-pr"`
@@ -150,7 +157,7 @@ const minListWidth = 16
 // set.
 func defaultConfig() config {
 	return config{
-		Layout:        LayoutUnified,
+		Layout:        LayoutSplit,
 		DefaultScope:  ScopeUncommitted,
 		MarkdownView:  markdownViewSource,
 		FileList:      positionRight,
@@ -288,6 +295,9 @@ func (c config) checkTexts(set map[string]jsontext.Value) error {
 	}
 	if set["review_prefix"] != nil && strings.TrimSpace(c.ReviewPrefix) == "" {
 		return invalid("review_prefix", "text", c.ReviewPrefix)
+	}
+	if set["guide_agent"] != nil && strings.TrimSpace(c.GuideAgent) == "" {
+		return invalid("guide_agent", "a command", c.GuideAgent)
 	}
 	return nil
 }

@@ -13,8 +13,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/rednafi/rexdiff/rex"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // appName is the name that rexdiff reports to Rex, and the label of its

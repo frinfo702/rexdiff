@@ -10,8 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rednafi/rexdiff/diff"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // Steps of the keys that move or resize, in columns.
@@ -80,12 +80,16 @@ func (m *model) actionKey(msg tea.KeyPressMsg) tea.Cmd {
 func (m *model) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k := m.keys
 	switch {
+	case key.Matches(msg, k.TabOverview):
+		return m.setTab(tabOverview), true
+	case key.Matches(msg, k.TabGuide):
+		return m.setTab(tabGuide), true
 	case key.Matches(msg, k.TabChanges):
-		m.setTab(tabChanges)
+		return m.setTab(tabChanges), true
 	case key.Matches(msg, k.TabFiles):
-		m.setTab(tabFiles)
+		return m.setTab(tabFiles), true
 	case key.Matches(msg, k.TabPR):
-		m.setTab(tabPR)
+		return m.setTab(tabPR), true
 	case key.Matches(msg, k.ScopeUncommitted):
 		m.setScope(ScopeUncommitted)
 	case key.Matches(msg, k.ScopeBranch):
@@ -112,7 +116,7 @@ func (m *model) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k, p := m.keys, m.cur()
 	last := max(len(p.lines)-1, 0)
-	inList := m.focusList && m.tab != tabPR
+	inList := m.focusList && !m.tab.document()
 	switch {
 	case key.Matches(msg, k.Focus):
 		m.focusList = !m.focusList
@@ -214,6 +218,9 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.rerender()
 	case key.Matches(msg, k.Split):
 		m.split = !m.split
+		if m.split && !m.splitShown() {
+			m.flash("too narrow for side by side: widen the pane")
+		}
 		m.rerender()
 	case key.Matches(msg, k.NavPosition):
 		m.listLeft = !m.listLeft
@@ -248,11 +255,15 @@ func (m *model) openPR() {
 	}
 }
 
-// refresh reads the current tab again.
+// refresh reads the current tab again. In the Guide tab, it writes the
+// guide again.
 func (m *model) refresh() tea.Cmd {
 	m.reload()
-	if m.tab == tabFiles {
+	switch m.tab {
+	case tabFiles:
 		m.reloadFiles()
+	case tabGuide:
+		return m.writeGuide()
 	}
 	if m.tab != tabPR {
 		return nil
@@ -262,36 +273,59 @@ func (m *model) refresh() tea.Cmd {
 	return m.loadPR()
 }
 
-// setTab shows tab t.
-func (m *model) setTab(t tab) {
+// setTab shows tab t. In the Guide tab, it returns the command that
+// writes the guide, if there is no guide yet.
+func (m *model) setTab(t tab) tea.Cmd {
 	m.tab = t
 	m.find, m.drag = findState{}, dragState{}
-	switch t {
-	case tabFiles:
+	switch {
+	case t == tabFiles:
 		if m.allFiles == nil {
 			m.reloadFiles()
 		}
-	case tabChanges:
+	case t.scoped():
 		m.reloadIfChanged()
 	}
 	// The layout, the wrap, or the terminal colours can change in another
 	// tab.
 	m.rerender()
+	if t == tabGuide {
+		return m.ensureGuide()
+	}
+	return nil
 }
 
-// setScope shows the Changes tab in scope s.
+// setScope shows the changes of scope s, in the Diff tab if the current
+// tab does not show the scope.
 func (m *model) setScope(s Scope) {
-	m.tab, m.scope = tabChanges, s
+	if !m.tab.scoped() {
+		m.tab = tabChanges
+	}
+	m.scope = s
 	m.reload()
 	m.changes.cur, m.changes.top = 0, 0
 }
 
 // listSel returns the index of the selected file in the file list.
 func (m *model) listSel() int {
-	if m.tab == tabFiles {
+	switch m.tab {
+	case tabFiles:
 		return m.allSel
+	case tabGuide:
+		return m.guideSel
 	}
 	return m.changeSel
+}
+
+// listLen returns the number of files in the file list of the current tab.
+func (m *model) listLen() int {
+	switch m.tab {
+	case tabFiles:
+		return len(m.allFiles)
+	case tabGuide:
+		return len(m.guideFiles())
+	}
+	return len(m.files)
 }
 
 // pickFile selects file i of the file list of the current tab.
@@ -311,6 +345,13 @@ func (m *model) pickFile(i int) {
 		m.allSel = i
 		m.viewer.toStart()
 		m.renderViewer()
+	case tabGuide:
+		if i < 0 || i >= len(m.guideFiles()) {
+			return
+		}
+		m.guideSel = i
+		m.guidePane.toStart()
+		m.renderGuide()
 	}
 	m.find, m.drag = findState{}, dragState{}
 }
@@ -318,8 +359,8 @@ func (m *model) pickFile(i int) {
 // stepChange moves the cursor to the next (d = 1) or the previous (d = -1)
 // block of changed rows.
 func (m *model) stepChange(d int) {
-	p := &m.changes
-	if m.tab != tabChanges || len(p.rows) == 0 {
+	p := m.cur()
+	if (m.tab != tabChanges && m.tab != tabGuide) || len(p.rows) == 0 {
 		return
 	}
 	isChange := func(i int) bool {
@@ -333,8 +374,8 @@ func (m *model) stepChange(d int) {
 		}
 	}
 	// After the last change, go to the first change of the next file.
-	if d > 0 && m.changeSel+1 < len(m.files) {
-		m.pickFile(m.changeSel + 1)
+	if next := m.listSel() + 1; d > 0 && next < m.listLen() {
+		m.pickFile(next)
 		m.stepChange(1)
 	}
 }

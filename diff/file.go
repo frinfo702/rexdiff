@@ -7,7 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rednafi/rexdiff/internal/diffview"
+	"github.com/frinfo702/rexdiff/internal/diffview"
 )
 
 // lineNumberColor is the ANSI palette colour of the line numbers: bright

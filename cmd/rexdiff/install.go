@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/rednafi/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/rex"
 )
 
 // The install command adds a Rex action, "Toggle rexdiff", to the command
@@ -43,7 +43,8 @@ const defaultSettings = `-- "rexdiff install" wrote this file. To remove it, run
 local settings = {
   -- key = "shift+cmd+r", -- the key of the toggle, or false for none
   -- placement = "split", -- split, zoomed, tab, or overlay
-  -- layout = "split",
+  -- layout = "unified", -- split (side by side when it fits) or unified
+  -- guide_agent = "claude -p", -- the agent that writes the Guide tab
 }
 
 `

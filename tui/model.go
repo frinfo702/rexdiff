@@ -13,19 +13,43 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/rednafi/rexdiff/diff"
-	"github.com/rednafi/rexdiff/rex"
-	"github.com/rednafi/rexdiff/update"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/update"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 type tab int
 
+// The values are in the order that they were added, because the state of
+// a restart keeps them. tabOrder is the order on the screen.
 const (
-	tabChanges tab = iota
+	tabChanges tab = iota // the Diff tab
 	tabFiles
 	tabPR
+	tabOverview
+	tabGuide
 )
+
+// tabOrder is the order of the tabs in the header and of their keys 1 to 5.
+var tabOrder = [...]tab{tabOverview, tabGuide, tabChanges, tabFiles, tabPR}
+
+// tabNames are the names of the tabs in the header.
+var tabNames = map[tab]string{
+	tabOverview: "Overview",
+	tabGuide:    "Guide",
+	tabChanges:  "Diff",
+	tabFiles:    "Files",
+	tabPR:       "PR",
+}
+
+// scoped tells if tab t shows the changes of the scope, so that the
+// header shows the scopes.
+func (t tab) scoped() bool { return t == tabChanges || t == tabGuide || t == tabOverview }
+
+// document tells if tab t shows text to read, with no cursor and no file
+// list.
+func (t tab) document() bool { return t == tabPR || t == tabOverview }
 
 // scopeCommits compares the commits that the user picked. It is not a
 // value of Config.DefaultScope.
@@ -212,6 +236,11 @@ type model struct {
 	pr                      prState
 	prPlace                 *savedPane // the place of prPane after a restart
 
+	overPane  pane
+	guide     guideState
+	guidePane pane
+	guideSel  int // the file of the guide, in the order of guideFiles
+
 	split      bool // show the diff side by side
 	wrap       bool
 	rendered   bool // show markdown rendered
@@ -275,6 +304,7 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 		m.beside, _ = o.Rex.Resolve(ctx, o.Agent)
 	}
 	m.changes.anchor, m.viewer.anchor, m.prPane.anchor = -1, -1, -1
+	m.overPane.anchor, m.guidePane.anchor = -1, -1
 	m.cfg = cfg
 	m.keys = defaultKeys()
 	m.keys.applyConfig(cfg.Keybindings)
@@ -308,6 +338,11 @@ type (
 		pr  *vcs.PullRequest
 		err error
 	}
+	guideMsg struct {
+		trees    string // the trees that the guide explains
+		sections []guideSection
+		err      error
+	}
 	eventMsg      rex.Event
 	editorDoneMsg struct{ err error }
 )
@@ -335,6 +370,9 @@ func (m *model) Init() tea.Cmd {
 	}
 	if m.updater != nil {
 		cmds = append(cmds, m.checkRelease())
+	}
+	if m.tab == tabGuide { // after a restart
+		cmds = append(cmds, m.ensureGuide())
 	}
 	return tea.Batch(cmds...)
 }
@@ -405,7 +443,7 @@ func (m *model) reloadIfChanged() {
 	}
 	if note != "" {
 		m.changes.note, m.files, m.shownTrees = note, nil, ""
-		m.renderChanges()
+		m.renderScoped()
 		return
 	}
 	var selPath string
@@ -432,7 +470,19 @@ func (m *model) reloadIfChanged() {
 	if len(m.files) == 0 {
 		m.changes.note = "no changes in this scope · watching…"
 	}
+	m.renderScoped()
+}
+
+// renderScoped shows the files of the scope in the Diff tab, and in the
+// Overview or the Guide tab if it shows.
+func (m *model) renderScoped() {
 	m.renderChanges()
+	switch m.tab {
+	case tabOverview:
+		m.renderOverview()
+	case tabGuide:
+		m.renderGuide()
+	}
 }
 
 // loadFiles reads the list of all files if the model does not have it.
@@ -473,6 +523,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.MouseClickMsg: // these can move the cursor
 		m.changes.free, m.viewer.free, m.prPane.free = false, false, false
+		m.overPane.free, m.guidePane.free = false, false
 	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -506,6 +557,8 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		m.onEvent(rex.Event(msg))
 	case prMsg:
 		m.onPR(msg)
+	case guideMsg:
+		m.onGuide(msg)
 	case grepMsg:
 		m.onGrep(msg)
 	case *update.Release:
@@ -596,8 +649,11 @@ func (m *model) onTick() tea.Cmd {
 	}
 	if m.ticks%every == 0 {
 		switch m.tab {
-		case tabChanges:
+		case tabChanges, tabGuide:
 			m.reloadIfChanged()
+		case tabOverview:
+			m.reloadIfChanged()
+			m.renderOverview() // a commit or a fetch changes it, not only the trees
 		case tabFiles:
 			if m.ticks%filesTicks == 0 {
 				m.reloadFiles() // it renders the file too
@@ -605,6 +661,9 @@ func (m *model) onTick() tea.Cmd {
 				m.refreshViewer()
 			}
 		}
+	}
+	if m.tab == tabGuide && m.guide.running { // the clock of the run
+		m.renderGuide()
 	}
 	if m.status != "" && time.Now().After(m.statusTill) {
 		m.status = ""
@@ -623,6 +682,10 @@ func (m *model) cur() *pane {
 		return &m.viewer
 	case tabPR:
 		return &m.prPane
+	case tabOverview:
+		return &m.overPane
+	case tabGuide:
+		return &m.guidePane
 	}
 	return &m.changes
 }

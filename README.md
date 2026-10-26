@@ -13,15 +13,15 @@ https://github.com/user-attachments/assets/e44159eb-3b02-4ea8-88ca-f6314261c1aa
 With Homebrew:
 
 ```sh
-brew tap rednafi/rexdiff https://github.com/rednafi/rexdiff
-brew trust rednafi/rexdiff
+brew tap frinfo702/rexdiff https://github.com/frinfo702/rexdiff
+brew trust frinfo702/rexdiff
 brew install --cask rexdiff
 ```
 
 With Go:
 
 ```sh
-go install github.com/rednafi/rexdiff/cmd/rexdiff@latest
+go install github.com/frinfo702/rexdiff/cmd/rexdiff@latest
 ```
 
 Add rexdiff to Rex:
@@ -55,9 +55,23 @@ are gone, rexdiff marks the comment as stale.
 | `c` | comment |
 | `s` | send the comments to the agent |
 | `y` | copy the comments |
-| `\|` | side by side |
-| `1` `2` `3` | changes, all files, or pull request |
+| `\|` | side by side or top to bottom |
+| `1` … `5` | overview, guide, diff, all files, or pull request |
+| `r` | in the guide: write it again |
 | `?` | all keys |
+
+## Tabs
+
+- **Overview**: the branch and its base, commits ahead and behind, the state
+  against the upstream, and the size of the changes. It reads git only, so it
+  works with no forge and no login.
+- **Guide**: the changes in the order of their meaning, as on [pulls.review].
+  An agent groups the files into sections with a title and a summary; the diff
+  of each file shows beside its section. rexdiff runs the first of `claude -p`,
+  `pi -p`, and `codex exec -` that is installed, or `guide_agent`. It keeps
+  each guide, so the agent writes it once. Press `r` to write it again.
+- **Diff**: the changes, one file at a time. A wide pane shows them side by
+  side; a narrow one, top to bottom. Binary files are not diffed.
 
 ## Configure
 
@@ -67,7 +81,7 @@ Edit the settings at the top of `~/.config/rex/rexdiff.lua`:
 local settings = {
   key = "shift+cmd+r",   -- toggle key, or false for none
   placement = "split",   -- split, zoomed, tab, or overlay
-  layout = "split",      -- unified or split
+  layout = "split",      -- split (the default) or unified
   editor = "code -g {file}:{line}",
   keybindings = { send = { "S" } },
 }
@@ -79,6 +93,8 @@ Other settings:
 - `markdown_view`
 - `file_list`
 - `file_list_width`
+- `guide_agent`: the command that writes the guide. It reads the prompt on its
+  standard input, for example `"claude -p --model sonnet"`
 - `diff_signs`: `true` marks changed lines with `+` and `-`, in place of a coloured bar
 - `review_prefix`
 - `url_opener`
@@ -108,3 +124,4 @@ After a change:
 
 [Rex]: https://www.superlogical.com/rex
 [herdr-reviewr]: https://github.com/persiyanov/herdr-reviewr
+[pulls.review]: https://pulls.review/

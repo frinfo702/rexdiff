@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/rednafi/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/diff"
 )
 
 // savedState holds the comments, the scope, the view, and the places in

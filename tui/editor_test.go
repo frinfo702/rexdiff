@@ -9,7 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/rednafi/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/rex"
 )
 
 // TestResolveEditor checks the command and the kind of each editor.
@@ -69,7 +69,7 @@ func fakeRex(t *testing.T, m *model, dir string) string {
 // returns the command of the key.
 func pressE(t *testing.T, m model) (model, tea.Cmd) {
 	t.Helper()
-	m = press(t, m, "j", "j", "j", "j", "j")
+	m = press(t, m, "j", "j", "j", "j", "j", "j") // below the file header
 	next, cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	return *next.(*model), cmd
 }

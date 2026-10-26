@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // commitAll commits all the changes in the working tree of dir.

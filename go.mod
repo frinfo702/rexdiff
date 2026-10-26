@@ -1,4 +1,4 @@
-module github.com/rednafi/rexdiff
+module github.com/frinfo702/rexdiff
 
 go 1.27.2
 

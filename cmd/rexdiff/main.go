@@ -23,10 +23,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/rednafi/rexdiff/rex"
-	"github.com/rednafi/rexdiff/tui"
-	"github.com/rednafi/rexdiff/update"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/tui"
+	"github.com/frinfo702/rexdiff/update"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 func main() {

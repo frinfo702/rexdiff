@@ -12,7 +12,7 @@ import (
 
 	"github.com/aymanbagabas/go-udiff"
 
-	"github.com/rednafi/rexdiff/internal/diffview"
+	"github.com/frinfo702/rexdiff/internal/diffview"
 )
 
 // Kind is the type of a rendered row.

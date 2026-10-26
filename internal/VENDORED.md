@@ -5,7 +5,7 @@
   `internal/diffview`, because they only serve the diff view
 - License: FSL-1.1-MIT (see LICENSE-crush.md). Copyright Charmbracelet, Inc.
 - Local changes:
-  - package and import paths (module `github.com/rednafi/rexdiff`)
+  - package and import paths (module `github.com/frinfo702/rexdiff`)
   - `escape.go` is crush's `ansiext/ansi.go`; `chroma.go` is crush's `xchroma/chroma.go`
   - `rows.go` (added): the row to source line mapping (with the continued rows of wrapped
     lines) and the column geometry, which `Render` returns with the text
@@ -35,3 +35,5 @@
     the signs back
   - the syntax cache key tells "no background" from black, so a black tint does not
     leak onto equal lines
+  - a hunk header tells how many unchanged lines it hides, in place of git's
+    `@@ -1,3 +1,4 @@`
