@@ -5,7 +5,7 @@
   `internal/diffview`, because they only serve the diff view
 - License: FSL-1.1-MIT (see LICENSE-crush.md). Copyright Charmbracelet, Inc.
 - Local changes:
-  - package and import paths (module `github.com/rednafi/rexdiff`)
+  - package and import paths (module `github.com/frinfo702/rexdiff`)
   - `escape.go` is crush's `ansiext/ansi.go`; `chroma.go` is crush's `xchroma/chroma.go`
   - `rows.go` (added): the row to source line mapping (with the continued rows of wrapped
     lines) and the column geometry, which `Render` returns with the text

@@ -5,17 +5,17 @@ cask "rexdiff" do
   on_macos do
     on_arm do
       sha256 "a42df0f5ce4aad07eb343bcf67cb19d999a067662ffdc56c23d04bc8ff4244db"
-      url "https://github.com/rednafi/rexdiff/releases/download/v#{version}/rexdiff-v#{version}-darwin-arm64.tar.gz"
+      url "https://github.com/frinfo702/rexdiff/releases/download/v#{version}/rexdiff-v#{version}-darwin-arm64.tar.gz"
     end
     on_intel do
       sha256 "6cb017b24dc81d571887de198fa54dd0c4cef939efcd105213c1add73aeb6be6"
-      url "https://github.com/rednafi/rexdiff/releases/download/v#{version}/rexdiff-v#{version}-darwin-amd64.tar.gz"
+      url "https://github.com/frinfo702/rexdiff/releases/download/v#{version}/rexdiff-v#{version}-darwin-amd64.tar.gz"
     end
   end
 
   name "rexdiff"
   desc "Review the changes of a coding agent in Rex"
-  homepage "https://github.com/rednafi/rexdiff"
+  homepage "https://github.com/frinfo702/rexdiff"
 
   livecheck do
     skip "Auto-generated on release."

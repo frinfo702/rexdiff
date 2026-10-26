@@ -13,10 +13,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/rednafi/rexdiff/diff"
-	"github.com/rednafi/rexdiff/rex"
-	"github.com/rednafi/rexdiff/update"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/update"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 type tab int

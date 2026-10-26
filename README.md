@@ -13,15 +13,15 @@ https://github.com/user-attachments/assets/e44159eb-3b02-4ea8-88ca-f6314261c1aa
 With Homebrew:
 
 ```sh
-brew tap rednafi/rexdiff https://github.com/rednafi/rexdiff
-brew trust rednafi/rexdiff
+brew tap frinfo702/rexdiff https://github.com/frinfo702/rexdiff
+brew trust frinfo702/rexdiff
 brew install --cask rexdiff
 ```
 
 With Go:
 
 ```sh
-go install github.com/rednafi/rexdiff/cmd/rexdiff@latest
+go install github.com/frinfo702/rexdiff/cmd/rexdiff@latest
 ```
 
 Add rexdiff to Rex:

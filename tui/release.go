@@ -11,7 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/rednafi/rexdiff/update"
+	"github.com/frinfo702/rexdiff/update"
 )
 
 // Updater finds and installs releases. *update.Updater implements it.

@@ -15,9 +15,9 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rednafi/rexdiff/diff"
-	"github.com/rednafi/rexdiff/rex"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // newTestModel makes a repository and a model that shows it. The branch

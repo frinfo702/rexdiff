@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // fakeTool writes a script called name in dir. If the arguments of the

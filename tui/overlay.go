@@ -11,9 +11,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/sahilm/fuzzy"
 
-	"github.com/rednafi/rexdiff/diff"
-	"github.com/rednafi/rexdiff/rex"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // overlayKind tells what an overlay is for.

@@ -7,7 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/rednafi/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/rex"
 )
 
 // maxSend is the largest review, in bytes, that rexdiff pastes into an

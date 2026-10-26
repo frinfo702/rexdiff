@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rednafi/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/diff"
 )
 
 // comment returns a comment with text on all rows of the diff of old and

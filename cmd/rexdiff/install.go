@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/rednafi/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/rex"
 )
 
 // The install command adds a Rex action, "Toggle rexdiff", to the command

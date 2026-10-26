@@ -9,7 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/rednafi/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/rex"
 )
 
 // TestResolveEditor checks the command and the kind of each editor.

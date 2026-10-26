@@ -165,8 +165,8 @@ func TestInstallCommands(t *testing.T) {
 	}
 	env, rest, _ := strings.Cut(gorun.calls[0], " ")
 	prog, args, _ := strings.Cut(rest, " ")
-	if env != "GOBIN=/home/u/go/bin" || filepath.Base(prog) != "go" || args != "install github.com/rednafi/rexdiff/cmd/rexdiff@v0.2.0" {
-		t.Errorf("go call = %q, want GOBIN=/home/u/go/bin go install github.com/rednafi/rexdiff/cmd/rexdiff@v0.2.0", gorun.calls[0])
+	if env != "GOBIN=/home/u/go/bin" || filepath.Base(prog) != "go" || args != "install github.com/frinfo702/rexdiff/cmd/rexdiff@v0.2.0" {
+		t.Errorf("go call = %q, want GOBIN=/home/u/go/bin go install github.com/frinfo702/rexdiff/cmd/rexdiff@v0.2.0", gorun.calls[0])
 	}
 
 	// The error of a failed command has the last line of the output.

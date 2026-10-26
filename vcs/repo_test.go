@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // newRepo makes a repository with two commits: "init" on main and "b" on

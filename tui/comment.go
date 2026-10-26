@@ -6,7 +6,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/rednafi/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/diff"
 )
 
 // targetLine is the source line that a comment on a row attaches to.

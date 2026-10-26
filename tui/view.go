@@ -12,8 +12,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rednafi/rexdiff/diff"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // The colours are ANSI palette indices, so they follow the terminal theme.

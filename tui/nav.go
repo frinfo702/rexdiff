@@ -10,8 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rednafi/rexdiff/diff"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // Steps of the keys that move or resize, in columns.

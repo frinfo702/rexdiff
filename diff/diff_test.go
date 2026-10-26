@@ -9,7 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rednafi/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/diff"
 )
 
 const (

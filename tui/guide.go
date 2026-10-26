@@ -27,7 +27,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/aymanbagabas/go-udiff"
 
-	"github.com/rednafi/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/diff"
 )
 
 // Limits of the guide.

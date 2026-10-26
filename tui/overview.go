@@ -11,8 +11,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/rednafi/rexdiff/diff"
-	"github.com/rednafi/rexdiff/vcs"
+	"github.com/frinfo702/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/vcs"
 )
 
 // Sizes of the Overview tab.

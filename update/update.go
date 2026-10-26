@@ -34,10 +34,10 @@ import (
 
 // latestURL is the GitHub API address of the latest release of rexdiff.
 // REXDIFF_LATEST_URL replaces it (see [Detect]).
-const latestURL = "https://api.github.com/repos/rednafi/rexdiff/releases/latest"
+const latestURL = "https://api.github.com/repos/frinfo702/rexdiff/releases/latest"
 
 // modulePath is the path of the main package, for go install.
-const modulePath = "github.com/rednafi/rexdiff/cmd/rexdiff"
+const modulePath = "github.com/frinfo702/rexdiff/cmd/rexdiff"
 
 // Limits of the network and of the commands. The sizes are in bytes.
 const (

@@ -11,7 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/rednafi/rexdiff/diff"
+	"github.com/frinfo702/rexdiff/diff"
 )
 
 // onClick handles a press of a mouse button.

@@ -3,7 +3,7 @@ package diff
 import (
 	"image/color"
 
-	"github.com/rednafi/rexdiff/internal/diffview"
+	"github.com/frinfo702/rexdiff/internal/diffview"
 )
 
 // Theme sets the colours of the output. The lightness of Background selects
