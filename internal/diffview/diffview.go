@@ -269,8 +269,8 @@ func codeWidthOf(l *udiff.Line) int {
 // header in the unified layout.
 func (v *View) detectUnifiedCodeWidth() {
 	v.codeWidth = 0
-	for _, h := range v.unified.Hunks {
-		headerWidth := ansi.StringWidth(hunkHeader(h))
+	for i, h := range v.unified.Hunks {
+		headerWidth := ansi.StringWidth(v.hunkHeader(i))
 		for _, l := range h.Lines {
 			v.codeWidth = max(v.codeWidth, codeWidthOf(&l), headerWidth)
 		}
@@ -282,7 +282,7 @@ func (v *View) detectUnifiedCodeWidth() {
 func (v *View) detectSplitCodeWidth() {
 	v.codeWidth = 0
 	for i, h := range v.splitHunks {
-		headerWidth := ansi.StringWidth(hunkHeader(v.unified.Hunks[i]))
+		headerWidth := ansi.StringWidth(v.hunkHeader(i))
 		for _, l := range h.lines {
 			if l.before != nil {
 				v.codeWidth = max(v.codeWidth, codeWidthOf(l.before), headerWidth)
@@ -319,8 +319,8 @@ func (v *View) renderUnified() string {
 		return v.lineNum(ls, before, v.beforeNumDigits) +
 			v.lineNum(ls, after, v.afterNumDigits)
 	}
-	for _, h := range v.unified.Hunks {
-		b.WriteString(v.unifiedHeader(h) + "\n")
+	for i, h := range v.unified.Hunks {
+		b.WriteString(v.unifiedHeader(i) + "\n")
 		oldN, newN := h.FromLine, h.ToLine
 		for _, l := range h.Lines {
 			ls, sym := v.kindStyle(l.Kind)
@@ -344,10 +344,10 @@ func (v *View) renderUnified() string {
 	return b.String()
 }
 
-// unifiedHeader renders the divider line of hunk h in the unified layout.
-func (v *View) unifiedHeader(h *udiff.Hunk) string {
+// unifiedHeader renders the divider line of hunk i in the unified layout.
+func (v *View) unifiedHeader(i int) string {
 	div := v.style.dividerLine
-	header := ansi.Truncate(hunkHeader(h), v.fullCodeWidth, ellipsis)
+	header := ansi.Truncate(v.hunkHeader(i), v.fullCodeWidth, ellipsis)
 	return div.lineNumber.Render(pad(ellipsis, v.beforeNumDigits)) +
 		div.lineNumber.Render(pad(ellipsis, v.afterNumDigits)) +
 		div.code.Width(v.fullCodeWidth).Render(header)
@@ -359,7 +359,7 @@ func (v *View) renderSplit() string {
 	var b strings.Builder
 	afterWidth := v.codeWidth + btoi(v.extraColOnAfter)
 	for i, h := range v.splitHunks {
-		b.WriteString(v.splitHeader(v.unified.Hunks[i]) + "\n")
+		b.WriteString(v.splitHeader(i) + "\n")
 		oldN, newN := h.fromLine, h.toLine
 		for _, l := range h.lines {
 			left, leftFill := v.splitSide(l.before, oldN, v.beforeNumDigits, v.codeWidth)
@@ -382,11 +382,11 @@ func (v *View) renderSplit() string {
 	return b.String()
 }
 
-// splitHeader renders the divider line of hunk h in the split layout. The
+// splitHeader renders the divider line of hunk i in the split layout. The
 // header shows on the left side only.
-func (v *View) splitHeader(h *udiff.Hunk) string {
+func (v *View) splitHeader(i int) string {
 	div := v.style.dividerLine
-	header := ansi.Truncate(hunkHeader(h), v.fullCodeWidth, ellipsis)
+	header := ansi.Truncate(v.hunkHeader(i), v.fullCodeWidth, ellipsis)
 	afterWidth := v.fullCodeWidth + btoi(v.extraColOnAfter)
 	return div.lineNumber.Render(pad(ellipsis, v.beforeNumDigits)) +
 		div.code.Width(v.fullCodeWidth).Render(header) +
@@ -492,11 +492,25 @@ func (v *View) codeLines(
 	return lines
 }
 
-// hunkHeader returns the header line of hunk h, for example
-// "  @@ -1,3 +1,4 @@ ".
-func hunkHeader(h *udiff.Hunk) string {
-	before, after := hunkLineCounts(h)
-	return fmt.Sprintf("  @@ -%d,%d +%d,%d @@ ", h.FromLine, before, h.ToLine, after)
+// hunkHeader returns the header line of hunk i: the number of unchanged
+// lines that it hides above the hunk, for example "  ↕ 12 unchanged lines".
+// The line numbers beside the code tell where the hunk is, so the header
+// leaves out the "@@ -1,3 +1,4 @@" of git.
+func (v *View) hunkHeader(i int) string {
+	hunks := v.unified.Hunks
+	prevEnd := 0 // the last old line of the hunk above
+	if i > 0 {
+		before, _ := hunkLineCounts(hunks[i-1])
+		prevEnd = hunks[i-1].FromLine + before - 1
+	}
+	switch n := hunks[i].FromLine - 1 - prevEnd; {
+	case n <= 0:
+		return " "
+	case n == 1:
+		return "  ↕ 1 unchanged line "
+	default:
+		return fmt.Sprintf("  ↕ %d unchanged lines ", n)
+	}
 }
 
 // hunkLineCounts returns the number of old and new lines in hunk h.
