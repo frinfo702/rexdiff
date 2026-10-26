@@ -5,6 +5,7 @@ package diffview
 import (
 	"fmt"
 	"image/color"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -60,6 +61,7 @@ type View struct {
 	isComputed bool
 	err        error
 	unified    udiff.UnifiedDiff
+	scopes     []string // the scope line of each hunk, see scopeOf
 
 	splitHunks []splitHunk
 
@@ -208,7 +210,48 @@ func (v *View) computeDiff() error {
 		edits,
 		udiff.DefaultContextLines,
 	)
+	lines := strings.Split(v.after.content, "\n")
+	v.scopes = make([]string, len(v.unified.Hunks))
+	for i, h := range v.unified.Hunks {
+		v.scopes[i] = scopeOf(lines, h.ToLine-1)
+	}
 	return v.err
+}
+
+// declaration matches a line that declares a function, a type, or a
+// module in most languages, after optional modifiers such as "pub".
+var declaration = regexp.MustCompile(`^\s*(?:(?:export|pub(?:\([a-z]+\))?|public|private|protected|internal|static|async|abstract|final|sealed|open|override|default|unsafe|inline|virtual|extern|data|const)\s+)*(?:def|class|func|fn|fun|function|struct|enum|union|trait|impl|interface|type|module|mod|namespace|object|record|protocol|extension|actor|macro|sub|proc)\b`)
+
+// scopeOf returns the line that encloses line first of lines (0-based),
+// as "def foo(" or "func (v *View) text() string {", or "" if none does.
+// It is the nearest line above with less indent that is a declaration, or
+// that starts at column 0 with a word, as git's default funcname does.
+// ponytail: a keyword heuristic, not a parser; it can miss a method in a
+// language without keywords (Java, C++), or pick a multiline statement.
+func scopeOf(lines []string, first int) string {
+	if first <= 0 || first >= len(lines) {
+		return ""
+	}
+	indent := func(s string) int { return len(s) - len(strings.TrimLeft(s, " \t")) }
+	target := indent(lines[first])
+	for _, l := range lines[first:] { // the first line can be blank
+		if strings.TrimSpace(l) != "" {
+			target = indent(l)
+			break
+		}
+	}
+	for i := first - 1; i >= 0 && target > 0; i-- {
+		l := strings.TrimRight(lines[i], "\r")
+		if strings.TrimSpace(l) == "" || indent(l) >= target {
+			continue
+		}
+		c := l[indent(l)]
+		if declaration.MatchString(l) ||
+			indent(l) == 0 && (c == '_' || c == '$' || 'a' <= c|0x20 && c|0x20 <= 'z') {
+			return Escape(strings.ReplaceAll(strings.TrimSpace(l), "\t", " "))
+		}
+	}
+	return ""
 }
 
 // convertDiffToSplit makes the split hunks, if the layout is split.
@@ -493,7 +536,8 @@ func (v *View) codeLines(
 }
 
 // hunkHeader returns the header line of hunk i: the number of unchanged
-// lines that it hides above the hunk, for example "  ↕ 12 unchanged lines".
+// lines that it hides above the hunk, then the scope of the hunk, for
+// example "  ↕ 12 unchanged lines  func main() {".
 // The line numbers beside the code tell where the hunk is, so the header
 // leaves out the "@@ -1,3 +1,4 @@" of git.
 func (v *View) hunkHeader(i int) string {
@@ -503,14 +547,19 @@ func (v *View) hunkHeader(i int) string {
 		before, _ := hunkLineCounts(hunks[i-1])
 		prevEnd = hunks[i-1].FromLine + before - 1
 	}
+	var header string
 	switch n := hunks[i].FromLine - 1 - prevEnd; {
 	case n <= 0:
-		return " "
+		header = " "
 	case n == 1:
-		return "  ↕ 1 unchanged line "
+		header = "  ↕ 1 unchanged line "
 	default:
-		return fmt.Sprintf("  ↕ %d unchanged lines ", n)
+		header = fmt.Sprintf("  ↕ %d unchanged lines ", n)
 	}
+	if s := v.scopes[i]; s != "" {
+		header += " " + s + " "
+	}
+	return header
 }
 
 // hunkLineCounts returns the number of old and new lines in hunk h.
