@@ -86,7 +86,7 @@ func (m *model) onInstalled(msg installedMsg) {
 // runs, and while pending (the command of the last message) runs. Thus no
 // work is lost.
 func (m *model) restartIfReady(pending tea.Cmd) bool {
-	if m.mode != modeNormal || pending != nil || m.sends > 0 {
+	if m.mode != modeNormal || pending != nil || m.sends > 0 || m.guide.running {
 		return false
 	}
 	path, err := m.saveState()

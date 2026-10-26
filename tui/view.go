@@ -84,11 +84,15 @@ func (l *headerLine) add(s string, action headerAction) {
 func (m *model) header() (string, []headerSpan) {
 	var l headerLine
 	for i, t := range tabOrder {
-		label := fmt.Sprintf("%d %s", i+1, tabNames[t])
+		style := dimStyle
 		if t == m.tab {
-			label = activeStyle.Render(label)
+			style = activeStyle
+		}
+		var label string
+		if t == tabGuide && m.guide.running {
+			label = style.Render(fmt.Sprintf("%d ", i+1)) + shimmer(style, tabNames[t], time.Since(m.guide.started))
 		} else {
-			label = dimStyle.Render(label)
+			label = style.Render(fmt.Sprintf("%d %s", i+1, tabNames[t]))
 		}
 		l.add(" "+label+" ", headerTab0+headerAction(i))
 	}
@@ -602,8 +606,15 @@ func (m *model) programStatus() *tea.ProgramStatus {
 	if n := m.comments.Len(); n > 0 {
 		msg = plural(n, "unsent comment")
 	}
+	state := tea.ProgramStateIdle
+	if m.guide.running {
+		state = tea.ProgramStateWorking
+		if m.comments.Len() == 0 { // the unsent comments matter more
+			msg = "writing the guide"
+		}
+	}
 	return &tea.ProgramStatus{
-		State:   tea.ProgramStateIdle,
+		State:   state,
 		App:     appName,
 		Title:   appName,
 		Message: msg,
