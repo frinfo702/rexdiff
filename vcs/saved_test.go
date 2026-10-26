@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/rednafi/rexdiff/internal/testgit"
-	"github.com/rednafi/rexdiff/vcs"
 )
 
 // TestSavedBase checks that SaveBase keeps a base, and that the default
@@ -87,10 +86,7 @@ func TestSavedPerWorktree(t *testing.T) {
 	ctx := t.Context()
 	other := filepath.Join(t.TempDir(), "wt")
 	testgit.Git(t, dir, "worktree", "add", "-q", other, "main")
-	r2, err := vcs.Open(ctx, other)
-	if err != nil {
-		t.Fatal(err)
-	}
+	r2 := open(t, other)
 	if err := r.SaveBase(ctx, "feat"); err != nil {
 		t.Fatal(err)
 	}

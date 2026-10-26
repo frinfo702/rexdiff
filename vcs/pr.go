@@ -179,6 +179,12 @@ func (r *Repo) runJSON(
 	return nil
 }
 
+// noPR reports whether err is the error of a tool that finds no pull
+// request. Such a tool exits with 1 and says so with the text msg.
+func noPR(err error, msg string) bool {
+	return exitedOne(err) && strings.Contains(strings.ToLower(err.Error()), msg)
+}
+
 // lastN returns the last n elements of xs, or all of them if there are
 // fewer.
 func lastN[T any](xs []T, n int) []T {
@@ -225,6 +231,9 @@ func (r *Repo) gitHub(ctx context.Context, host string) (*PullRequest, error) {
 		"headRefName,baseRefName,comments,statusCheckRollup"
 	var v gitHubPR
 	err := r.runJSON(ctx, env, &v, "gh", "pr", "view", "--json", fields)
+	if noPR(err, "no pull requests found") {
+		return nil, ErrNoPullRequest
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -341,6 +350,9 @@ type gitLabDiscussion struct {
 func (r *Repo) gitLab(ctx context.Context) (*PullRequest, error) {
 	var v gitLabMR
 	err := r.runJSON(ctx, nil, &v, "glab", "mr", "view", "--output", "json")
+	if noPR(err, "no open merge request") {
+		return nil, ErrNoPullRequest
+	}
 	if err != nil {
 		return nil, err
 	}

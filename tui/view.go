@@ -180,7 +180,7 @@ func (m *model) agentLabel() string {
 	}
 	n := 0
 	for block, a := range m.agents {
-		if a.state != "" && block != m.rex.Block() {
+		if a.state != "" && a.app != appName && block != m.rex.Block() {
 			n++
 		}
 	}

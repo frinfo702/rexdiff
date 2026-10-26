@@ -228,6 +228,7 @@ type model struct {
 	filesOwed   bool // the same for the list of all files
 	reloadAt    time.Time
 	reloadRetry retryTimer
+	loads       reloads
 
 	tab   tab
 	scope Scope
@@ -265,6 +266,7 @@ type model struct {
 	changeFiles []changedFile // the Changes tab
 	changeSel   int           // the file that shows in the Changes tab
 	shownTrees  string        // the two trees of files, to notice a change
+	shownScope  Scope         // the scope of changeFiles
 	changeTree  fileListTree
 	allFiles    []vcs.Entry // the Files tab
 	allSel      int
@@ -477,78 +479,185 @@ func (m *model) flash(s string) {
 	m.status, m.statusTill = termtext.Quote(s), time.Now().Add(flashTime)
 }
 
-// treeIDs returns the IDs of the two trees that the Changes tab compares
-// in the scope. If there is nothing to compare, note tells why.
-func (m *model) treeIDs() (from, to, note string, err error) {
-	ctx := m.ctx
-	switch m.scope {
-	case scopeCommits:
-		if m.to == "" {
-			note := "no commits picked: press " + firstKey(m.keys.CommitPick) +
-				" to pick one or a range"
-			return "", "", note, nil
-		}
-		if from, err = m.repo.ParentTree(ctx, m.from); err != nil {
-			return "", "", "", err
-		}
-		to, err = m.repo.Tree(ctx, m.to)
-		return from, to, "", err
-	case ScopeLastTurn:
-		if m.turn == nil {
-			return "", "", m.turnWaitMessage(), nil
-		}
-		from = m.turn.tree
-	case ScopeBranch:
-		if from, err = m.repo.MergeBaseTree(ctx, m.base); err != nil {
-			return "", "", "", err
-		}
-	default:
-		if from, err = m.repo.HeadTree(ctx); err != nil {
-			return "", "", "", err
-		}
-	}
-	to, err = m.repo.Snapshot(ctx)
-	return from, to, "", err
-}
-
 // reload reads the changes of the scope again, even if the trees do not
 // change.
-func (m *model) reload() { m.loadChanges(true) }
+func (m *model) reload() { m.loads.want, m.loads.force = true, true }
 
 // reloadIfChanged reads the changes of the scope again if the trees differ
 // from the shown trees.
-func (m *model) reloadIfChanged() { m.loadChanges(false) }
+func (m *model) reloadIfChanged() { m.loads.want = true }
 
-// loadChanges reads the changes of the scope if force is true or if the
-// trees differ from the shown trees. While the comment box is open, the
-// reload waits until the box closes, as in herdr-reviewr. After a
-// failure, the next tick tries again after a wait. As in herdr-reviewr, a
-// failure keeps the files that show, and the error shows in their place
-// only if no files show.
-func (m *model) loadChanges(force bool) {
-	if m.mode == modeComment {
-		m.reloadOwed = true
+// reloads follows the reloads of the Changes tab. A reload runs git, so
+// it runs in a command, one at a time. A request during a reload starts
+// one more reload after it.
+type reloads struct {
+	gen     int  // the reload whose result shows; others are stale
+	running bool // the reload gen runs
+	want    bool // a reload is due
+	force   bool // the due reload shows the changes even if the trees are the same
+}
+
+// loadNow reads the changes at once, for the first screen. Nothing shows
+// yet, so the wait blocks nothing.
+func (m *model) loadNow() {
+	m.loads.gen++
+	m.loads.want, m.loads.force = false, false
+	m.onChanges(m.reloadInput(true).run())
+}
+
+// reloadTimeout is the longest time of a reload. A git that hangs then
+// fails the reload, and the next tick tries again.
+const reloadTimeout = time.Minute
+
+// startReload returns a command for the reload that is due, if no reload
+// runs. While the comment box is open, the reload waits until the box
+// closes, as in herdr-reviewr.
+func (m *model) startReload() tea.Cmd {
+	l := &m.loads
+	if !l.want || l.running || m.mode == modeComment {
+		return nil
+	}
+	l.gen++
+	l.running, l.want = true, false
+	in := m.reloadInput(l.force)
+	l.force = false
+	return func() tea.Msg { return in.run() }
+}
+
+// reloadInput returns what a reload needs, copied from the model, so that
+// the reload can run in a command.
+func (m *model) reloadInput(force bool) reloadInput {
+	in := reloadInput{
+		ctx: m.ctx, repo: m.repo, gen: m.loads.gen, scope: m.scope,
+		base: m.base, from: m.from, to: m.to, force: force, shown: m.shownTrees,
+		prev: make(map[string]changedFile, len(m.changeFiles)),
+	}
+	for _, c := range m.changeFiles {
+		in.prev[c.Path] = c
+	}
+	switch {
+	case m.scope == scopeCommits && m.to == "":
+		in.note = "no commits picked: press " + firstKey(m.keys.CommitPick) +
+			" to pick one or a range"
+	case m.scope == ScopeLastTurn && m.turn == nil:
+		in.note = m.turnWaitMessage()
+	case m.scope == ScopeLastTurn:
+		in.turnTree = m.turn.tree
+	}
+	return in
+}
+
+// reloadInput is the input of a reload. note tells why there is nothing
+// to compare, or is "".
+type reloadInput struct {
+	ctx                  context.Context
+	repo                 *vcs.Repo
+	gen                  int
+	scope                Scope
+	base, from, to, note string
+	turnTree, shown      string
+	force                bool
+	prev                 map[string]changedFile // the shown files, by path
+}
+
+// changesMsg is the result of a reload.
+type changesMsg struct {
+	gen   int
+	trees string // the two trees, as "from..to"
+	same  bool   // the trees are the shown trees, and the reload is not forced
+	files []changedFile
+	note  string
+	err   error
+	took  time.Duration
+}
+
+// run reads the changes of in. It counts the lines of each file that is
+// not in in.prev with the same content.
+func (in reloadInput) run() changesMsg {
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(in.ctx, reloadTimeout)
+	defer cancel()
+	msg := changesMsg{gen: in.gen, note: in.note}
+	if msg.note == "" {
+		from, to, err := in.trees(ctx)
+		msg.trees, msg.err = from+".."+to, err
+		msg.same = err == nil && msg.trees == in.shown && !in.force
+		if err == nil && !msg.same {
+			msg.files, msg.err = in.changedFiles(ctx, from, to)
+		}
+	}
+	msg.took = time.Since(start)
+	return msg
+}
+
+// trees returns the IDs of the two trees that the Changes tab compares in
+// the scope.
+func (in reloadInput) trees(ctx context.Context) (from, to string, err error) {
+	switch in.scope {
+	case scopeCommits:
+		if from, err = in.repo.ParentTree(ctx, in.from); err != nil {
+			return "", "", err
+		}
+		to, err = in.repo.Tree(ctx, in.to)
+		return from, to, err
+	case ScopeLastTurn:
+		from = in.turnTree
+	case ScopeBranch:
+		from, err = in.repo.MergeBaseTree(ctx, in.base)
+	default:
+		from, err = in.repo.HeadTree(ctx)
+	}
+	if err != nil {
+		return "", "", err
+	}
+	to, err = in.repo.Snapshot(ctx)
+	return from, to, err
+}
+
+// changedFiles returns the changes from the tree from to the tree to,
+// with their line counts.
+func (in reloadInput) changedFiles(ctx context.Context, from, to string) ([]changedFile, error) {
+	files, err := in.repo.Diff(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]changedFile, len(files))
+	for i, f := range files {
+		c := &out[i]
+		if p, ok := in.prev[f.Path]; ok && p.Old == f.Old && p.New == f.New {
+			*c = p // the same change, so the counts stay
+		} else if !f.Binary && !f.TooBig {
+			c.adds, c.dels = diff.Count(f.Old, f.New)
+			c.oldHash = hash(f.Old)
+		}
+		c.File = f
+	}
+	return out, nil
+}
+
+// onChanges shows the result of a reload. After a failure, the next tick
+// tries again after a wait. As in herdr-reviewr, a failure keeps the files
+// of the scope that show, and the error shows in their place only if no
+// files show. A change of the view during the reload starts one more.
+func (m *model) onChanges(msg changesMsg) {
+	if msg.gen != m.loads.gen {
 		return
 	}
-	m.reloadOwed = false
-	from, to, note, err := m.treeIDs()
-	trees := from + ".." + to
-	same := trees == m.shownTrees && !force
-	var files []vcs.File
-	if err == nil && note == "" && !same {
-		files, err = m.repo.Diff(m.ctx, from, to)
-	}
-	m.retry(err)
-	if err == nil && note == "" && same {
+	m.loads.running = false
+	m.reloadAt = time.Now().Add(reloadPauseFactor * msg.took)
+	m.retry(msg.err)
+	note, err := msg.note, msg.err
+	if err == nil && note == "" && msg.same {
 		return
 	}
-	if err != nil && len(m.changeFiles) > 0 {
+	if err != nil && len(m.changeFiles) > 0 && m.shownScope == m.scope {
 		m.flash("refresh failed: " + err.Error())
 		return
 	}
 	if err != nil {
 		note = err.Error()
 	}
+	m.shownScope = m.scope
 	if note != "" {
 		m.changePane.note, m.changeFiles, m.shownTrees = note, nil, ""
 		m.buildTrees()
@@ -559,25 +668,9 @@ func (m *model) loadChanges(force bool) {
 	if f := m.selectedChange(); f != nil {
 		selPath = f.Path
 	}
-	prev := make(map[string]changedFile, len(m.changeFiles))
-	for _, c := range m.changeFiles {
-		prev[c.Path] = c
-	}
-	m.changeFiles = make([]changedFile, len(files))
-	m.shownTrees, m.changeSel, m.changePane.note = trees, -1, ""
-	for i, f := range files {
-		c := &m.changeFiles[i]
-		if p, ok := prev[f.Path]; ok && p.Old == f.Old && p.New == f.New {
-			*c = p // the same change, so the counts stay
-		} else if !f.Binary && !f.TooBig {
-			c.adds, c.dels = diff.Count(f.Old, f.New)
-			c.oldHash = hash(f.Old)
-		}
-		c.File = f
-		if f.Path == selPath {
-			m.changeSel = i
-		}
-	}
+	m.changeFiles = msg.files
+	m.shownTrees, m.changePane.note = msg.trees, ""
+	m.changeSel = slices.IndexFunc(m.changeFiles, func(c changedFile) bool { return c.Path == selPath })
 	m.buildTrees()
 	if f := m.selectedChange(); f == nil || f.Path != selPath {
 		// Another file shows, so the cursor and the selection do not apply.
@@ -650,8 +743,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handle does the work of Update. Update then checks for a restart.
 func (m *model) handle(msg tea.Msg) tea.Cmd {
+	cmd := m.handleMsg(msg)
+	return tea.Batch(cmd, m.startReload())
+}
+
+// handleMsg handles msg. A reload that it asks for starts after it.
+func (m *model) handleMsg(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
+	case changesMsg:
+		m.onChanges(msg)
+	case turnCheckMsg:
+		m.onTurnCheck(msg)
 	case tea.WindowSizeMsg:
 		m.click = clickChain{}
 		m.w, m.h, m.sized = msg.Width, msg.Height, true
@@ -861,8 +964,9 @@ func (m *model) watchChanges() vcs.Change {
 func (m *model) onTick() tea.Cmd {
 	m.ticks++
 	ch := m.watchChanges()
+	var cmds []tea.Cmd
 	if ch.Files && m.pending != nil {
-		m.checkTurn()
+		cmds = append(cmds, m.checkTurnLater())
 	}
 	m.reloadOwed = m.reloadOwed || ch.Files || ch.Refs
 	m.filesOwed = m.filesOwed || ch.Files
@@ -871,7 +975,6 @@ func (m *model) onTick() tea.Cmd {
 	if m.status != "" && now.After(m.statusTill) {
 		m.status = ""
 	}
-	var cmds []tea.Cmd
 	// Without a watcher, each tick reports a change of the refs. Then only
 	// the poll reads the pull request.
 	if ch.Refs && m.watch != nil {
@@ -900,10 +1003,10 @@ func (m *model) reloadDue() {
 	}
 	now := time.Now()
 	switch {
-	case m.tab == tabChanges && m.reloadOwed && !now.Before(m.reloadAt) && !now.Before(m.reloadRetry.at):
-		m.reloadIfChanged()
-		end := time.Now()
-		m.reloadAt = end.Add(reloadPauseFactor * end.Sub(now))
+	case m.tab == tabChanges && m.reloadOwed && !m.loads.running &&
+		!now.Before(m.reloadAt) && !now.Before(m.reloadRetry.at):
+		m.reloadOwed = false
+		m.reloadIfChanged() // onChanges sets reloadAt after the pause
 	case m.tab == tabFiles && m.filesOwed:
 		m.reloadFiles() // reloadFiles renders the file too
 	case m.tab == tabFiles && m.watch == nil:

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -120,7 +121,7 @@ func (m *model) runSearch() tea.Cmd {
 	s.files, s.fileTotal = search.Files(s.paths, m.recent, q, search.MaxFiles)
 	s.err = ""
 	m.stopGrep()
-	if q == "" {
+	if strings.TrimSpace(q) == "" { // as in herdr-reviewr, a blank grep is noise
 		s.hits, s.hitsMore = nil, false
 		ov.showSearch()
 		return nil

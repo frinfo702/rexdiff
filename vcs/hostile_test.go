@@ -220,17 +220,13 @@ func TestGitWorktree(t *testing.T) {
 	t.Parallel()
 	// Such a working tree has its own index. Snapshot must not change it.
 	_, dir := newRepo(t)
-	ctx := t.Context()
 	wt := filepath.Join(t.TempDir(), "wt")
 	testgit.Git(t, dir, "worktree", "add", "-q", "-b", "other", wt, "main")
 	testgit.WriteFile(t, wt, "a.txt", "changed\n")
 	testgit.WriteFile(t, wt, "staged.txt", "s\n")
 	testgit.Git(t, wt, "add", "staged.txt")
 
-	r, err := vcs.Open(ctx, wt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := open(t, wt)
 	if got := uncommitted(t, r); got != "Ma.txt Astaged.txt" {
 		t.Errorf("Diff(HEAD, Snapshot) = %s, want Ma.txt Astaged.txt", got)
 	}

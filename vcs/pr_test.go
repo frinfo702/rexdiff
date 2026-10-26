@@ -238,6 +238,21 @@ func TestPullRequestHostile(t *testing.T) {
 	}
 }
 
+// TestNoPullRequest checks that a gh or a glab that finds no pull request
+// gives ErrNoPullRequest. Both exit with 1 and say so.
+func TestNoPullRequest(t *testing.T) {
+	dir := t.TempDir()
+	fakePath(t, dir)
+	testgit.Script(t, dir, "gh", "echo 'no pull requests found for branch \"feat\"' >&2\nexit 1\n")
+	testgit.Script(t, dir, "glab", "echo 'no open merge request available for \"feat\"' >&2\nexit 1\n")
+	for _, remote := range []string{"https://github.com/o/r", "https://gitlab.com/o/r"} {
+		r, _ := repoAt(t, remote)
+		if _, err := r.PullRequest(t.Context(), vcs.Hosts{}); !errors.Is(err, vcs.ErrNoPullRequest) {
+			t.Errorf("PullRequest(%s) = %v, want ErrNoPullRequest", remote, err)
+		}
+	}
+}
+
 // fakePath sets PATH to dir and the system directories, and links git into
 // dir. Then PATH has the fake forge tools and no real ones.
 func fakePath(t *testing.T, dir string) {

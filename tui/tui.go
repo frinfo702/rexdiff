@@ -134,7 +134,7 @@ func startModel(ctx context.Context, o Options, cfg config) model {
 			m.restoreSettings(saved)
 		}
 	}
-	m.reload()
+	m.loadNow()
 	if saved != nil {
 		m.restorePlaces(saved)
 	}

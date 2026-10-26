@@ -49,11 +49,18 @@ func newRepo(t *testing.T) (*vcs.Repo, string) {
 	testRepo.Copy(t, dir)
 
 	// Open from a subdirectory. Open must find the root.
-	r, err := vcs.Open(t.Context(), filepath.Join(dir, "build"))
+	return open(t, filepath.Join(dir, "build")), dir
+}
+
+// open opens the repository at dir, and closes it at the end of the test.
+func open(t *testing.T, dir string) *vcs.Repo {
+	t.Helper()
+	r, err := vcs.Open(t.Context(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return r, dir
+	t.Cleanup(func() { _ = r.Close() })
+	return r
 }
 
 // snapshot returns the tree of the working tree.
@@ -300,10 +307,7 @@ func TestFilesInConflict(t *testing.T) {
 	if err := cmd.Run(); err == nil {
 		t.Fatal("git merge other: no error, want a conflict")
 	}
-	r, err := vcs.Open(t.Context(), dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := open(t, dir)
 	es, err := r.Files(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -471,10 +475,7 @@ func TestDiffRenameAndSubmodule(t *testing.T) {
 	testgit.Git(t, dir, "commit", "-qm", "two")
 
 	ctx := t.Context()
-	r, err := vcs.Open(ctx, dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := open(t, dir)
 	from, to := parent(t, r, "HEAD"), head(t, r)
 	got, err := r.Diff(ctx, from, to)
 	if err != nil {
@@ -625,10 +626,7 @@ func TestCommitsLikeHerdrReviewr(t *testing.T) {
 
 	empty := t.TempDir()
 	testgit.InitRepo(t, empty)
-	er, err := vcs.Open(ctx, empty)
-	if err != nil {
-		t.Fatal(err)
-	}
+	er := open(t, empty)
 	if cs, err := er.Commits(ctx, ""); err != nil || len(cs) != 0 {
 		t.Errorf("Commits with no commit = %v, %v, want none, no error", cs, err)
 	}

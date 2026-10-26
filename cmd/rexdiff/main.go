@@ -22,6 +22,7 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/rednafi/rexdiff/rex"
 	"github.com/rednafi/rexdiff/tui"
@@ -30,7 +31,9 @@ import (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	// A closed pane sends SIGHUP. The stop of ctx lets rexdiff remove its
+	// files before it exits.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	err := run(ctx, os.Args[1:], os.Stdout, os.Stderr)
 	stop()
 	switch {
@@ -95,6 +98,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dir, err)
 	}
+	defer func() { _ = repo.Close() }()
 	log, closeLog, err := openLog(f.logPath)
 	if err != nil {
 		return err
@@ -133,6 +137,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	// After an update, run the new rexdiff in this process with the same
 	// flags. resumeEnv gives it the saved state.
 	closeLog()
+	_ = repo.Close() // the new process does not run the deferred calls
 	if err = os.Setenv(resumeEnv, resume); err == nil {
 		err = update.Restart(bin, args) // returns only if it fails
 	}

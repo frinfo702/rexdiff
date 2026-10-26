@@ -187,22 +187,20 @@ func (e statusEntry) status() Status {
 }
 
 // Status returns the status of the program in block. If the program sends
-// no status, Status returns the zero Status.
+// no status, Status returns the zero Status. The statuses of the
+// sub-agents of the program do not count, as in [Client.Watch].
 func (c *Client) Status(ctx context.Context, block string) (Status, error) {
 	var reply struct {
 		Entries []statusEntry `json:"records"`
 	}
 	args := []string{"block", "call", "-s", c.session, "-b", block, "program_status"}
-	err := c.runRexJSON(ctx, &reply, args...)
-	if err != nil || len(reply.Entries) == 0 {
+	if err := c.runRexJSON(ctx, &reply, args...); err != nil {
 		return Status{}, err
 	}
-	for _, e := range reply.Entries {
-		if e.ID == "" {
-			return e.status(), nil
-		}
+	if i := slices.IndexFunc(reply.Entries, func(e statusEntry) bool { return e.ID == "" }); i >= 0 {
+		return reply.Entries[i].status(), nil
 	}
-	return reply.Entries[0].status(), nil
+	return Status{}, nil
 }
 
 // Cwd returns the working directory of the program in block.

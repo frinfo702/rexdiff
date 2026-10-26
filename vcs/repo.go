@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -47,6 +48,11 @@ var (
 type Repo struct {
 	root  string
 	index string // the path of the real index
+
+	// snapMu guards the private index of Snapshot, in the directory
+	// snapDir, or "" before the first Snapshot.
+	snapMu  sync.Mutex
+	snapDir string
 }
 
 // Open returns the repository that contains dir.
@@ -68,6 +74,18 @@ func Open(ctx context.Context, dir string) (*Repo, error) {
 	}
 	r.index = strings.TrimSuffix(index, "\n")
 	return r, nil
+}
+
+// Close removes the files that the repository keeps for [Repo.Snapshot].
+func (r *Repo) Close() error {
+	r.snapMu.Lock()
+	defer r.snapMu.Unlock()
+	dir := r.snapDir
+	r.snapDir = ""
+	if dir == "" {
+		return nil
+	}
+	return os.RemoveAll(dir)
 }
 
 // Root returns the top directory of the working tree.
@@ -220,22 +238,30 @@ func (r *Repo) MergeBaseCommit(ctx context.Context, base string) (string, error)
 // Snapshot writes the working tree as a tree object and returns its ID.
 // The tree has the tracked and the untracked files. It does not have the
 // ignored files. It also does not have the files that git cannot add, for
-// example a nested repository with no commit. Snapshot uses a temporary
-// index, so the real index does not change.
+// example a nested repository with no commit. Snapshot uses a private
+// index, so the real index does not change. The private index keeps the
+// file status of the last Snapshot, also of the untracked files, so git
+// reads only the files that change. [Repo.Close] removes it.
 func (r *Repo) Snapshot(ctx context.Context) (string, error) {
-	// git does not read an empty index file, but it reads a missing one
-	// as empty. A new repository has no index.
-	dir, err := os.MkdirTemp("", "rexdiff-index-*")
-	if err != nil {
-		return "", err
+	r.snapMu.Lock()
+	defer r.snapMu.Unlock()
+	if r.snapDir == "" {
+		dir, err := os.MkdirTemp("", "rexdiff-index-*")
+		if err != nil {
+			return "", err
+		}
+		// "add -A" makes any index match the working tree. The copy of the
+		// real index only saves the first hash of the tracked files.
+		if err := r.copyIndex(filepath.Join(dir, "index")); err != nil {
+			_ = os.RemoveAll(dir)
+			return "", err
+		}
+		r.snapDir = dir
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
-	idx := filepath.Join(dir, "index")
-	if err := r.copyIndex(idx); err != nil {
-		return "", err
-	}
-	env := []string{"GIT_INDEX_FILE=" + idx}
-	_, err = r.run(ctx, env, "add", "-A", "--ignore-errors")
+	// git reads a missing index file as empty, for example after a clean
+	// of the temporary directory.
+	env := []string{"GIT_INDEX_FILE=" + filepath.Join(r.snapDir, "index")}
+	_, err := r.run(ctx, env, "add", "-A", "--ignore-errors")
 	if exitedOne(err) {
 		err = nil // git cannot add some files, but it adds the others
 	}
@@ -250,8 +276,7 @@ func (r *Repo) Snapshot(ctx context.Context) (string, error) {
 }
 
 // copyIndex copies the real index to dst. If there is no real index, it
-// does nothing. With the copy, "add -A" hashes only the changed files.
-// The copy keeps the modification time of the index. git uses this time
+// does nothing. The copy keeps the modification time of the index. git uses this time
 // to find files that changed in the same second as the index.
 func (r *Repo) copyIndex(dst string) error {
 	st, err := os.Stat(r.index)
