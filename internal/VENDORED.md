@@ -37,4 +37,4 @@
     leak onto equal lines
   - a hunk header tells how many unchanged lines it hides, in place of git's
     `@@ -1,3 +1,4 @@`
-  - the hunk header also shows the line that encloses the hunk, as "def foo(" (`scopeOf`)
+  - a grey row below a hunk header shows the line that encloses the hunk, as "def foo(" (`scopeOf`)

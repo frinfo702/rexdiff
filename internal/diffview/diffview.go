@@ -313,7 +313,7 @@ func codeWidthOf(l *udiff.Line) int {
 func (v *View) detectUnifiedCodeWidth() {
 	v.codeWidth = 0
 	for i, h := range v.unified.Hunks {
-		headerWidth := ansi.StringWidth(v.hunkHeader(i))
+		headerWidth := v.headerWidth(i)
 		for _, l := range h.Lines {
 			v.codeWidth = max(v.codeWidth, codeWidthOf(&l), headerWidth)
 		}
@@ -325,7 +325,7 @@ func (v *View) detectUnifiedCodeWidth() {
 func (v *View) detectSplitCodeWidth() {
 	v.codeWidth = 0
 	for i, h := range v.splitHunks {
-		headerWidth := ansi.StringWidth(v.hunkHeader(i))
+		headerWidth := v.headerWidth(i)
 		for _, l := range h.lines {
 			if l.before != nil {
 				v.codeWidth = max(v.codeWidth, codeWidthOf(l.before), headerWidth)
@@ -364,6 +364,7 @@ func (v *View) renderUnified() string {
 	}
 	for i, h := range v.unified.Hunks {
 		b.WriteString(v.unifiedHeader(i) + "\n")
+		v.writeScope(&b, i)
 		oldN, newN := h.FromLine, h.ToLine
 		for _, l := range h.Lines {
 			ls, sym := v.kindStyle(l.Kind)
@@ -403,6 +404,7 @@ func (v *View) renderSplit() string {
 	afterWidth := v.codeWidth + btoi(v.extraColOnAfter)
 	for i, h := range v.splitHunks {
 		b.WriteString(v.splitHeader(i) + "\n")
+		v.writeScope(&b, i)
 		oldN, newN := h.fromLine, h.toLine
 		for _, l := range h.lines {
 			left, leftFill := v.splitSide(l.before, oldN, v.beforeNumDigits, v.codeWidth)
@@ -536,8 +538,7 @@ func (v *View) codeLines(
 }
 
 // hunkHeader returns the header line of hunk i: the number of unchanged
-// lines that it hides above the hunk, then the scope of the hunk, for
-// example "  ↕ 12 unchanged lines  func main() {".
+// lines that it hides above the hunk, for example "  ↕ 12 unchanged lines".
 // The line numbers beside the code tell where the hunk is, so the header
 // leaves out the "@@ -1,3 +1,4 @@" of git.
 func (v *View) hunkHeader(i int) string {
@@ -547,19 +548,42 @@ func (v *View) hunkHeader(i int) string {
 		before, _ := hunkLineCounts(hunks[i-1])
 		prevEnd = hunks[i-1].FromLine + before - 1
 	}
-	var header string
 	switch n := hunks[i].FromLine - 1 - prevEnd; {
 	case n <= 0:
-		header = " "
+		return " "
 	case n == 1:
-		header = "  ↕ 1 unchanged line "
+		return "  ↕ 1 unchanged line "
 	default:
-		header = fmt.Sprintf("  ↕ %d unchanged lines ", n)
+		return fmt.Sprintf("  ↕ %d unchanged lines ", n)
 	}
-	if s := v.scopes[i]; s != "" {
-		header += " " + s + " "
+}
+
+// headerWidth returns the width of the header and the scope row of hunk i.
+func (v *View) headerWidth(i int) int {
+	return max(ansi.StringWidth(v.hunkHeader(i)), ansi.StringWidth(v.scopes[i])+1)
+}
+
+// writeScope writes the scope row of hunk i below its header, if the hunk
+// has a scope: the enclosing line in grey, in the code column, with no line
+// number. In the split layout it shows on the left side only, as the header.
+func (v *View) writeScope(b *strings.Builder, i int) {
+	scope := v.scopes[i]
+	if scope == "" {
+		return
 	}
-	return header
+	ls := v.style.equalLine
+	grey := lipgloss.NewStyle().Foreground(ls.lineNumber.GetForeground())
+	nums := v.lineNum(ls, " ", v.beforeNumDigits)
+	if v.layout == layoutUnified {
+		nums += v.lineNum(ls, " ", v.afterNumDigits)
+	}
+	code := ansi.Truncate(scope, v.codeWidth, ellipsis)
+	b.WriteString(nums + ls.symbol.Render(symNone) + grey.Width(v.codeWidth).Render(code))
+	if v.layout == layoutSplit {
+		b.WriteString(v.lineNum(ls, " ", v.afterNumDigits) +
+			ls.code.Width(v.fullCodeWidth+btoi(v.extraColOnAfter)).Render(" "))
+	}
+	b.WriteByte('\n')
 }
 
 // hunkLineCounts returns the number of old and new lines in hunk h.
