@@ -16,7 +16,8 @@ type keyMap struct {
 
 	// Scopes and tabs.
 	ScopeUncommitted, ScopeBranch, ScopeTurn, ScopeCommits key.Binding
-	BasePick, CommitPick, TabChanges, TabFiles, TabPR      key.Binding
+	BasePick, CommitPick, TabOverview, TabGuide            key.Binding
+	TabChanges, TabFiles, TabPR                            key.Binding
 
 	// Comments.
 	Select, Comment, Edit, Delete, NextComment, PrevComment key.Binding
@@ -73,9 +74,11 @@ func defaultKeys() keyMap {
 		ScopeCommits:     bind([]string{"g"}, "g", "commits"),
 		BasePick:         bind([]string{"B"}, "B", "pick base branch"),
 		CommitPick:       bind([]string{"G"}, "G", "pick commits"),
-		TabChanges:       bind([]string{"1"}, "1/2/3", "changes/files/PR"),
-		TabFiles:         bind([]string{"2"}, "2", "all files"),
-		TabPR:            bind([]string{"3"}, "3", "PR"),
+		TabOverview:      bind([]string{"1"}, "1-5", "overview/guide/diff/files/PR"),
+		TabGuide:         bind([]string{"2"}, "2", "guide"),
+		TabChanges:       bind([]string{"3"}, "3", "diff"),
+		TabFiles:         bind([]string{"4"}, "4", "all files"),
+		TabPR:            bind([]string{"5"}, "5", "PR"),
 
 		Select:      bind([]string{"v"}, "v", "select lines"),
 		Comment:     bind([]string{"c"}, "c", "comment"),
@@ -175,6 +178,8 @@ func (k *keyMap) bindings(c keybindings) []binding {
 		{"scope-commits", c.ScopeCommits, &k.ScopeCommits},
 		{"base-pick", c.BasePick, &k.BasePick},
 		{"commit-pick", c.CommitPick, &k.CommitPick},
+		{"tab-overview", c.TabOverview, &k.TabOverview},
+		{"tab-guide", c.TabGuide, &k.TabGuide},
 		{"tab-changes", c.TabChanges, &k.TabChanges},
 		{"tab-all-files", c.TabAllFiles, &k.TabFiles},
 		{"tab-pr", c.TabPR, &k.TabPR},
@@ -249,7 +254,13 @@ func (h helpKeys) ShortHelp() []key.Binding {
 			hint(k.Cancel, "esc", "clear"),
 		}
 	case h.tab == tabPR:
-		return []key.Binding{k.Down, k.OpenPR, k.Refresh, k.TabChanges, k.Keys, k.Quit}
+		return []key.Binding{k.Down, k.OpenPR, k.Refresh, k.TabOverview, k.Keys, k.Quit}
+	case h.tab == tabOverview:
+		return []key.Binding{k.Down, k.Refresh, k.TabOverview, k.Keys, k.Quit}
+	case h.tab == tabGuide:
+		return []key.Binding{
+			k.Comment, k.Send, k.NextFile, hint(k.Refresh, "r", "rewrite guide"), k.Split, k.Keys, k.Quit,
+		}
 	}
 	return []key.Binding{k.Comment, k.Send, k.NextHunk, k.NextFile, k.Split, k.Keys, k.Quit}
 }
@@ -261,7 +272,7 @@ func (h helpKeys) FullHelp() [][]key.Binding {
 		k.Down, k.HalfDown, k.NextHunk, k.NextFile, k.Focus, k.Left, k.GotoLine,
 	}
 	scopes := []key.Binding{
-		k.TabChanges, k.ScopeUncommitted, k.ScopeBranch, k.ScopeTurn, k.ScopeCommits,
+		k.TabOverview, k.ScopeUncommitted, k.ScopeBranch, k.ScopeTurn, k.ScopeCommits,
 		k.BasePick, k.CommitPick,
 	}
 	comments := []key.Binding{

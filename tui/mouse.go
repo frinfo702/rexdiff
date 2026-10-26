@@ -44,9 +44,9 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	if m.inList(mouse.X) {
-		if y >= 1 {
+		if i := m.listIndexAt(y, h); i >= 0 {
 			m.focusList = true
-			m.pickFile(m.listStart(h) + y - 1)
+			m.pickFile(i)
 		}
 		return nil
 	}
@@ -65,6 +65,25 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		pref:   side,
 	}
 	return nil
+}
+
+// listIndexAt returns the file on line y of the file list, h lines tall,
+// or -1.
+func (m *model) listIndexAt(y, h int) int {
+	if m.tab == tabGuide {
+		_, first, outline := m.guideLines(h)
+		if i := y - first; first >= 0 && i >= 0 && i < len(m.guideSection().Files) {
+			return m.guideSectionStart() + i
+		}
+		if i := y - outline; outline >= 0 && i >= 0 && i < len(m.guideSections()) {
+			return m.guideSectionFirst(i)
+		}
+		return -1
+	}
+	if y < 1 {
+		return -1
+	}
+	return m.listStart(h) + y - 1
 }
 
 // inList tells if screen column x is on the file list.
@@ -210,8 +229,8 @@ func (m *model) clickOverlay(mouse tea.Mouse) tea.Cmd {
 // clickHeader does action a of a click on the header.
 func (m *model) clickHeader(a headerAction) tea.Cmd {
 	switch {
-	case a >= headerTabChanges && a <= headerTabPR:
-		m.setTab(tab(a - headerTabChanges))
+	case a >= headerTab0 && a < headerScope0:
+		return m.setTab(tabOrder[a-headerTab0])
 	case a >= headerScope0 && a < headerBase:
 		s := scopes[a-headerScope0]
 		if s == scopeCommits && m.to == "" {

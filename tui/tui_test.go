@@ -177,14 +177,20 @@ func TestScopes(t *testing.T) {
 func TestComment(t *testing.T) {
 	m, _ := newTestModel(t)
 
-	// The unified layout uses three rows for the change.
+	// The pane is too narrow for the split layout, so the diff shows top to
+	// bottom. The unified layout uses three rows for the change.
+	if m.splitShown() {
+		t.Fatal("a pane 120 columns wide shows the diff side by side")
+	}
 	m = press(t, m, "]", "v", "j", "j", "c")
 	if m.mode != modeComment {
 		t.Fatal("c did not open the comment box")
 	}
 	m = press(t, m, "h", "i", "enter")
-	// The split layout uses two rows for the same change.
-	m = press(t, m, "|", "home", "]", "v", "j", "c", "o", "k", "enter")
+	// A wide pane shows the split layout, which uses two rows for the same
+	// change.
+	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
+	m = press(t, m, "home", "]", "v", "j", "c", "o", "k", "enter")
 
 	cs := m.comments.All()
 	if len(cs) != 2 {
@@ -216,13 +222,13 @@ func TestComment(t *testing.T) {
 func TestTabs(t *testing.T) {
 	m, _ := newTestModel(t)
 
-	m = press(t, m, "2")
+	m = press(t, m, "4")
 	if !shows(m, "Files (2)", "package a") {
 		t.Errorf("Files tab:\n%s\nwant 2 files, with a.go shown", view(m))
 	}
 
 	// The repository has no remote, so the PR tab shows why.
-	m = press(t, m, "3")
+	m = press(t, m, "5")
 	m = step(t, m, m.loadPR()())
 	if v := view(m); !strings.Contains(v, "no git remote") {
 		t.Errorf("the PR tab does not say that there is no git remote:\n%s", v)
@@ -233,7 +239,7 @@ func TestTabs(t *testing.T) {
 // pull request, and the names of the checks that failed.
 func TestPRChecks(t *testing.T) {
 	m, _ := newTestModel(t)
-	m = press(t, m, "3")
+	m = press(t, m, "5")
 	pr := &vcs.PullRequest{
 		Title: "T",
 		State: vcs.StateOpen,
@@ -491,7 +497,7 @@ func TestParseConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("good config: %v", err)
 	}
-	if c.focusAgent() || c.FileList != positionLeft || c.Layout != LayoutUnified || !c.DiffSigns {
+	if c.focusAgent() || c.FileList != positionLeft || c.Layout != LayoutSplit || !c.DiffSigns {
 		t.Errorf("good config = %+v, want no focus, the list on the left, "+
 			"the default layout, and signs", c)
 	}
@@ -845,7 +851,7 @@ func TestEmptyRepo(t *testing.T) {
 		"enter", "B", "enter", "/", "a", "enter", ":", "9", "enter", "l", "esc", "e", "d",
 		"y", "s", "o", "r", "z", "<", "home", "end", "w", "esc",
 	}
-	for _, tab := range []string{"1", "2", "3"} {
+	for _, tab := range []string{"1", "2", "3", "4", "5"} {
 		m = press(t, m, tab)
 		for _, k := range keys {
 			m = press(t, m, k)
@@ -866,5 +872,62 @@ func TestFooterHints(t *testing.T) {
 	m = press(t, m, "r", "e", "t", "u", "r", "n", "enter")
 	if !strings.Contains(view(m), "next/prev match") {
 		t.Errorf("find mode: the footer has no hint:\n%s", view(m))
+	}
+}
+
+// TestOverview checks that the Overview tab tells the branch, its base,
+// the commits ahead, and the size of the changes, from git alone.
+func TestOverview(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = press(t, m, "1")
+	if !shows(m, "main ← feat", "↑ 1 ahead", "↓ 0 behind", "not pushed", "Commits  1", "add b", "1 file") {
+		t.Errorf("Overview tab:\n%s", view(m))
+	}
+}
+
+// TestGuide runs a fake agent that writes a guide. The guide shows its
+// first section beside the diff of its file, and the file that it leaves
+// out goes in a last section.
+func TestGuide(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // the cache of the guides
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	m, dir := newTestModel(t)
+	write(t, dir, "c.go", "package a\n")
+	m.reload()
+	m.cfg.GuideAgent = `cat >/dev/null; echo 'Sure: {"sections":[{"title":"Use a local in A","summary":"A keeps x.","files":["a.go","gone.go"]}]}'`
+
+	next, cmd := m.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
+	m = *next.(*model)
+	if cmd == nil || !m.guide.running {
+		t.Fatal("the Guide tab did not start the agent")
+	}
+	m = step(t, m, cmd())
+	if !shows(m, "Use a local in A", "01 / 02", "A keeps x.", "x := 2") {
+		t.Errorf("Guide tab:\n%s", view(m))
+	}
+	// gone.go has no changes; c.go is in no section.
+	m = press(t, m, "f", "f")
+	if !shows(m, "Other changes", "02 / 02", "c.go") {
+		t.Errorf("Guide tab, last section:\n%s", view(m))
+	}
+
+	// The guide of the same trees comes from the disk the next time.
+	m2, _ := newTestModel(t)
+	m2.shownTrees = m.shownTrees
+	if m2.ensureGuide(); len(m2.guide.sections) != 1 {
+		t.Errorf("the guide was not kept: %+v", m2.guide)
+	}
+}
+
+// TestParseGuide checks that parseGuide finds the JSON in the answer and
+// drops the sections that are empty.
+func TestParseGuide(t *testing.T) {
+	out := "```json\n{\"sections\":[{\"title\":\"T\",\"summary\":\"S\",\"files\":[\"a\",\"a\",\"\"]},{\"title\":\"\",\"files\":[\"b\"]}]}\n```"
+	secs, err := parseGuide(out)
+	if err != nil || len(secs) != 1 || !slices.Equal(secs[0].Files, []string{"a"}) {
+		t.Errorf("parseGuide = %+v, %v", secs, err)
+	}
+	if _, err := parseGuide("I can't do that"); err == nil {
+		t.Error("parseGuide of no JSON: no error")
 	}
 }

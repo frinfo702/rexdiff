@@ -5,9 +5,12 @@ package tui
 
 import (
 	"errors"
+	"fmt"
+	"path"
 	"strings"
 
 	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/vcs"
@@ -20,7 +23,14 @@ const gutter = 2
 // listWidth returns the width of the file list, or 0 if the list does not
 // show.
 func (m *model) listWidth() int {
-	if m.listHidden || m.tab == tabPR {
+	switch {
+	case m.tab == tabGuide && len(m.guide.sections) == 0:
+		return 0 // the main pane tells why
+	case m.tab == tabGuide:
+		// The guide is prose, so it takes more room than a list of files,
+		// but never more than a third of the screen.
+		return min(guideWidth, max(m.w/3, minListWidth))
+	case m.listHidden || m.tab.document():
 		return 0
 	}
 	// The list never takes more than a third of a narrow pane.
@@ -58,6 +68,10 @@ func (m *model) rerender() {
 		m.renderViewer()
 	case tabPR:
 		m.renderPR()
+	case tabOverview:
+		m.renderOverview()
+	case tabGuide:
+		m.renderGuide()
 	}
 	if cur != nil {
 		if i := p.rowOf(cur.side, cur.line); i >= 0 {
@@ -71,6 +85,14 @@ func (m *model) rerender() {
 	}
 }
 
+// minSplitWidth is the narrowest main pane, in columns, that shows a diff
+// side by side. A narrower pane shows the diff top to bottom, even if the
+// layout is split, because each side would cut most lines.
+const minSplitWidth = 110
+
+// splitShown tells if the diff shows side by side now.
+func (m *model) splitShown() bool { return m.split && m.codeWidth() >= minSplitWidth }
+
 // diffOptions returns the options to render a diff with sideways scroll
 // xoff.
 func (m *model) diffOptions(xoff int) diff.Options {
@@ -78,7 +100,7 @@ func (m *model) diffOptions(xoff int) diff.Options {
 		Width:  m.codeWidth(),
 		Offset: xoff,
 		Wrap:   m.wrap,
-		Split:  m.split,
+		Split:  m.splitShown(),
 		Signs:  m.cfg.DiffSigns,
 		Theme: diff.Theme{
 			Background: m.bg,
@@ -95,10 +117,12 @@ func isMarkdown(path string) bool {
 	return strings.HasSuffix(p, ".md") || strings.HasSuffix(p, ".markdown")
 }
 
-// renderChanges shows the selected file in the Changes tab.
-func (m *model) renderChanges() {
-	p := &m.changes
-	f := m.changedFile()
+// renderChanges shows the selected file in the Diff tab.
+func (m *model) renderChanges() { m.renderChanged(&m.changes, m.changedFile()) }
+
+// renderChanged shows changed file f in p, under a header with its name
+// and its counts. f can be nil.
+func (m *model) renderChanged(p *pane, f *changed) {
 	if f == nil {
 		p.path = ""
 		p.set(nil, nil)
@@ -122,6 +146,51 @@ func (m *model) renderChanges() {
 	default:
 		p.setDiff(diff.Render(f.Path, f.Old, f.New, m.diffOptions(p.xoff)))
 	}
+	p.addHeader(m.fileHeader(f))
+}
+
+// fileHeader returns the line above the diff of f: its name, its
+// directory, and its counts, on a tint of the background.
+func (m *model) fileHeader(f *changed) string {
+	dir, name := path.Split(diff.Quote(f.Path))
+	left := " " + statusMark(f.Status) + " " + lipgloss.NewStyle().Bold(true).Render(name)
+	if dir != "" {
+		left += " " + dimStyle.Render(dir)
+	}
+	if f.From != "" {
+		left += dimStyle.Render(" ← " + diff.Quote(f.From))
+	}
+	stat := changeStat(*f)
+	if c := m.comments.Count(f.Path); c > 0 {
+		stat = cursorStyle.Render(fmt.Sprintf("●%d", c)) + "  " + stat
+	}
+	w := m.codeWidth()
+	left = truncate(left, w-lipgloss.Width(stat)-2)
+	pad := strings.Repeat(" ", max(w-lipgloss.Width(left)-lipgloss.Width(stat)-1, 1))
+	return m.barStyle().Render(left + pad + stat + " ")
+}
+
+// barStyle returns the style of a file header: a faint tint of the
+// terminal background, fainter than a selected row.
+func (m *model) barStyle() lipgloss.Style {
+	if m.bg == nil {
+		return lipgloss.NewStyle()
+	}
+	tint := lipgloss.Lighten(m.bg, 0.06)
+	if !m.dark {
+		tint = lipgloss.Darken(m.bg, 0.04)
+	}
+	return lipgloss.NewStyle().Background(tint)
+}
+
+// addHeader shows line h above the lines of p, on a row that shows no
+// source line.
+func (p *pane) addHeader(h string) {
+	if len(p.lines) == 0 {
+		return
+	}
+	p.lines = append([]string{h}, p.lines...)
+	p.rows = append([]diff.Row{{}}, p.rows...)
 }
 
 // setNote shows a dim note on one row that shows no source line. The

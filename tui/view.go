@@ -49,11 +49,9 @@ func (m *model) selStyle() lipgloss.Style {
 type headerAction int
 
 const (
-	headerNone headerAction = iota
-	headerTabChanges
-	headerTabFiles
-	headerTabPR
-	headerScope0  // the first scope. Add the index of the scope.
+	headerNone    headerAction                               = iota
+	headerTab0                                               // the first tab of tabOrder. Add the index of the tab.
+	headerScope0  = headerTab0 + headerAction(len(tabOrder)) // the first scope. Add the index of the scope.
 	headerBase    = headerScope0 + headerAction(len(scopes))
 	headerCommits = headerBase + 1
 	headerAgent   = headerBase + 2
@@ -85,21 +83,21 @@ func (l *headerLine) add(s string, action headerAction) {
 // header renders the top line, and returns the parts that take clicks.
 func (m *model) header() (string, []headerSpan) {
 	var l headerLine
-	for i, t := range []string{"Changes", "Files", "PR"} {
-		label := fmt.Sprintf("%d %s", i+1, t)
-		if tab(i) == m.tab {
+	for i, t := range tabOrder {
+		label := fmt.Sprintf("%d %s", i+1, tabNames[t])
+		if t == m.tab {
 			label = activeStyle.Render(label)
 		} else {
 			label = dimStyle.Render(label)
 		}
-		l.add(" "+label+" ", headerTabChanges+headerAction(i))
+		l.add(" "+label+" ", headerTab0+headerAction(i))
 	}
 	sep := dimStyle.Render(" │ ")
-	switch m.tab {
-	case tabChanges:
+	switch {
+	case m.tab.scoped():
 		l.add(sep, headerNone)
 		m.headerScopes(&l)
-	case tabPR:
+	case m.tab == tabPR:
 		if pr := m.pr.pr; pr != nil && pr.URL != "" {
 			l.add(sep, headerNone)
 			l.add(dimStyle.Render(string(pr.Forge)+" "), headerNone)
@@ -210,6 +208,9 @@ func (m *model) listLines(h int) []string {
 	case tabFiles:
 		title, n = fmt.Sprintf("Files (%d)", len(m.allFiles)), len(m.allFiles)
 		row = func(i int) string { return m.entryRow(m.allFiles[i], w) }
+	case tabGuide:
+		lines, _, _ := m.guideLines(h)
+		return lines
 	}
 	out := []string{headerStyle.Render(title)}
 	sel := m.listSel()
@@ -223,10 +224,28 @@ func (m *model) listLines(h int) []string {
 	return out
 }
 
+// changeStat returns the counts of the lines that f adds and deletes, as
+// "+3 -1". It leaves out a count of 0, and marks a binary file.
+func changeStat(f changed) string {
+	var parts []string
+	switch {
+	case f.Binary:
+		return dimStyle.Render("bin")
+	case f.TooBig:
+		return dimStyle.Render("big")
+	}
+	if f.adds > 0 {
+		parts = append(parts, addStyle.Render(fmt.Sprintf("+%d", f.adds)))
+	}
+	if f.dels > 0 {
+		parts = append(parts, delStyle.Render(fmt.Sprintf("-%d", f.dels)))
+	}
+	return strings.Join(parts, " ")
+}
+
 // changedRow renders changed file f in the file list, w columns wide.
 func (m *model) changedRow(f changed, w int) string {
-	adds := addStyle.Render(fmt.Sprintf("+%d", f.adds))
-	stat := adds + " " + delStyle.Render(fmt.Sprintf("-%d", f.dels))
+	stat := changeStat(f)
 	if c := m.comments.Count(f.Path); c > 0 {
 		stat = cursorStyle.Render(fmt.Sprintf("●%d ", c)) + stat
 	}
@@ -348,7 +367,7 @@ func (m *model) rowMark(i int, t *targetLine, lo, hi int) string {
 	p := m.cur()
 	_, hit := slices.BinarySearch(m.find.hits, i) // the hits are in order
 	switch {
-	case i == p.cur && m.tab != tabPR:
+	case i == p.cur && !m.tab.document():
 		return cursorStyle.Render("▶ ")
 	case lo >= 0 && i >= lo && i <= hi:
 		return cursorStyle.Render("┃ ")
@@ -504,7 +523,7 @@ func (m *model) footerLine() string {
 		k:       m.keys,
 		mode:    m.mode,
 		tab:     m.tab,
-		split:   m.split,
+		split:   m.splitShown(),
 		visual:  m.cur().anchor >= 0,
 		finding: m.find.active(),
 	}
@@ -542,7 +561,7 @@ func (m *model) View() tea.View {
 	if lw := m.listWidth(); lw > 0 {
 		list := box(m.listLines(h), lw, h)
 		sep := dimStyle.Render(strings.TrimSuffix(strings.Repeat(" │ \n", h), "\n"))
-		if m.listLeft {
+		if m.listOnLeft() {
 			body = lipgloss.JoinHorizontal(lipgloss.Top, list, sep, main)
 		} else {
 			body = lipgloss.JoinHorizontal(lipgloss.Top, main, sep, list)
@@ -591,9 +610,13 @@ func (m *model) programStatus() *tea.ProgramStatus {
 	}
 }
 
+// listOnLeft tells if the file list shows at the left of the main pane.
+// The guide reads first, so it is always at the left.
+func (m *model) listOnLeft() bool { return m.listLeft || m.tab == tabGuide }
+
 // mainX is the screen column where the main pane starts.
 func (m *model) mainX() int {
-	if lw := m.listWidth(); lw > 0 && m.listLeft {
+	if lw := m.listWidth(); lw > 0 && m.listOnLeft() {
 		return lw + sepWidth
 	}
 	return 0
@@ -601,7 +624,7 @@ func (m *model) mainX() int {
 
 // listX is the screen column where the file list starts.
 func (m *model) listX() int {
-	if !m.listLeft {
+	if !m.listOnLeft() {
 		return m.mainWidth() + sepWidth
 	}
 	return 0

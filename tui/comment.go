@@ -44,9 +44,19 @@ func (m *model) changedFile() *changed {
 	return &m.files[m.changeSel]
 }
 
+// changedAt returns the changed file at path, or nil.
+func (m *model) changedAt(path string) *changed {
+	for i := range m.files {
+		if m.files[i].Path == path {
+			return &m.files[i]
+		}
+	}
+	return nil
+}
+
 // contentFor returns the text of side s of the file at path.
 func (m *model) contentFor(path string, s diff.Side) string {
-	if f := m.changedFile(); m.tab == tabChanges && f != nil && f.Path == path {
+	if f := m.changedAt(path); m.tab.scoped() && f != nil {
 		if s == diff.SideOld {
 			return f.Old
 		}
