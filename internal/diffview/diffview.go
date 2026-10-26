@@ -61,7 +61,7 @@ type View struct {
 	isComputed bool
 	err        error
 	unified    udiff.UnifiedDiff
-	scopes     []string // the scope line of each hunk, see scopeOf
+	scopes     []string // the scope line of each hunk, see scopesOf
 
 	splitHunks []splitHunk
 
@@ -210,11 +210,11 @@ func (v *View) computeDiff() error {
 		edits,
 		udiff.DefaultContextLines,
 	)
-	lines := strings.Split(v.after.content, "\n")
-	v.scopes = make([]string, len(v.unified.Hunks))
+	firsts := make([]int, len(v.unified.Hunks))
 	for i, h := range v.unified.Hunks {
-		v.scopes[i] = scopeOf(lines, h.ToLine-1)
+		firsts[i] = h.ToLine - 1
 	}
+	v.scopes = scopesOf(strings.Split(v.after.content, "\n"), firsts)
 	return v.err
 }
 
@@ -222,36 +222,56 @@ func (v *View) computeDiff() error {
 // module in most languages, after optional modifiers such as "pub".
 var declaration = regexp.MustCompile(`^\s*(?:(?:export|pub(?:\([a-z]+\))?|public|private|protected|internal|static|async|abstract|final|sealed|open|override|default|unsafe|inline|virtual|extern|data|const)\s+)*(?:def|class|func|fn|fun|function|struct|enum|union|trait|impl|interface|type|module|mod|namespace|object|record|protocol|extension|actor|macro|sub|proc)\b`)
 
-// scopeOf returns the line that encloses line first of lines (0-based),
-// as "def foo(" or "func (v *View) text() string {", or "" if none does.
-// It is the nearest line above with less indent that is a declaration, or
-// that starts at column 0 with a word, as git's default funcname does.
+// scopesOf returns the scope of each line in firsts (0-based, ascending):
+// the line that encloses it, as "def foo(" or "func (v *View) text() string {",
+// or "" if none does. The scope is the nearest line above with less indent
+// that is a declaration, or that starts at column 0 with a word, as git's
+// default funcname does. One pass over lines finds all the scopes.
 // ponytail: a keyword heuristic, not a parser; it can miss a method in a
 // language without keywords (Java, C++), or pick a multiline statement.
-func scopeOf(lines []string, first int) string {
-	if first <= 0 || first >= len(lines) {
-		return ""
-	}
+func scopesOf(lines []string, firsts []int) []string {
 	indent := func(s string) int { return len(s) - len(strings.TrimLeft(s, " \t")) }
-	target := indent(lines[first])
-	for _, l := range lines[first:] { // the first line can be blank
-		if strings.TrimSpace(l) != "" {
-			target = indent(l)
-			break
-		}
+	type decl struct {
+		indent int
+		line   string
 	}
-	for i := first - 1; i >= 0 && target > 0; i-- {
-		l := strings.TrimRight(lines[i], "\r")
-		if strings.TrimSpace(l) == "" || indent(l) >= target {
+	var stack []decl // the declarations above the current line, by growing indent
+	scopes := make([]string, len(firsts))
+	i := 0
+	for k, first := range firsts {
+		for ; i < min(first, len(lines)); i++ {
+			l := strings.TrimRight(lines[i], "\r")
+			if strings.TrimSpace(l) == "" {
+				continue
+			}
+			d := indent(l)
+			c := l[d]
+			if declaration.MatchString(l) ||
+				d == 0 && (c == '_' || c == '$' || 'a' <= c|0x20 && c|0x20 <= 'z') {
+				for len(stack) > 0 && stack[len(stack)-1].indent >= d {
+					stack = stack[:len(stack)-1]
+				}
+				stack = append(stack, decl{d, l})
+			}
+		}
+		if first < 0 || first >= len(lines) {
 			continue
 		}
-		c := l[indent(l)]
-		if declaration.MatchString(l) ||
-			indent(l) == 0 && (c == '_' || c == '$' || 'a' <= c|0x20 && c|0x20 <= 'z') {
-			return Escape(strings.ReplaceAll(strings.TrimSpace(l), "\t", " "))
+		target := indent(lines[first])
+		for _, l := range lines[first:] { // the first line can be blank
+			if strings.TrimSpace(l) != "" {
+				target = indent(l)
+				break
+			}
+		}
+		for j := len(stack) - 1; j >= 0; j-- {
+			if stack[j].indent < target {
+				scopes[k] = Escape(strings.ReplaceAll(strings.TrimSpace(stack[j].line), "\t", " "))
+				break
+			}
 		}
 	}
-	return ""
+	return scopes
 }
 
 // convertDiffToSplit makes the split hunks, if the layout is split.
