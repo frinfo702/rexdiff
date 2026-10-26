@@ -2,6 +2,7 @@ package diff
 
 import (
 	"cmp"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"slices"
@@ -27,6 +28,8 @@ type Comment struct {
 
 	code    []string // the text of the lines Start to End
 	snippet []string // the rows as unified diff lines, or empty to use code
+	// noAnchor is true for a comment from a file with no anchors.
+	noAnchor bool
 }
 
 // Anchor is the view that a comment is made in. A comment shows only in a
@@ -106,28 +109,35 @@ func (cs *Comments) Remove(id int) {
 
 // All returns the comments, sorted by path and then by start line.
 func (cs *Comments) All() []*Comment {
-	all := slices.Clone(cs.items)
-	slices.SortStableFunc(all, func(a, b *Comment) int {
+	return slices.SortedStableFunc(slices.Values(cs.items), func(a, b *Comment) int {
 		return cmp.Or(strings.Compare(a.Path, b.Path), cmp.Compare(a.Start, b.Start))
 	})
-	return all
+}
+
+// SetOldRev sets the Rev of each comment that [Comments.UnmarshalJSON]
+// reads from the file of an older rexdiff. Such a file has no anchors, and
+// its comments are on the diff of the scope that the file saves.
+func (cs *Comments) SetOldRev(rev string) {
+	for _, c := range cs.items {
+		if c.noAnchor {
+			c.Anchor.Rev, c.noAnchor = rev, false
+		}
+	}
 }
 
 // Find returns the comment with the given ID, or nil.
 func (cs *Comments) Find(id int) *Comment {
-	for _, c := range cs.items {
-		if c.ID == id {
-			return c
-		}
+	if i := slices.IndexFunc(cs.items, func(c *Comment) bool { return c.ID == id }); i >= 0 {
+		return cs.items[i]
 	}
 	return nil
 }
 
 // At returns the first comment with anchor a whose range includes line, or
 // nil.
-func (cs *Comments) At(a Anchor, path string, side Side, line int) *Comment {
+func (cs *Comments) At(a Anchor, path string, s Side, line int) *Comment {
 	for _, c := range cs.items {
-		if c.Anchor == a && c.Path == path && c.Side == side &&
+		if c.Anchor == a && c.Path == path && c.Side == s &&
 			line >= c.Start && line <= c.End {
 			return c
 		}
@@ -136,10 +146,10 @@ func (cs *Comments) At(a Anchor, path string, side Side, line int) *Comment {
 }
 
 // EndingAt returns the comments with anchor a whose range ends on line.
-func (cs *Comments) EndingAt(a Anchor, path string, side Side, line int) []*Comment {
+func (cs *Comments) EndingAt(a Anchor, path string, s Side, line int) []*Comment {
 	var ending []*Comment
 	for _, c := range cs.items {
-		if c.Anchor == a && c.Path == path && c.Side == side && c.End == line {
+		if c.Anchor == a && c.Path == path && c.Side == s && c.End == line {
 			ending = append(ending, c)
 		}
 	}
@@ -189,7 +199,8 @@ type savedComments struct {
 
 // MarshalJSON encodes the comments with their code and their diff rows,
 // so that UnmarshalJSON restores the same comments, for example after a
-// restart.
+// restart. Bytes that are not UTF-8, for example in a Latin-1 file,
+// become U+FFFD.
 func (cs *Comments) MarshalJSON() ([]byte, error) {
 	saved := savedComments{Last: cs.last}
 	for _, c := range cs.items {
@@ -199,7 +210,7 @@ func (cs *Comments) MarshalJSON() ([]byte, error) {
 			Code: c.code, Snippet: c.snippet,
 		})
 	}
-	return json.Marshal(saved)
+	return json.Marshal(saved, jsontext.AllowInvalidUTF8(true))
 }
 
 // UnmarshalJSON reads comments that MarshalJSON wrote.
@@ -214,7 +225,7 @@ func (cs *Comments) UnmarshalJSON(b []byte) error {
 		cs.items = append(cs.items, &Comment{
 			ID: c.ID, Path: c.Path, Side: c.Side, Start: c.Start, End: c.End,
 			Text: c.Text, Anchor: Anchor{InDiff: inDiff, Rev: c.Rev},
-			code: c.Code, snippet: c.Snippet,
+			code: c.Code, snippet: c.Snippet, noAnchor: c.InDiff == nil,
 		})
 	}
 	return nil

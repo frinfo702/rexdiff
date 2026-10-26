@@ -2,17 +2,18 @@ package vcs
 
 import (
 	"bufio"
-	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/rednafi/rexdiff/internal/proc"
 )
 
 // Commit is a commit in the log.
@@ -37,7 +38,7 @@ func (r *Repo) Commits(ctx context.Context, since string) ([]Commit, error) {
 		nFields = 5 // the number of fields in format
 	)
 	_, err := r.run(ctx, nil, "rev-parse", "-q", "--verify", "HEAD")
-	if exitedWith(err, 1) {
+	if exitedOne(err) {
 		return nil, nil
 	}
 	args := []string{"log", "--first-parent", format}
@@ -69,16 +70,20 @@ func (r *Repo) Commits(ctx context.Context, since string) ([]Commit, error) {
 
 // Branches returns the names of the local and the remote branches.
 func (r *Repo) Branches(ctx context.Context) ([]string, error) {
-	out, err := r.run(ctx, nil,
-		"for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes")
+	// A ref name has no space. The short name of refs/remotes/origin/HEAD
+	// is "origin", thus filter by the full name.
+	out, err := r.run(ctx, nil, "for-each-ref",
+		"--format=%(refname) %(refname:short)", "refs/heads", "refs/remotes")
 	if err != nil {
 		return nil, err
 	}
 	var bs []string
-	// The short name of refs/remotes/origin/HEAD is "origin".
-	for b := range strings.FieldsSeq(out) {
-		if !strings.HasSuffix(b, "/HEAD") && b != "origin" {
-			bs = append(bs, b)
+	for l := range strings.Lines(out) {
+		full, short, _ := strings.Cut(strings.TrimSuffix(l, "\n"), " ")
+		remoteHead := strings.HasPrefix(full, "refs/remotes/") &&
+			strings.HasSuffix(full, "/HEAD")
+		if short != "" && !remoteHead {
+			bs = append(bs, short)
 		}
 	}
 	return bs, nil
@@ -104,7 +109,10 @@ func (r *Repo) DefaultBase(ctx context.Context) string {
 // detached HEAD, it returns "HEAD".
 func (r *Repo) Branch(ctx context.Context) (string, error) {
 	out, err := r.run(ctx, nil, "rev-parse", "--abbrev-ref", "HEAD")
-	return strings.TrimSpace(out), err
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // remoteURL returns the URL of the remote "upstream", so that forks work, or
@@ -132,6 +140,11 @@ type Entry struct {
 	Ignored bool
 }
 
+// listArgs are the arguments of git ls-files that list the tracked and
+// the untracked files. In a merge conflict, git lists a path once for each
+// stage. --deduplicate lists it once.
+var listArgs = []string{"-co", "--deduplicate", "--exclude-standard"}
+
 // Files returns the tracked and the untracked files, and the ignored paths,
 // sorted by path.
 func (r *Repo) Files(ctx context.Context) ([]Entry, error) {
@@ -139,9 +152,7 @@ func (r *Repo) Files(ctx context.Context) ([]Entry, error) {
 		args    []string
 		ignored bool
 	}{
-		// In a merge conflict, git lists a path once for each stage.
-		// --deduplicate lists it once.
-		{[]string{"-co", "--deduplicate", "--exclude-standard"}, false},
+		{listArgs, false},
 		{[]string{"-oi", "--exclude-standard", "--directory"}, true},
 	}
 	var es []Entry
@@ -190,8 +201,13 @@ type Match struct {
 
 // Grep returns at most limit lines of the tracked and the untracked files
 // that contain the text q. The search ignores case and binary files. When
-// it finds limit lines, it stops git, and more tells if there are others.
-func (r *Repo) Grep(ctx context.Context, q string, limit int) (ms []Match, more bool, err error) {
+// it finds limit lines, it stops git, and more is true if there are
+// others.
+//
+// After the time budget, Grep stops git when it has a line, and returns
+// the lines with more set to true. At the deadline of ctx, Grep stops git
+// and returns the lines that it finds before it, with more set to true.
+func (r *Repo) Grep(ctx context.Context, q string, limit int, budget time.Duration) (ms []Match, more bool, err error) {
 	if strings.Contains(q, "\n") {
 		// git reads each line of q as a pattern. A match is one line, so no
 		// match can have the newline of q.
@@ -199,56 +215,84 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int) (ms []Match, more 
 	}
 	// --no-column overrides the git setting grep.column. That setting adds a
 	// field to each match.
-	cmd := exec.CommandContext(ctx, "git",
+	cmd, stderr := r.command(ctx, nil, "git",
 		"grep", "-n", "--no-column", "-z", "-I", "-i", "-F", "--untracked", "--no-color",
 		"-e", q)
-	cmd.Dir = r.root
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, false, err
 	}
 	if err := cmd.Start(); err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			err = errors.New("git isn't installed")
+		if pastDeadline(ctx) {
+			return nil, true, nil
 		}
-		return nil, false, fmt.Errorf("git grep: %w", err)
+		return nil, false, fmt.Errorf("git grep: %w", proc.Error("git", err, nil))
 	}
-	ms, more = readMatches(bufio.NewReader(out), limit)
+	// Past the budget, Grep stops git if it has a line, or else at the
+	// next line.
+	var found, late, killed atomic.Bool
+	timer := time.AfterFunc(budget, func() {
+		late.Store(true)
+		if found.Load() {
+			killed.Store(true)
+			_ = cmd.Process.Kill()
+		}
+	})
+	ms, more = readMatches(bufio.NewReader(out), limit, func() bool {
+		found.Store(true)
+		return late.Load()
+	})
+	timer.Stop()
+	more = more || killed.Load()
 	if more {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 	}
 	err = cmd.Wait()
 	switch {
+	case err == nil, more, exitedOne(err): // done, stopped, or no match
+		return ms, more, nil
+	case pastDeadline(ctx):
+		return ms, true, nil
 	case ctx.Err() != nil:
 		return nil, false, ctx.Err()
-	case more, exitedWith(err, 1): // stopped, or no match
-		return ms, more, nil
-	case err != nil:
-		msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
-		return nil, false, fmt.Errorf("git grep: %w", &runError{cmp.Or(msg, err.Error()), err})
 	}
-	return ms, false, nil
+	return nil, false, fmt.Errorf("git grep: %w", proc.Error("git", err, stderr.Bytes()))
+}
+
+// pastDeadline reports whether ctx ends at its deadline.
+func pastDeadline(ctx context.Context) bool {
+	return errors.Is(ctx.Err(), context.DeadlineExceeded)
 }
 
 // readMatches reads at most limit matches of "git grep -n -z". Each match
 // is "path NUL line NUL text LF". Only the text ends with a newline,
-// because the path can have a newline. more tells if there is more output.
-func readMatches(r *bufio.Reader, limit int) (ms []Match, more bool) {
+// because the path can have a newline. After each match, a true stop ends
+// the read. more is true if there is more output.
+func readMatches(r *bufio.Reader, limit int, stop func() bool) (ms []Match, more bool) {
 	for len(ms) < limit {
 		path, err := r.ReadString(0)
 		if err != nil {
 			return ms, false
 		}
-		num, _ := r.ReadString(0)
-		text, _ := r.ReadString('\n')
+		// A cut at the deadline can end the output in a record. Such a
+		// record is not a match.
+		num, err := r.ReadString(0)
+		if err != nil {
+			return ms, true
+		}
+		text, err := r.ReadString('\n')
+		if err != nil {
+			return ms, true
+		}
 		n, _ := strconv.Atoi(strings.TrimSuffix(num, "\x00"))
 		ms = append(ms, Match{
 			Path: strings.TrimSuffix(path, "\x00"),
 			Line: n,
 			Text: strings.TrimSpace(text),
 		})
+		if stop() {
+			return ms, true
+		}
 	}
 	_, err := r.Peek(1)
 	return ms, err == nil
@@ -261,8 +305,9 @@ const (
 	turnRef = "refs/worktree/rexdiff/turn-base"
 )
 
-// SavedBase returns the base that [Repo.SaveBase] keeps for this worktree,
-// or "" if there is none.
+// SavedBase returns the base that [Repo.SaveBase] keeps for this worktree.
+// It returns "" if no base is saved, or if the saved value is not a ref
+// name.
 func (r *Repo) SavedBase(ctx context.Context) string {
 	out, err := r.run(ctx, nil, "cat-file", "blob", baseRef)
 	name := strings.TrimSpace(out)
@@ -297,8 +342,8 @@ func (r *Repo) SaveBase(ctx context.Context, name string) error {
 	return err
 }
 
-// SavedTurn returns the tree that [Repo.SaveTurn] keeps for this worktree,
-// or "" if there is none.
+// SavedTurn returns the tree that [Repo.SaveTurn] keeps for this worktree.
+// It returns "" if no tree is saved, or if git cannot resolve the ref.
 func (r *Repo) SavedTurn(ctx context.Context) string {
 	tree, err := r.Resolve(ctx, turnRef)
 	if err != nil {

@@ -1,6 +1,7 @@
 package diff_test
 
 import (
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/rednafi/rexdiff/diff"
+	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
 // comment returns a comment with text on all rows of the diff of old and
@@ -34,9 +36,10 @@ func review(c diff.Comment) string {
 	return cs.Review("")
 }
 
-// TestReviewMatchesHerdr checks that Review writes the text format of
-// herdr-reviewr.
-func TestReviewMatchesHerdr(t *testing.T) {
+// TestReviewMatchesHerdrReviewr checks that Review writes the text format
+// of herdr-reviewr.
+func TestReviewMatchesHerdrReviewr(t *testing.T) {
+	t.Parallel()
 	var cs diff.Comments
 	cs.Add(comment("c.go", diff.SideNew,
 		"ctx\n\told\x1b[31m\n",
@@ -57,7 +60,7 @@ func TestReviewMatchesHerdr(t *testing.T) {
 		"c.go:1-2\n" +
 		" ctx\n-\told[31m\n+\tnew\nfix]7501;state=idle this"
 	if got != want {
-		t.Errorf("Review got:\n%s\nwant:\n%s", got, want)
+		t.Errorf("Review = \n%s\nwant:\n%s", got, want)
 	}
 	if got := new(diff.Comments).Review(""); got != "" {
 		t.Errorf("Review with no comments = %q, want \"\"", got)
@@ -66,6 +69,7 @@ func TestReviewMatchesHerdr(t *testing.T) {
 
 // TestReviewContinuedRows checks a comment on only continued rows.
 func TestReviewContinuedRows(t *testing.T) {
+	t.Parallel()
 	old, new := "", strings.Repeat("word ", 20)+"\n"
 	d := diff.Render("a.go", old, new, diff.Options{Width: 30, Wrap: true})
 	var cont []diff.Row
@@ -79,13 +83,14 @@ func TestReviewContinuedRows(t *testing.T) {
 	// The comment has no diff lines, so Review writes the lines of its range.
 	want := "a.go:1\n+" + strings.TrimSuffix(new, "\n") + "\nlong"
 	if got := review(c); len(cont) == 0 || got != want {
-		t.Errorf("%d continued rows, Review got:\n%s\nwant:\n%s",
+		t.Errorf("%d continued rows, Review = \n%s\nwant:\n%s",
 			len(cont), got, want)
 	}
 }
 
 // TestComments checks Add, Find, At, EndingAt, Count, and Remove.
 func TestComments(t *testing.T) {
+	t.Parallel()
 	var cs diff.Comments
 	d := diff.Anchor{InDiff: true}
 	a := cs.Add(diff.Comment{Path: "a.go", Side: diff.SideNew, Start: 2, End: 4, Anchor: d})
@@ -122,7 +127,7 @@ func TestComments(t *testing.T) {
 	}
 	cs.Remove(b.ID)
 	if cs.Find(b.ID) != nil || cs.Len() != 2 {
-		t.Errorf("after Remove(%d): Find = %v, Len = %d; want nil, 2",
+		t.Errorf("after Remove(%d): Find = %v, Len = %d, want nil, 2",
 			b.ID, cs.Find(b.ID), cs.Len())
 	}
 	if c := cs.Add(diff.Comment{}); c.ID == a.ID || c.ID == b.ID {
@@ -134,6 +139,7 @@ func TestComments(t *testing.T) {
 // TestNewComment checks comments from the rows of a change, in the two
 // layouts, on each side.
 func TestNewComment(t *testing.T) {
+	t.Parallel()
 	old := "a\nb\nc\nd\n"
 	new := "a\nB\nC\nd\n"
 	for _, split := range []bool{false, true} {
@@ -151,7 +157,7 @@ func TestNewComment(t *testing.T) {
 			}
 			want += "\n a\n-b\n-c\n+B\n+C\n d\n"
 			if got := review(c); got != want {
-				t.Errorf("split %v, side %d: Review got:\n%s\nwant:\n%s",
+				t.Errorf("split %v, side %d: Review = \n%s\nwant:\n%s",
 					split, s, got, want)
 			}
 		}
@@ -179,6 +185,7 @@ func TestNewComment(t *testing.T) {
 // TestSnippetIsTheRealDiff checks that the snippet matches git diff, with raw
 // text and tabs, in both layouts.
 func TestSnippetIsTheRealDiff(t *testing.T) {
+	t.Parallel()
 	old := "func a() {\n\treturn 1\n}\n"
 	new := "func a() {\n\t// two\n\treturn 2\n}\n"
 	want := " func a() {\n-\treturn 1\n+\t// two\n+\treturn 2\n }"
@@ -186,26 +193,26 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 		d := diff.Render("x.go", old, new, diff.Options{Split: split})
 		got := strings.Join(snippet(d.Rows, old, new), "\n")
 		if got != want {
-			t.Errorf("split %v: snippet got:\n%s\nwant:\n%s", split, got, want)
+			t.Errorf("split %v: snippet = \n%s\nwant:\n%s", split, got, want)
 		}
 	}
 
 	dir := t.TempDir()
 	for name, src := range map[string]string{"old": old, "new": new} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		testgit.WriteFile(t, dir, name, src)
 	}
 	// git diff exits with 1 when the files differ.
-	git := exec.Command(
+	git := exec.CommandContext(t.Context(),
 		"git", "diff", "--no-index", "-U1",
 		filepath.Join(dir, "old"),
 		filepath.Join(dir, "new"),
 	)
+	// No diff setting of the user applies.
+	git.Env = append(os.Environ(), testgit.Env()...)
 	out, _ := git.Output()
 	_, body, _ := strings.Cut(string(out), "@@\n")
 	if strings.TrimSuffix(body, "\n") != want {
-		t.Errorf("git diff got:\n%s\nwant:\n%s", body, want)
+		t.Errorf("git diff = \n%s\nwant:\n%s", body, want)
 	}
 }
 
@@ -213,6 +220,7 @@ func TestSnippetIsTheRealDiff(t *testing.T) {
 // also checks a file of an older rexdiff, which has a stale field and no
 // anchor.
 func TestCommentsJSON(t *testing.T) {
+	t.Parallel()
 	var cs diff.Comments
 	anchors := []diff.Anchor{{}, {InDiff: true}, {InDiff: true, Rev: "a..b"}}
 	for _, a := range anchors {
@@ -241,5 +249,43 @@ func TestCommentsJSON(t *testing.T) {
 	c := cs2.Find(1)
 	if c == nil || c.Anchor != (diff.Anchor{InDiff: true}) || c.Start != 2 {
 		t.Errorf("comment of an old file = %+v, want lines 2-3 on a diff", c)
+	}
+	back.SetOldRev("x..y")
+	cs2.SetOldRev("a..b")
+	for i, c := range back.All() {
+		if c.Anchor != anchors[i] {
+			t.Errorf("comment %d after SetOldRev: anchor %+v, want %+v", i, c.Anchor, anchors[i])
+		}
+	}
+	if want := (diff.Anchor{InDiff: true, Rev: "a..b"}); c.Anchor != want {
+		t.Errorf("comment of an old file after SetOldRev: anchor %+v, want %+v", c.Anchor, want)
+	}
+}
+
+// TestCommentsJSONLatin1 checks that a comment on a file that is not UTF-8,
+// for example a Latin-1 file, survives a JSON round trip. The bytes that
+// are not UTF-8 become U+FFFD.
+func TestCommentsJSONLatin1(t *testing.T) {
+	t.Parallel()
+	const path = "caf\xe9.txt"
+	var cs diff.Comments
+	c := commentOn(path, diff.SideNew, "caf\xe9 cr\xe8me\n", 1, 1)
+	c.Text = "na\xefve"
+	cs.Add(c)
+	b, err := json.Marshal(&cs)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var back diff.Comments
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	got := back.Find(1)
+	if got == nil {
+		t.Fatal("Find(1) = nil after a round trip")
+	}
+	want := "caf\uFFFD.txt:1\n caf\uFFFD cr\uFFFDme\nna\uFFFDve"
+	if r := review(*got); r != want {
+		t.Errorf("Review after a round trip = %q, want %q", r, want)
 	}
 }

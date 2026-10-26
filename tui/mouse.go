@@ -23,6 +23,7 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	if mouse.Button != tea.MouseLeft {
 		return nil
 	}
+	m.armed = 0 // as a key does
 	if m.mode == modeOverlay && m.overlay != nil {
 		return m.clickOverlay(mouse)
 	}
@@ -40,26 +41,37 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	if y := mouse.Y - bodyY; y > m.bodyHeight() { // the footer, under the rule
-		return m.install()
+		return m.startUpdate()
 	}
+	// The window of the next click starts after the work of this one, for
+	// example a copy. A slow copy then does not break a triple click.
+	defer func() { m.click.at = time.Now() }()
 	if m.inList(mouse.X, mouse.Y) {
 		if y := mouse.Y - m.listY(); y >= 1 {
 			r := m.listStart(m.listRows()) + y - 1
 			if m.countClick(mouse) >= 2 {
 				if path := m.rowPath(r); path != "" {
-					return m.copyChars(path)
+					m.copyChars(path)
+					return nil
 				}
 			}
 			m.clickRow(r)
 		}
 		return nil
 	}
+	return m.clickMain(mouse)
+}
+
+// clickMain handles a press of the left button on the main pane. A click
+// moves the cursor and starts a drag. A double or a triple click copies
+// the text.
+func (m *model) clickMain(mouse tea.Mouse) tea.Cmd {
 	h := m.mainHeight()
 	y := mouse.Y - m.mainY()
 	if y < 0 || y >= h || mouse.X < m.mainX() || mouse.X >= m.mainX()+m.mainWidth() {
 		return nil
 	}
-	_, rowAt := m.mainLines(h)
+	_, rowAt := m.mainLines(h, nil)
 	if y >= len(rowAt) || rowAt[y] < 0 {
 		return nil
 	}
@@ -67,12 +79,13 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	x := mouse.X - m.mainX() - gutter
 	if n := m.countClick(mouse); n >= 2 {
 		if text := m.clickText(rowAt[y], x, n); text != "" {
-			return m.copyChars(text)
+			m.copyChars(text)
+			return nil
 		}
 	}
 	m.focusList = false
 	p.cur, p.anchor = p.head(rowAt[y]), -1
-	if m.onFold() {
+	if m.atFold() {
 		m.expandFold(p.rows[p.cur].Fold)
 		return nil
 	}
@@ -86,8 +99,8 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	return nil
 }
 
-// inList tells if the screen cell at column x and line y is on the file
-// list.
+// inList reports whether the screen cell at column x and line y is on
+// the file list.
 func (m *model) inList(x, y int) bool {
 	lw, ly := m.listWidth(), m.listY()
 	return lw > 0 && x >= m.listX() && x < m.listX()+lw && y >= ly && y < ly+m.listRows()
@@ -110,7 +123,7 @@ func (m *model) onDrag(mouse tea.Mouse) {
 		p.top = min(p.top+1, max(len(p.lines)-1, 0))
 		p.cur = max(min(p.top+h-1, len(p.lines)-1), 0)
 	default:
-		_, rowAt := m.mainLines(h)
+		_, rowAt := m.mainLines(h, nil)
 		for yy := min(y, len(rowAt)-1); yy >= 0; yy-- {
 			if rowAt[yy] >= 0 {
 				p.cur = rowAt[yy]
@@ -137,7 +150,8 @@ type clickChain struct {
 }
 
 // countClick adds a press to the chain and returns the count. A press on
-// another cell, or after [clickWindow], starts a new chain.
+// another cell, or after [clickWindow], starts a new chain. The time of
+// the chain is the end of the last press.
 func (m *model) countClick(mouse tea.Mouse) int {
 	c, now := m.click, time.Now()
 	n := 1
@@ -215,16 +229,15 @@ func (m *model) textAt(i, x int) (line string, char int, ok bool) {
 
 // copyChars copies text and then shows the count of its characters, as
 // herdr-reviewr does.
-func (m *model) copyChars(text string) tea.Cmd {
-	if text == "" {
-		return nil
+func (m *model) copyChars(text string) {
+	if text != "" {
+		m.copyText(text, "copied "+plural(utf8.RuneCountInString(text), "char"), nil)
 	}
-	return m.copyText(text, "copied "+plural(utf8.RuneCountInString(text), "char"), nil)
 }
 
-// onRelease ends a drag. A drag on the line numbers opens the comment
+// onMouseUp ends a drag. A drag on the line numbers opens the comment
 // box. A drag on the code copies the lines.
-func (m *model) onRelease() tea.Cmd {
+func (m *model) onMouseUp() tea.Cmd {
 	d := m.drag
 	m.drag.active = false
 	p := m.cur()
@@ -240,7 +253,7 @@ func (m *model) onRelease() tea.Cmd {
 		return m.startComment(d.pref)
 	case d.moved: // a drag on the code copies the range
 		lo, hi := p.span(d.start, p.cur)
-		return m.copyChars(strings.Join(m.sourceLines(lo, hi, d.pref), "\n"))
+		m.copyChars(strings.Join(m.sourceLines(lo, hi, d.pref), "\n"))
 	}
 	return nil
 }
@@ -315,7 +328,8 @@ func (m *model) clickOverlay(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	idx := mouse.Y - y - listY
-	if idx < 0 || idx >= min(len(m.overlay.shown), m.overlay.rowsTo) || !m.overlay.pickable(idx) {
+	if idx < m.overlay.rowsFrom || idx >= min(len(m.overlay.shown), m.overlay.rowsTo) ||
+		!m.overlay.pickable(idx) {
 		return nil
 	}
 	if idx == m.overlay.cur { // a click on the selected row picks it

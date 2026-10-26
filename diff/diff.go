@@ -18,6 +18,7 @@ import (
 // Kind is the type of a rendered row.
 type Kind int
 
+// These are the kinds of a row.
 const (
 	KindHunk   Kind = iota // a hunk header, with no source line
 	KindEqual              // a line that is the same on the two sides
@@ -29,6 +30,7 @@ const (
 // Side identifies one version of a file.
 type Side int
 
+// These are the two sides of a file.
 const (
 	SideOld Side = iota // the version before the change
 	SideNew             // the version after the change
@@ -75,8 +77,8 @@ type Options struct {
 	// Wrap continues a line that is wider than Width on the next lines,
 	// instead of cutting it. Then Offset does not apply.
 	Wrap bool
-	// Expanded tells if the lines of a fold show. If Expanded is nil, no
-	// fold shows. RenderFile does not use it.
+	// Expanded reports whether the lines of a fold show. If Expanded is
+	// nil, no fold shows. RenderFile does not use it.
 	Expanded func(Fold) bool
 	// Signs marks a changed line with + or -. Without Signs, a bar in the
 	// colour of the line marks it.
@@ -95,9 +97,6 @@ type Cache struct {
 	lines diffview.Cache                  // the lines of Render
 	file  struct{ path, src, out string } // the last file of RenderFile
 }
-
-// tabWidth is the number of spaces that replace a tab.
-const tabWidth = 4
 
 // Diff is the rendered output. Lines[i] is the screen line for Rows[i].
 // Lines is empty when there is nothing to show, for example when the two
@@ -125,7 +124,6 @@ func Render(path, old, new string, o Options) *Diff {
 		Before(path, old).
 		After(path, new).
 		Width(o.Width).
-		TabWidth(tabWidth).
 		XOffset(o.Offset)
 	if o.Cache != nil {
 		dv = dv.Cache(&o.Cache.lines)
@@ -142,7 +140,8 @@ func Render(path, old, new string, o Options) *Diff {
 	if o.Wrap {
 		dv = dv.Wrap()
 	}
-	dv = o.Theme.apply(dv)
+	dv = dv.Style(diffview.TerminalStyle(o.Theme.Background, o.Theme.Foreground,
+		o.Theme.Green, o.Theme.Red, o.Theme.dark()))
 	out, rows, g := dv.Render()
 
 	d := &Diff{split: o.Split, src: [2]string{old, new}, wrap: o.Wrap}
@@ -166,10 +165,12 @@ func Render(path, old, new string, o Options) *Diff {
 	return d
 }
 
+// foldOf returns the Fold of the diffview fold f.
 func foldOf(f diffview.Fold) Fold {
 	return Fold{Old: f.Before, New: f.After, Lines: f.Lines}
 }
 
+// kindOf returns the Kind of the diffview row kind k.
 func kindOf(k diffview.RowKind) Kind {
 	switch k {
 	case diffview.RowHunk:
@@ -231,8 +232,22 @@ func Count(old, new string) (added, deleted int) {
 func Lines(s string) []string {
 	var lines []string
 	for l := range strings.Lines(s) {
-		l = strings.TrimSuffix(l, "\n")
-		lines = append(lines, strings.TrimSuffix(l, "\r"))
+		lines = append(lines, trimEOL(l))
 	}
 	return lines
+}
+
+// trimEOL returns line without its LF or CRLF line ending.
+func trimEOL(line string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+}
+
+// countLines returns the number of lines of s, as [Lines] counts them. A
+// last line without a newline counts as a line.
+func countLines(s string) int {
+	n := strings.Count(s, "\n")
+	if s != "" && !strings.HasSuffix(s, "\n") {
+		n++
+	}
+	return n
 }

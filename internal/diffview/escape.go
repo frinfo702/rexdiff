@@ -19,19 +19,15 @@ const (
 // so the terminal shows it and does not run it. A C1 control becomes
 // U+FFFD, because it has no picture.
 func Escape(content string) string {
-	var sb strings.Builder
-	sb.Grow(len(content))
-	for _, r := range content {
+	return strings.Map(func(r rune) rune {
 		switch {
 		case r >= 0 && r <= 0x1f: // C0 controls
-			sb.WriteRune(controlPictures + r)
+			return controlPictures + r
 		case r == ansi.DEL:
-			sb.WriteRune(delPicture)
+			return delPicture
 		case r >= 0x80 && r <= 0x9f: // C1 controls
-			sb.WriteRune(utf8.RuneError)
-		default:
-			sb.WriteRune(r)
+			return utf8.RuneError
 		}
-	}
-	return sb.String()
+		return r
+	}, content)
 }

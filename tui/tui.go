@@ -8,8 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
-	"strings"
+	"sync"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -31,7 +30,8 @@ type Options struct {
 	// empty text means the default settings.
 	Config string
 	// Layout and Scope override the settings if they are not empty. Set
-	// them from the command-line flags.
+	// them from the command-line flags -layout and -scope. The error of a
+	// bad value names the flag.
 	Layout Layout
 	Scope  Scope
 	// Agent is the block ID or the label of the agent that the program
@@ -57,13 +57,22 @@ type Options struct {
 
 // check returns an error for options that Run cannot use.
 func (o Options) check() error {
-	switch {
-	case o.Repo == nil:
+	if o.Repo == nil {
 		return errors.New("no repository")
-	case o.Layout != "" && !slices.Contains(layouts, o.Layout):
-		return invalid("layout", "one of "+strings.Join(names(layouts...), ", "), string(o.Layout))
-	case o.Scope != "" && !slices.Contains(configScopes, o.Scope):
-		return invalid("scope", "one of "+strings.Join(names(configScopes...), ", "), string(o.Scope))
+	}
+	return CheckFlags(o.Layout, o.Scope)
+}
+
+// CheckFlags returns the error of the values of the flags -layout and
+// -scope, or nil if rexdiff accepts them. An empty value is the default.
+func CheckFlags(layout Layout, scope Scope) error {
+	if layout != "" {
+		if err := choice("-layout", layout, layouts); err != nil {
+			return err
+		}
+	}
+	if scope != "" {
+		return choice("-scope", scope, configScopes)
 	}
 	return nil
 }
@@ -92,40 +101,54 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	m := newModel(ctx, o, cfg)
-	if m.watch, err = o.Repo.Watch(ctx); err != nil {
-		// Without the watcher, each tick reloads.
-		m.log.Warn("watch failed", "err", err)
-	}
-	var saved *savedState
-	if o.Resume != "" {
-		if saved, err = loadState(o.Resume); err != nil {
-			m.flash("cannot read the comments from before the update: " + err.Error())
-		} else {
-			m.restoreSettings(saved)
-		}
-	}
-	m.reload()
-	if saved != nil {
-		m.restorePlaces(saved)
-	}
-	if o.Rex != nil && o.Rex.Block != "" {
-		if err := o.Rex.SetLabel(ctx, o.Rex.Block, appName); err != nil {
-			m.log.Debug("set label", "err", err)
-		}
-	}
+	m := startModel(ctx, o, cfg)
 	program := tea.NewProgram(&m, tea.WithContext(ctx))
+	var wg sync.WaitGroup
 	if o.Rex != nil {
-		go o.Rex.Watch(ctx, func(e rex.Event) { program.Send(eventMsg(e)) })
+		// Watch returns only the error of ctx, when ctx is done.
+		wg.Go(func() {
+			_ = o.Rex.Watch(ctx, func(e rex.Event) { program.Send(eventMsg(e)) })
+		})
 	}
 	final, err := program.Run()
+	cancel()
+	wg.Wait()
 	if fm, ok := final.(*model); ok && err == nil {
-		if fm.restartState != "" {
+		if fm.resumePath != "" {
 			// Keep the last screen until the new rexdiff draws, so that
 			// the restart does not show the shell of the pane.
 			fmt.Print("\x1b[?1049h\x1b[?25l\x1b[H" + fm.View().Content)
 		}
-		return fm.restartState, nil
+		return fm.resumePath, nil
 	}
 	return "", err
+}
+
+// startModel returns the model that Run shows. It starts the watcher,
+// reads the state of o.Resume, loads the changes, and labels the block of
+// the program in Rex.
+func startModel(ctx context.Context, o Options, cfg config) model {
+	m := newModel(ctx, o, cfg)
+	if err := m.startWatch(); err != nil {
+		m.dropWatch(err)
+	}
+	var saved *resumeState
+	if o.Resume != "" {
+		var err error
+		if saved, err = loadResume(o.Resume); err != nil {
+			m.flash("restore of the comments failed: " + err.Error())
+		} else {
+			m.restoreSettings(saved)
+		}
+	}
+	m.loadNow()
+	if saved != nil {
+		m.restorePlaces(saved)
+	}
+	if o.Rex != nil && o.Rex.Block() != "" {
+		if err := o.Rex.SetLabel(ctx, o.Rex.Block(), appName); err != nil {
+			m.log.Debug("set label failed", "err", err)
+		}
+	}
+	return m
 }

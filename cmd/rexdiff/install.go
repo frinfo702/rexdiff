@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -37,13 +38,14 @@ const (
 // defaultSettings is the top of a new rexdiff.lua.
 const defaultSettings = `-- "rexdiff install" wrote this file. To remove it, run "rexdiff uninstall".
 --
--- These are the settings of rexdiff. The README of rexdiff lists them.
+-- These are the settings of rexdiff. The user guide lists them:
+-- https://github.com/rednafi/rexdiff/blob/master/.doc/user.md#settings
 -- To change a setting, edit it, then run "rex config reload".
 -- Install and upgrades keep this part.
 local settings = {
   -- key = "shift+cmd+r", -- the key of the toggle, or false for none
   -- placement = "split", -- split, zoomed, tab, or overlay
-  -- layout = "split",
+  -- layout = "unified", -- or split
 }
 
 `
@@ -142,7 +144,7 @@ end
 -- The key and the placement are for Rex. rexdiff gets the other settings
 -- as JSON.
 if type(settings) ~= "table" then
-  error("rexdiff.lua: settings must be a table, as in: local settings = { }", 0)
+  error("config: settings must be a table, as in: local settings = { }", 0)
 end
 local opts = {}
 for k, v in pairs(settings) do opts[k] = v end
@@ -167,7 +169,7 @@ rex.action{
     end
     local open = reviewers()
     if #open == 0 then
-      if config == nil then error("rexdiff settings: " .. encode_err, 0) end
+      if config == nil then error("config: " .. encode_err, 0) end
       check(config)
       return open_rexdiff(ctx, placement, config)
     end
@@ -208,28 +210,32 @@ func splitLua(path, content string) (settings, code string, err error) {
 		}
 		i += len(line)
 	}
-	return "", "", fmt.Errorf("%s has no line %q, so rexdiff cannot tell your settings from its code. Put that line back under your settings, or move the file away and run \"rexdiff install\" again",
+	return "", "", fmt.Errorf("%s has no line %q, so rexdiff cannot tell your settings from its code: put that line back under your settings, or move the file away and run \"rexdiff install\" again",
 		path, codeMark)
 }
 
-// newLua returns the content of rexdiff.lua with the code for bin. It
+// luaContent returns the content of rexdiff.lua with the code for bin. It
 // keeps the settings of old, the current content of the file. If old is
 // empty, it uses the default settings.
-func newLua(path, old, bin string) (string, error) {
+func luaContent(path, old, bin string) (string, error) {
 	if old == "" {
 		return defaultSettings + luaCode(bin), nil
 	}
 	settings, _, err := splitLua(path, old)
-	return settings + luaCode(bin), err
+	if err != nil {
+		return "", err
+	}
+	return settings + luaCode(bin), nil
 }
 
+// luaPath returns the path of rexdiff.lua, beside the init.lua of Rex.
 func luaPath() string { return filepath.Join(filepath.Dir(rex.ConfigPath()), luaFile) }
 
 // readFile returns the content of the file at path, or "" if there is no
 // file.
 func readFile(path string) (string, error) {
 	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) {
 		return "", nil
 	}
 	return string(b), err
@@ -253,17 +259,8 @@ func executable() (string, error) {
 // install writes rexdiff.lua with the action that runs bin, the path of
 // rexdiff. It adds the require line to init.lua.
 func install(ctx context.Context, bin string, args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("rexdiff install", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+	if err := parseSub("install", args, stderr); err != nil {
 		return err
-	}
-	if fs.NArg() > 0 {
-		return fmt.Errorf("unknown argument %s (set the key and the placement in the settings in %s)",
-			fs.Arg(0), luaPath())
 	}
 
 	// Make the new content first. Then a bad rexdiff.lua stops the install
@@ -273,7 +270,7 @@ func install(ctx context.Context, bin string, args []string, stdout, stderr io.W
 	if err != nil {
 		return err
 	}
-	code, err := newLua(lua, old, bin)
+	code, err := luaContent(lua, old, bin)
 	if err != nil {
 		return err
 	}
@@ -284,37 +281,42 @@ func install(ctx context.Context, bin string, args []string, stdout, stderr io.W
 		return err
 	}
 	initPath := rex.ConfigPath()
-	if err := addRequire(initPath); err != nil {
+	added, err := addRequire(initPath)
+	if err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "wrote %s; the settings are at its top\n", lua)
-	fmt.Fprintf(stdout, "added %s to %s\n", requireLine, initPath)
-	fmt.Fprint(stdout, reload(ctx, stdout))
+	if added {
+		fmt.Fprintf(stdout, "added %s to %s\n", requireLine, initPath)
+	}
+	reload(ctx, stdout)
 	fmt.Fprintln(stdout, "press the key of the settings (shift+cmd+r by default), or run \"Toggle rexdiff\" from the command palette, beside an agent")
 	return nil
 }
 
 // upgrade replaces the code part of rexdiff.lua with the code for bin, if
-// they differ, and keeps the settings. It does nothing if there is no
-// rexdiff.lua, or if the file runs another rexdiff, for example a build
-// for development. It returns what the user must know, or "".
+// they differ, and keeps the settings. It is not the update of rexdiff
+// itself (see the update package). It upgrades only the Lua code of the
+// action. It does nothing if there is no rexdiff.lua, or if the file runs
+// another rexdiff, for example a build for development. It returns what
+// the user must know, or "".
 func upgrade(ctx context.Context, bin string) string {
 	lua := luaPath()
 	old, err := readFile(lua)
 	if err != nil || !strings.Contains(old, binLine(bin)+"\n") {
 		return ""
 	}
-	code, err := newLua(lua, old, bin)
+	code, err := luaContent(lua, old, bin)
 	if err != nil {
-		return "cannot upgrade rexdiff.lua: " + err.Error()
+		return "rexdiff.lua upgrade failed: " + err.Error()
 	}
 	if code == old {
 		return ""
 	}
 	if err := os.WriteFile(lua, []byte(code), 0o644); err != nil {
-		return "cannot upgrade rexdiff.lua: " + err.Error()
+		return "rexdiff.lua upgrade failed: " + err.Error()
 	}
-	if _, err := rex.ReloadConfig(ctx); err != nil {
+	if err := rex.ReloadConfig(ctx); err != nil {
 		return "upgraded rexdiff.lua; reload Rex's config yourself: rex config reload"
 	}
 	return ""
@@ -322,19 +324,21 @@ func upgrade(ctx context.Context, bin string) string {
 
 // addRequire adds the require line to the end of the init.lua at path. It
 // creates the file if it is not there. If the file has the line, addRequire
-// does not change it.
-func addRequire(path string) error {
+// does not change it. It reports whether it adds the line.
+func addRequire(path string) (bool, error) {
 	s, err := readFile(path)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if slices.ContainsFunc(strings.Split(s, "\n"), isRequire) {
-		return nil
+	for line := range strings.Lines(s) {
+		if isRequire(line) {
+			return false, nil
+		}
 	}
 	if s != "" && !strings.HasSuffix(s, "\n") {
 		s += "\n"
 	}
-	return os.WriteFile(path, []byte(s+requireLine+"\n"), 0o644)
+	return true, os.WriteFile(path, []byte(s+requireLine+"\n"), 0o644)
 }
 
 // isRequire reports whether line is the require line of rexdiff, maybe
@@ -344,15 +348,36 @@ func isRequire(line string) bool {
 	return t == requireLine || strings.HasPrefix(t, requireLine+" --")
 }
 
+// parseSub parses the arguments of the subcommand name, which has no
+// flags. It returns the errors of parseFlags.
+func parseSub(name string, args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("rexdiff "+name, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	if err := fs.Parse(args); err != nil {
+		return usageError(err)
+	}
+	if fs.NArg() > 0 {
+		// Show the usage, as the flag package does for a bad flag.
+		fmt.Fprintf(stderr, "unknown argument %q (set the key and the placement in the settings in %s)\n",
+			fs.Arg(0), luaPath())
+		fs.Usage()
+		return errUsage
+	}
+	return nil
+}
+
 // uninstall removes the require line from init.lua, then rexdiff.lua with
 // the settings. In this order, a failure does not leave init.lua with a
 // require of a file that is not there.
-func uninstall(ctx context.Context, stdout io.Writer) error {
+func uninstall(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	if err := parseSub("uninstall", args, stderr); err != nil {
+		return err
+	}
 	initPath := rex.ConfigPath()
 	if err := removeRequire(initPath); err != nil {
 		return err
 	}
-	if err := os.Remove(luaPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(luaPath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	fmt.Fprintln(stdout, "removed the rexdiff action, its key, and its settings from Rex")
@@ -367,18 +392,17 @@ func removeRequire(path string) error {
 	if err != nil || s == "" {
 		return err
 	}
+	// Split, not Lines, because Join needs the lines without their ends.
 	lines := slices.DeleteFunc(strings.Split(s, "\n"), isRequire)
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
 
-// reload tells Rex to read its configuration file again, and returns the
-// report of Rex. If Rex fails, reload tells the user how to reload, and
-// returns "".
-func reload(ctx context.Context, stdout io.Writer) string {
-	out, err := rex.ReloadConfig(ctx)
-	if err != nil {
+// reload tells Rex to read its configuration file again. If Rex fails,
+// reload tells the user how to reload.
+func reload(ctx context.Context, stdout io.Writer) {
+	if err := rex.ReloadConfig(ctx); err != nil {
 		fmt.Fprintf(stdout, "reload Rex's config yourself: rex config reload (%v)\n", err)
-		return ""
+		return
 	}
-	return out
+	fmt.Fprintln(stdout, "reloaded Rex's config")
 }

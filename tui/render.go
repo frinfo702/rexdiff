@@ -4,6 +4,7 @@ package tui
 // file viewer, and Markdown.
 
 import (
+	"cmp"
 	"errors"
 	"slices"
 	"strings"
@@ -20,11 +21,13 @@ import (
 // left of the main pane.
 const gutter = 2
 
-// The sizes of the file list, as in herdr-reviewr. At a side, the width
-// stays between listMinPct and listMaxSidePct of the screen width. Above
-// or below, the list takes listStackPct of the body rows by default, and
-// stays between listMinPct and listMaxStackPct.
+// The sizes of the file list, as in herdr-reviewr. At a side, the list
+// takes listSidePct of the screen width by default, and stays between
+// listMinPct and listMaxSidePct. Above or below, the list takes
+// listStackPct of the body rows by default, and stays between listMinPct
+// and listMaxStackPct.
 const (
+	listSidePct     = 32
 	listStackPct    = 25
 	listMinPct      = 15
 	listMaxSidePct  = 60
@@ -36,7 +39,10 @@ const (
 func (m *model) listShown() bool { return !m.listHidden && m.tab != tabPR }
 
 // sideWidth returns the width of the file list at a side, in columns.
-func (m *model) sideWidth() int { return m.clampSide(m.listW) }
+// Without a width in columns, the list takes listSidePct of the screen.
+func (m *model) sideWidth() int {
+	return m.clampSide(cmp.Or(m.listW, m.w*listSidePct/100))
+}
 
 // clampSide returns w within the bounds of the width of the file list at
 // a side.
@@ -58,12 +64,16 @@ func (m *model) listWidth() int {
 
 // listHeight returns the number of body rows that the file list takes
 // above or below the main pane, with its rule. The body has h rows. It
-// returns 0 if the list does not show there.
+// returns 0 if the list does not show there, or if the rule leaves no
+// row for the list.
 func (m *model) listHeight(h int) int {
 	if !m.listShown() || !m.listPos.stacked() {
 		return 0
 	}
-	return splitAxis(h, m.listPct)
+	if lh := splitAxis(h, m.listPct); lh > 1 {
+		return lh
+	}
+	return 0
 }
 
 // mainWidth returns the width of the main pane, with its gutter.
@@ -90,6 +100,7 @@ func (m *model) codeWidth() int { return m.mainWidth() - gutter }
 // their source lines. A cursor on a header stays above the first line
 // below the header.
 func (m *model) rerender() {
+	m.sizeEditor()
 	p := m.cur()
 	next := p.cur
 	for next < len(p.rows) && m.target(next, diff.SideNew) == nil {
@@ -117,6 +128,9 @@ func (m *model) rerender() {
 	}
 }
 
+// sizeEditor fits the comment box to the width of the main pane.
+func (m *model) sizeEditor() { m.editor.SetWidth(max(m.mainWidth()-8, 20)) }
+
 // splitMinWidth is the narrowest code width that shows the split layout.
 // It is the same as in herdr-reviewr: two halves of 60 columns, each with
 // its line numbers, and a column between them.
@@ -129,8 +143,8 @@ func (m *model) splitAllowed() bool {
 	if m.tab != tabChanges {
 		return false
 	}
-	f := m.changedFile()
-	return f != nil && !f.Binary && !f.TooBig && !m.showsMarkdown(f) &&
+	f := m.selectedChange()
+	return f != nil && !f.Binary && !f.TooBig && !m.isRendered(f) &&
 		f.Old != "" && f.New != "" && f.Old != f.New
 }
 
@@ -141,9 +155,9 @@ func (m *model) splitShown() bool {
 	return m.split && m.codeWidth() >= splitMinWidth && m.splitAllowed()
 }
 
-// showsMarkdown reports whether the Changes tab shows f as rendered
+// isRendered reports whether the Changes tab shows f as rendered
 // markdown.
-func (m *model) showsMarkdown(f *changed) bool {
+func (m *model) isRendered(f *changedFile) bool {
 	return m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted
 }
 
@@ -179,10 +193,22 @@ const (
 	noteTooBig = "file too large to show"
 )
 
+// fileNote returns the note for a file that ReadFile does not read, and
+// reports whether err has a note.
+func fileNote(err error) (string, bool) {
+	switch {
+	case errors.Is(err, vcs.ErrBinary):
+		return noteBinary, true
+	case errors.Is(err, vcs.ErrTooBig):
+		return noteTooBig, true
+	}
+	return "", false
+}
+
 // renderChanges shows the selected file in the Changes tab.
 func (m *model) renderChanges() {
-	p := &m.changes
-	f := m.changedFile()
+	p := &m.changePane
+	f := m.selectedChange()
 	if f == nil {
 		p.path = ""
 		p.set(nil, nil)
@@ -201,10 +227,10 @@ func (m *model) renderChanges() {
 			note = "renamed from " + termtext.Quote(f.From) + ", no change to the content"
 		}
 		p.setNote(note)
-	case m.showsMarkdown(f):
+	case m.isRendered(f):
 		m.setMarkdown(p, f.New)
 	default:
-		if o := m.folds[f.Path]; o != nil && o.Old != hash(f.Old) {
+		if o := m.folds[f.Path]; o != nil && o.Old != f.oldHash {
 			delete(m.folds, f.Path)
 		}
 		o := m.diffOptions(p.xoff)
@@ -226,37 +252,35 @@ func (p *pane) setNote(note string) {
 // renderViewer shows the selected file in the Files tab, even if the file
 // does not change.
 func (m *model) renderViewer() {
-	m.viewer.path = "" // no file has the path "", so refreshViewer renders
+	m.viewedPath = "" // no file has the path "", so refreshViewer renders
 	m.refreshViewer()
 }
 
 // refreshViewer shows the selected file in the Files tab if the file
 // changes.
 func (m *model) refreshViewer() {
-	p := &m.viewer
+	p := &m.allPane
 	if m.allSel >= len(m.allFiles) {
-		p.path = ""
+		p.path, m.viewedPath = "", ""
 		p.set(nil, nil)
 		return
 	}
 	path := m.allFiles[m.allSel].Path
 	content, err := m.repo.ReadFile(path)
-	if err == nil && content == m.viewed && p.path == path {
+	if err == nil && content == m.viewed && m.viewedPath == path {
 		return
 	}
-	m.viewed = content
+	m.viewed, m.viewedPath = content, path
 	p.path = path
+	note, isNote := fileNote(err)
 	switch {
-	case errors.Is(err, vcs.ErrBinary):
+	case isNote:
 		p.path = ""
-		p.set([]string{dimStyle.Render("  " + noteBinary)}, nil)
-	case errors.Is(err, vcs.ErrTooBig):
-		p.path = ""
-		p.set([]string{dimStyle.Render("  " + noteTooBig)}, nil)
+		p.set([]string{dimStyle.Render("  " + note)}, nil)
 	case err != nil:
-		m.log.Debug("read file", "path", path, "err", err)
+		m.log.Warn("read file failed", "path", path, "err", err)
 		p.path = ""
-		p.set([]string{dimStyle.Render("  couldn't read this file")}, nil)
+		p.set([]string{dimStyle.Render("  could not read this file")}, nil)
 	case m.rendered && isMarkdown(path):
 		m.setMarkdown(p, content)
 	default:
@@ -265,11 +289,16 @@ func (m *model) refreshViewer() {
 }
 
 // markdown returns a glamour renderer for the terminal theme, or nil. The
-// renderer wraps at wrap columns.
+// renderer wraps at wrap columns. The model keeps the last renderer,
+// because a new one is slow to make.
 func (m *model) markdown(wrap int) *glamour.TermRenderer {
 	style := "dark"
-	if m.bg != nil && !m.dark {
+	if !m.dark() {
 		style = "light"
+	}
+	md := &m.md
+	if md.r != nil && md.style == style && md.wrap == wrap {
+		return md.r
 	}
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStandardStyle(style),
@@ -278,7 +307,15 @@ func (m *model) markdown(wrap int) *glamour.TermRenderer {
 	if err != nil {
 		return nil
 	}
+	*md = mdRenderer{r: r, style: style, wrap: wrap}
 	return r
+}
+
+// mdRenderer is a glamour renderer with its style and wrap width.
+type mdRenderer struct {
+	r     *glamour.TermRenderer
+	style string
+	wrap  int
 }
 
 // renderMarkdown returns the lines of src, rendered with r. If r is nil or
@@ -297,7 +334,7 @@ func renderMarkdown(r *glamour.TermRenderer, src string) []string {
 func (m *model) markdownSource() (src string, ok bool) {
 	switch m.tab {
 	case tabChanges:
-		f := m.changedFile()
+		f := m.selectedChange()
 		if f == nil || !isMarkdown(f.Path) || f.Status == vcs.StatusDeleted {
 			return "", false
 		}

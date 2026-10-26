@@ -1,10 +1,8 @@
 package tui
 
-// The PR tab shows the pull request of the branch. The tab cannot change
-// the pull request.
-
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,21 +14,22 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
+// The PR tab shows the pull request of the branch. The tab cannot change
+// the pull request.
+
 // The times of the reads of the pull request, as in herdr-reviewr.
 const (
 	// prPoll is the time between two reads while the PR tab shows. A
 	// change on the forge has no local sign.
 	prPoll = time.Minute
-	// prHang is the time after which a new request drops a read that
-	// does not end.
-	prHang = time.Minute
+	// prTimeout is the longest time of a read.
+	prTimeout = time.Minute
 )
 
 // prFetch follows the reads of the pull request.
 type prFetch struct {
-	gen      int       // the read whose result shows; others are stale
+	gen      int       // the read whose result shows. Other reads are stale.
 	inFlight bool      // the read gen runs
-	started  time.Time // the start of the read gen
 	polled   time.Time // the last request, for prPoll
 	cancel   context.CancelFunc
 	// trailing is true if an ambient request comes while a read runs.
@@ -42,12 +41,11 @@ type prFetch struct {
 
 // requestPR asks for a read of the pull request. A forced request starts
 // a read at once. An ambient request during a read starts one more read
-// after it, unless the read hangs.
+// after it. A read that hangs ends after prTimeout.
 func (m *model) requestPR(forced bool) tea.Cmd {
 	f := &m.prf
 	f.polled = time.Now()
-	hung := f.inFlight && time.Since(f.started) >= prHang
-	if !forced && f.inFlight && !hung {
+	if !forced && f.inFlight {
 		f.trailing = true
 		return nil
 	}
@@ -61,9 +59,9 @@ func (m *model) loadPR() tea.Cmd {
 	if f.cancel != nil {
 		f.cancel()
 	}
-	ctx, cancel := context.WithCancel(m.ctx)
+	ctx, cancel := context.WithTimeout(m.ctx, prTimeout)
 	f.gen++
-	f.inFlight, f.trailing, f.started, f.cancel = true, false, time.Now(), cancel
+	f.inFlight, f.trailing, f.cancel = true, false, cancel
 	repo, gen := m.repo, f.gen
 	hosts := vcs.Hosts{
 		GitHub: m.cfg.GitHubHost,
@@ -73,7 +71,7 @@ func (m *model) loadPR() tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 		pr, err := repo.PullRequest(ctx, hosts)
-		return prMsg{gen, pr, err}
+		return prMsg{gen: gen, pr: pr, err: err}
 	}
 }
 
@@ -101,13 +99,13 @@ func (m *model) refsChanged() tea.Cmd {
 }
 
 // prStateStyle returns the style that shows the state of a pull request.
-func prStateStyle(s vcs.State) lipgloss.Style {
+func prStateStyle(s vcs.PRState) lipgloss.Style {
 	switch s {
-	case vcs.StateOpen:
+	case vcs.PROpen:
 		return addStyle
-	case vcs.StateMerged:
+	case vcs.PRMerged:
 		return headerStyle
-	case vcs.StateClosed:
+	case vcs.PRClosed:
 		return delStyle
 	}
 	return dimStyle
@@ -143,7 +141,7 @@ func (m *model) renderPR() {
 		return
 	case pr == nil:
 		if !m.pr.loading {
-			p.note = vcs.ErrNotFound.Error()
+			p.note = vcs.ErrNoPullRequest.Error()
 		}
 		p.set(nil, nil)
 		return
@@ -165,7 +163,7 @@ func (m *model) renderPR() {
 
 // prHeader returns the title line and the state line of pr.
 func prHeader(pr *vcs.PullRequest) []string {
-	title := lipgloss.NewStyle().Bold(true).Render(pr.Title)
+	title := boldStyle.Render(pr.Title)
 	number := dimStyle.Render(fmt.Sprintf("#%d", pr.Number))
 	state := prStateStyle(pr.State).Render("● " + string(pr.State))
 	return []string{
@@ -198,4 +196,38 @@ func checkLines(checks []vcs.Check) []string {
 		lines = append(lines, "    "+delStyle.Render("✗ ")+f)
 	}
 	return lines
+}
+
+// onPR shows the pull request that loadPR reads, unless a later read
+// replaces it. After a read with a trailing request, onPR starts the next
+// read.
+func (m *model) onPR(msg prMsg) tea.Cmd {
+	f := &m.prf
+	if msg.gen != f.gen {
+		return nil
+	}
+	f.inFlight, f.cancel = false, nil
+	var next tea.Cmd
+	if f.trailing {
+		next = m.loadPR()
+	}
+	// As in herdr-reviewr, a failed read keeps the last good pull request.
+	// The end of the pull request is not a failure.
+	if msg.err != nil && m.pr.pr != nil && !errors.Is(msg.err, vcs.ErrNoPullRequest) {
+		m.pr.loading = false
+		m.flash("refresh failed: " + msg.err.Error())
+		m.renderPR()
+		return next
+	}
+	m.pr = prState{pr: msg.pr}
+	if msg.err != nil {
+		m.pr.err = msg.err.Error()
+	}
+	m.renderPR()
+	// prPlace is from before a restart.
+	if p := m.prPlace; p != nil && msg.err == nil && msg.pr != nil {
+		m.prPlace = nil
+		m.prPane.restore(*p)
+	}
+	return next
 }

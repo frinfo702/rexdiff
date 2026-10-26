@@ -39,17 +39,17 @@ func (m *model) target(i int, pref diff.Side) *targetLine {
 	return nil
 }
 
-// changedFile returns the selected file of the Changes tab, or nil.
-func (m *model) changedFile() *changed {
-	if m.changeSel >= len(m.files) {
+// selectedChange returns the selected file of the Changes tab, or nil.
+func (m *model) selectedChange() *changedFile {
+	if m.changeSel >= len(m.changeFiles) {
 		return nil
 	}
-	return &m.files[m.changeSel]
+	return &m.changeFiles[m.changeSel]
 }
 
 // contentFor returns the text of side s of the file at path.
 func (m *model) contentFor(path string, s diff.Side) string {
-	if f := m.changedFile(); m.tab == tabChanges && f != nil && f.Path == path {
+	if f := m.selectedChange(); m.tab == tabChanges && f != nil && f.Path == path {
 		if s == diff.SideOld {
 			return f.Old
 		}
@@ -92,7 +92,7 @@ func (m *model) revCurrent(c *diff.Comment) bool {
 // stale if its file is gone.
 func (m *model) stale(c *diff.Comment) bool {
 	if c.Anchor.InDiff {
-		return !slices.ContainsFunc(m.files, func(f changed) bool { return f.Path == c.Path })
+		return !slices.ContainsFunc(m.changeFiles, func(f changedFile) bool { return f.Path == c.Path })
 	}
 	_, err := os.Lstat(filepath.Join(m.repo.Root(), c.Path))
 	return err != nil
@@ -141,6 +141,7 @@ func (m *model) startComment(pref diff.Side) tea.Cmd {
 	)
 	c.Anchor = m.anchor()
 	m.draft = &draft{Comment: c, listRow: -1}
+	m.sizeEditor()
 	m.editor.SetValue("")
 	m.mode = modeComment
 	// Put the cursor on the last line of the range, so that the box opens
@@ -153,10 +154,18 @@ func (m *model) startComment(pref diff.Side) tea.Cmd {
 // the comment list opens at listRow, if listRow is 0 or more.
 func (m *model) editComment(c *diff.Comment, listRow int) tea.Cmd {
 	m.draft = &draft{Comment: *c, editID: c.ID, listRow: listRow}
+	m.sizeEditor()
 	m.editor.SetValue(c.Text)
 	m.mode = modeComment
 	cursorToLine(m.cur(), c.Side, c.End)
 	return m.editor.Focus()
+}
+
+// showsLine reports whether the current pane shows the last line of c,
+// with the anchor of c.
+func (m *model) showsLine(c *diff.Comment) bool {
+	p := m.cur()
+	return m.anchor() == c.Anchor && p.path == c.Path && p.rowOf(c.Side, c.End) >= 0
 }
 
 // updateComment handles a key while the comment box is open.
@@ -189,26 +198,29 @@ func (m *model) updateComment(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
+	m.ensureVisible()
 	return cmd
 }
 
-// closeComment closes the comment box and clears the selection. After an
-// edit from the comment list, it opens the list again.
+// closeComment closes the comment box and clears the selection. Then it
+// does the reload that waits for the box. After an edit from the comment
+// list, it opens the list again.
 func (m *model) closeComment() {
 	row := m.draft.listRow
 	m.mode, m.draft = modeNormal, nil
 	m.cur().anchor = -1
 	m.editor.Blur()
+	m.reloadDue()
 	if row >= 0 && m.comments.Len() > 0 {
 		m.openCommentList()
 		m.overlay.cur = min(row, len(m.overlay.shown)-1)
 	}
 }
 
-// newLineNear returns the new line of row i. A row with no new line, such
+// nearNewLine returns the new line of row i. A row with no new line, such
 // as a deleted line, gives the next new line below it. If there is none, it
 // gives the last new line above it. If there is none, it gives 1.
-func newLineNear(rows []diff.Row, i int) int {
+func nearNewLine(rows []diff.Row, i int) int {
 	for _, r := range rows[i:] {
 		if r.New > 0 {
 			return r.New
@@ -232,5 +244,5 @@ func (m *model) editOrOpen() tea.Cmd {
 	if p.path == "" {
 		return nil
 	}
-	return m.openEditor(p.path, newLineNear(p.rows, p.cur))
+	return m.openEditor(p.path, nearNewLine(p.rows, p.cur))
 }

@@ -1,0 +1,55 @@
+# install writes rexdiff.lua, with the settings at its top, adds one line
+# to init.lua, keeps the rest of init.lua, and reloads Rex.
+mkdir .config/rex
+cp mine.lua .config/rex/init.lua
+exec rexdiff install
+stdout 'wrote '$WORK'/.config/rex/rexdiff.lua; the settings are at its top'
+stdout 'added require\("rexdiff"\) to '$WORK'/.config/rex/init.lua'
+stdout 'press the key of the settings'
+cmp .config/rex/init.lua installed.lua
+grep 'config reload' rex.log
+
+# A second install keeps the one line of init.lua, and does not say it adds it.
+exec rexdiff install
+! stdout 'added'
+cmp .config/rex/init.lua installed.lua
+
+# Rex accepts the action and its keys.
+[realrex] exec $REALREX config check .config/rex/init.lua
+[realrex] stdout 'bindings: 2'
+[realrex] stdout 'actions: 1'
+[realrex] ! stderr .
+
+# uninstall -h only shows the usage.
+exec rexdiff uninstall -h
+exists .config/rex/rexdiff.lua
+
+# If uninstall cannot change init.lua, it keeps rexdiff.lua, so that
+# init.lua does not require a missing file.
+chmod 0444 .config/rex/init.lua
+! exec rexdiff uninstall
+exists .config/rex/rexdiff.lua
+chmod 0644 .config/rex/init.lua
+
+# uninstall removes the line and rexdiff.lua, and keeps the rest.
+exec rexdiff uninstall
+stdout 'removed the rexdiff action, its key, and its settings from Rex'
+cmp .config/rex/init.lua mine.lua
+! exists .config/rex/rexdiff.lua
+
+# If Rex does not reload, install still writes the files and says what to do.
+env REX_FAIL=1
+exec rexdiff install
+stdout 'reload Rex''s config yourself: rex config reload'
+
+# On macOS, the action runs a symlinked rexdiff through the link, so that
+# it still works after brew upgrade.
+[darwin] exec sh -c 'mkdir brew && ln -s "$(command -v rexdiff)" brew/rexdiff'
+[darwin] exec $WORK/brew/rexdiff install
+[darwin] grep 'local BIN = "'$WORK'/brew/rexdiff"' .config/rex/rexdiff.lua
+
+-- mine.lua --
+rex.bind("cmd+e", "pane.zoom")
+-- installed.lua --
+rex.bind("cmd+e", "pane.zoom")
+require("rexdiff")

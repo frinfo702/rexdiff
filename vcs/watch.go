@@ -2,6 +2,7 @@ package vcs
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,29 +11,30 @@ import (
 	"time"
 )
 
-// budgetFactor sets the pause after a check of a [Watcher]. The next check
+// pauseFactor sets the pause after a check of a [Watcher]. The next check
 // waits this many times as long as the last check took. Thus the checks
 // use less than 1/21 of a core. herdr-reviewr uses the same factor.
-const budgetFactor = 20
+const pauseFactor = 20
 
-// Watcher tells, without a git process, if the working tree or the refs
-// can have changed. It compares the file status of the files that git
-// lists, of their directories, and of the git files. It runs git only
-// after a directory or a git file changes.
+// Watcher reports whether the working tree or the refs can have changed. It
+// compares the file status of the files that git lists, of their
+// directories, and of the git files. While nothing changes, it runs no
+// git process. After a change, it runs git to list the files again.
 //
 // A Watcher does not see a change of the global core.excludesFile, or a
 // copy that keeps the size and the modification time of a file.
 type Watcher struct {
 	r              *Repo
 	gitDir, common string           // absolute paths
-	now            func() time.Time // the clock, which a test can set
+	now            func() time.Time // the clock, time.Now
 	next           time.Time        // no check before this time
 
 	started bool
-	listed  bool     // files and dirs are from the last list
-	files   []string // the absolute paths that git lists
-	dirs    []string // the root and each directory above a listed path
-	shown   []string // the absolute paths of the ignored dirs that show
+	since   time.Time // the start of the watch
+	listed  bool      // files and dirs are from the last list
+	files   []string  // the absolute paths that git lists
+	dirs    []string  // the root and each directory above a listed path
+	shown   []string  // the absolute paths of the ignored dirs that show
 
 	// The sums of the last check.
 	list, refs, index, dirSum, fileSum, shownSum uint64
@@ -56,17 +58,26 @@ func (r *Repo) Watch(ctx context.Context) (*Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Watcher{r: r, gitDir: gitDir, common: common, now: time.Now}, nil
+	w := &Watcher{r: r, gitDir: gitDir, common: common, now: time.Now, since: time.Now()}
+	// The list is ready at once, for LastWrite.
+	w.index = w.sumIndex()
+	if w.list, err = w.relist(ctx); err != nil {
+		return nil, err
+	}
+	w.dirSum = sumPaths(w.dirs)
+	return w, nil
 }
 
-// Show sets the ignored directories that the user expands. dirs are
-// relative to the root. Git does not list the paths in an ignored
-// directory, thus Changed also reports a file that a shown directory gets
-// or loses. A new set reports no change.
-func (w *Watcher) Show(dirs []string) {
-	abs := make([]string, len(dirs))
-	for i, d := range dirs {
-		abs[i] = filepath.Join(w.r.root, filepath.FromSlash(d))
+// Show sets the paths that show and that git does not list. These are the
+// ignored directories that the user expands, and the open file. The open
+// file can be ignored or a link. paths are relative to the root. Changed
+// also reports an edit of a shown file or of the target of a shown link.
+// It also reports a file that a shown directory gets or loses. A new set
+// reports no change.
+func (w *Watcher) Show(paths []string) {
+	abs := make([]string, len(paths))
+	for i, p := range paths {
+		abs[i] = filepath.Join(w.r.root, filepath.FromSlash(p))
 	}
 	if !slices.Equal(abs, w.shown) {
 		w.shown, w.shownSum = abs, sumPaths(abs)
@@ -76,7 +87,10 @@ func (w *Watcher) Show(dirs []string) {
 // gitPath returns the absolute path that rev-parse gives for flag.
 func (r *Repo) gitPath(ctx context.Context, flag string) (string, error) {
 	out, err := r.run(ctx, nil, "rev-parse", "--path-format=absolute", flag)
-	return strings.TrimSuffix(out, "\n"), err
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(out, "\n"), nil
 }
 
 // Changed tells what can have changed since the last call. The first call
@@ -90,7 +104,7 @@ func (w *Watcher) Changed(ctx context.Context) (Change, error) {
 	}
 	defer func() {
 		end := w.now()
-		w.next = end.Add(budgetFactor * end.Sub(start))
+		w.next = end.Add(pauseFactor * end.Sub(start))
 	}()
 
 	refs, index := w.sumRefs(), w.sumIndex()
@@ -127,16 +141,44 @@ func (w *Watcher) Changed(ctx context.Context) (Change, error) {
 	return ch, nil
 }
 
+// LastWrite returns the newest modification time of the listed files and
+// of their directories, as they are now. A new or a removed file changes
+// the time of its directory. LastWrite returns the zero time if no such
+// time is after the start of the watch. It does not change what the next
+// call to Changed reports.
+func (w *Watcher) LastWrite() time.Time {
+	var last time.Time
+	for _, p := range slices.Concat(w.files, w.dirs) {
+		if fi, err := os.Lstat(p); err == nil && fi.ModTime().After(last) {
+			last = fi.ModTime()
+		}
+	}
+	if !last.After(w.since) {
+		return time.Time{}
+	}
+	return last
+}
+
 // relist reads the list of the files and their directories again. It
 // returns the sum of the list.
 func (w *Watcher) relist(ctx context.Context) (uint64, error) {
 	w.listed = false
-	paths, err := w.r.lsFiles(ctx, "-co", "--deduplicate", "--exclude-standard")
+	paths, err := w.r.lsFiles(ctx, listArgs...)
+	if err != nil {
+		return 0, err
+	}
+	untracked, err := w.r.untrackedDirs(ctx)
 	if err != nil {
 		return 0, err
 	}
 	root := w.r.root
 	seen := map[string]bool{root: true}
+	addDirs := func(p string) {
+		for d := p; !seen[d]; d = filepath.Dir(d) {
+			seen[d] = true
+			w.dirs = append(w.dirs, d)
+		}
+	}
 	w.dirs = append(w.dirs[:0], root)
 	w.files = w.files[:0]
 	s := newSum()
@@ -145,13 +187,73 @@ func (w *Watcher) relist(ctx context.Context) (uint64, error) {
 		// git lists a nested repository with a slash at the end.
 		p = filepath.Join(root, strings.TrimSuffix(p, "/"))
 		w.files = append(w.files, p)
-		for d := filepath.Dir(p); !seen[d]; d = filepath.Dir(d) {
-			seen[d] = true
-			w.dirs = append(w.dirs, d)
-		}
+		addDirs(filepath.Dir(p))
+	}
+	for _, d := range untracked {
+		addDirs(filepath.Join(root, d))
 	}
 	w.listed = true
 	return uint64(s), nil
+}
+
+// untrackedDirs returns the untracked directories, relative to the root,
+// and each directory below them that git does not ignore. git lists no
+// file in a directory that is empty or has only ignored files. A new file
+// there changes only that directory, thus the [Watcher] must watch it.
+// untrackedDirs does not go into a nested repository.
+func (r *Repo) untrackedDirs(ctx context.Context) ([]string, error) {
+	ps, err := r.lsFiles(ctx, "-o", "--directory", "--exclude-standard")
+	if err != nil {
+		return nil, err
+	}
+	var level, dirs []string
+	for _, p := range ps {
+		if d, ok := strings.CutSuffix(p, "/"); ok {
+			level = append(level, d)
+		}
+	}
+	for len(level) > 0 {
+		dirs = append(dirs, level...)
+		var next []string
+		for _, d := range level {
+			abs := filepath.Join(r.root, filepath.FromSlash(d))
+			if _, err := os.Lstat(filepath.Join(abs, ".git")); err == nil {
+				continue // a nested repository
+			}
+			des, _ := os.ReadDir(abs)
+			for _, de := range des {
+				if de.IsDir() {
+					next = append(next, d+"/"+de.Name())
+				}
+			}
+		}
+		if level, err = r.notIgnored(ctx, next); err != nil {
+			return nil, err
+		}
+	}
+	return dirs, nil
+}
+
+// notIgnored returns the paths that git does not ignore. Each path gets
+// the prefix "./", because git reads a path that starts with ":" as
+// pathspec magic. git writes the paths with the prefix.
+func (r *Repo) notIgnored(ctx context.Context, paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	in := strings.NewReader("./" + strings.Join(paths, "\x00./"))
+	out, err := r.runInput(ctx, nil, in, "check-ignore", "-z", "--stdin")
+	if exitedOne(err) {
+		return paths, nil // git ignores none
+	}
+	if err != nil {
+		return nil, err
+	}
+	ignored := map[string]bool{}
+	for p := range strings.SplitSeq(out, "\x00") {
+		ignored[p] = true
+	}
+	return slices.DeleteFunc(paths, func(p string) bool { return ignored["./"+p] }), nil
 }
 
 // sumRefs returns the sum of the files that change with HEAD, a ref, or
@@ -169,8 +271,8 @@ func (w *Watcher) sumRefs() uint64 {
 	// directory, which the worktrees of the repository share.
 	if b, err := os.ReadFile(paths[0]); err == nil {
 		ref, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: ")
-		if ok && !strings.Contains(ref, "..") {
-			paths = append(paths, filepath.Join(w.common, filepath.FromSlash(ref)))
+		if p, err := filepath.Localize(ref); ok && err == nil { // no ".." or "/" at the start
+			paths = append(paths, filepath.Join(w.common, p))
 		}
 	}
 	return sumPaths(paths)
@@ -182,35 +284,37 @@ func (w *Watcher) sumIndex() uint64 {
 }
 
 // sumPaths returns the sum of the path, the size, the modification time,
-// the mode, and the inode of each file. It does not follow a symbolic
-// link.
+// the mode, and the inode of each file. It follows a symbolic link, so an
+// edit of the target changes the sum.
 func sumPaths(paths []string) uint64 {
 	s := newSum()
 	for _, p := range paths {
-		s.stat(p)
+		s.stat(p, os.Stat)
 	}
 	return uint64(s)
 }
 
 // sumFiles is like sumPaths. For a directory, it also adds the git files
-// of the nested repository or the submodule in it, because a commit there
-// does not change the directory.
+// of the nested repository or the submodule in it. A commit there does not
+// change the directory.
 func sumFiles(paths []string) uint64 {
 	s := newSum()
 	for _, p := range paths {
-		if s.stat(p) {
+		if s.stat(p, os.Lstat) {
 			s.nested(p)
 		}
 	}
 	return uint64(s)
 }
 
-// sum is an FNV-64a hash. It does not allocate, as hash/fnv does for a
+// sum is a 64-bit FNV-1a hash. It does not allocate, as hash/fnv does for a
 // string.
 type sum uint64
 
+// newSum returns the sum of no bytes, the FNV-1a offset basis.
 func newSum() sum { return 14695981039346656037 }
 
+// byte adds the byte b.
 func (s *sum) byte(b byte) { *s = (*s ^ sum(b)) * 1099511628211 }
 
 // str adds v and a NUL, so that two strings do not join.
@@ -221,6 +325,7 @@ func (s *sum) str(v string) {
 	s.byte(0)
 }
 
+// num adds the 8 bytes of v, the low byte first.
 func (s *sum) num(v uint64) {
 	for range 8 {
 		s.byte(byte(v))
@@ -228,17 +333,22 @@ func (s *sum) num(v uint64) {
 	}
 }
 
-// stat adds the path and the file status of p. A missing file adds a
-// marker. stat reports whether p is a directory.
-func (s *sum) stat(p string) (isDir bool) {
+// int adds v, for example a size or a time.
+func (s *sum) int(v int64) {
+	s.num(uint64(v)) //nolint:gosec // a hash keeps all bits, so a wrap is fine
+}
+
+// stat adds the path and the file status that stat gives for p. A missing
+// file adds a marker. stat reports whether p is a directory.
+func (s *sum) stat(p string, stat func(string) (fs.FileInfo, error)) (isDir bool) {
 	s.str(p)
-	fi, err := os.Lstat(p)
+	fi, err := stat(p)
 	if err != nil {
 		s.num(0)
 		return false
 	}
-	s.num(uint64(fi.Size()))
-	s.num(uint64(fi.ModTime().UnixNano()))
+	s.int(fi.Size())
+	s.int(fi.ModTime().UnixNano())
 	s.num(uint64(fi.Mode()))
 	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
 		s.num(st.Ino)
@@ -274,8 +384,8 @@ func (s *sum) nested(p string) {
 			s.num(0)
 			continue
 		}
-		s.num(uint64(fi.Size()))
-		s.num(uint64(fi.ModTime().UnixNano()))
+		s.int(fi.Size())
+		s.int(fi.ModTime().UnixNano())
 	}
 }
 

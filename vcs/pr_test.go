@@ -1,14 +1,17 @@
 package vcs_test
 
 import (
+	"cmp"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/rednafi/rexdiff/internal/testgit"
 	"github.com/rednafi/rexdiff/vcs"
 )
 
@@ -17,14 +20,13 @@ import (
 // "unexpected call".
 func fakeTool(t *testing.T, dir, name string, calls map[string]string) {
 	t.Helper()
-	script := "#!/bin/sh\ncase \"$*\" in\n"
+	var script strings.Builder
+	script.WriteString("case \"$*\" in\n")
 	for args, out := range calls {
-		script += "'" + args + "') cat <<'EOF'\n" + out + "\nEOF\n;;\n"
+		script.WriteString("'" + args + "') cat <<'EOF'\n" + out + "\nEOF\n;;\n")
 	}
-	script += "*) echo unexpected call: \"$*\" >&2; exit 1 ;;\nesac\n"
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script.WriteString("*) echo unexpected call: \"$*\" >&2; exit 1 ;;\nesac\n")
+	testgit.Script(t, dir, name, script.String())
 }
 
 // repoAt returns the test repository, on the branch feat, with origin at
@@ -32,7 +34,7 @@ func fakeTool(t *testing.T, dir, name string, calls map[string]string) {
 func repoAt(t *testing.T, remote string) (*vcs.Repo, string) {
 	t.Helper()
 	r, dir := newRepo(t)
-	git(t, dir, "remote", "add", "origin", remote)
+	testgit.Git(t, dir, "remote", "add", "origin", remote)
 	return r, dir
 }
 
@@ -46,7 +48,8 @@ func azArgs(branch string) string {
 	return "repos pr list --source-branch " + branch + " --status all --top 1 --output json"
 }
 
-// TestPullRequest checks the pull request that each forge tool gives.
+// TestPullRequest checks the pull request that each forge tool gives. The
+// fake tools are in PATH, so only the subtests run in parallel.
 func TestPullRequest(t *testing.T) {
 	dir := t.TempDir()
 	fakePath(t, dir)
@@ -94,7 +97,7 @@ func TestPullRequest(t *testing.T) {
 			Forge:  vcs.ForgeGitHub,
 			Number: 7,
 			Title:  "Add x",
-			State:  vcs.StateDraft,
+			State:  vcs.PRDraft,
 			URL:    "https://github.com/o/r/pull/7",
 			Author: "ann",
 			Head:   "feat",
@@ -108,7 +111,7 @@ func TestPullRequest(t *testing.T) {
 				{Name: "docs", Result: vcs.ResultSkip},
 				{Name: "e2e", Result: vcs.ResultPending},
 			},
-			Comments: []vcs.Comment{
+			Comments: []vcs.PRComment{
 				{Author: "bob", When: "2026-01-02T03:04:05Z", Body: "LGTM"},
 			},
 		}},
@@ -116,13 +119,13 @@ func TestPullRequest(t *testing.T) {
 			Forge:  vcs.ForgeGitLab,
 			Number: 3,
 			Title:  "Fix y",
-			State:  vcs.StateOpen,
+			State:  vcs.PROpen,
 			URL:    "https://gitlab.com/o/r/-/merge_requests/3",
 			Author: "cy",
 			Head:   "fix",
 			Base:   "main",
 			Body:   "D",
-			Comments: []vcs.Comment{
+			Comments: []vcs.PRComment{
 				{Author: "eve", When: "2026-01-02T03:04:05Z", Body: "Why?"},
 				{Author: "cy", When: "2026-01-03T03:04:05Z", Body: "Speed."},
 			},
@@ -131,7 +134,7 @@ func TestPullRequest(t *testing.T) {
 			Forge:  vcs.ForgeAzure,
 			Number: 9,
 			Title:  "Z",
-			State:  vcs.StateOpen,
+			State:  vcs.PROpen,
 			URL:    "https://dev.azure.com/o/p/_git/r/pullrequest/9",
 			Author: "Dee",
 			Head:   "feat",
@@ -139,16 +142,17 @@ func TestPullRequest(t *testing.T) {
 		}},
 	}
 	for _, tt := range tests {
-		r, _ := repoAt(t, tt.remote)
-		pr, err := r.PullRequest(t.Context(), tt.hosts)
-		if err != nil {
-			t.Errorf("PullRequest(%s) = %v, want no error", tt.remote, err)
-			continue
-		}
-		if !reflect.DeepEqual(pr, tt.want) {
-			t.Errorf("PullRequest(%s) got:\n%+v\nwant:\n%+v",
-				tt.remote, pr, tt.want)
-		}
+		t.Run(tt.remote, func(t *testing.T) {
+			t.Parallel()
+			r, _ := repoAt(t, tt.remote)
+			pr, err := r.PullRequest(t.Context(), tt.hosts)
+			if err != nil {
+				t.Fatalf("PullRequest = %v, want no error", err)
+			}
+			if !reflect.DeepEqual(pr, tt.want) {
+				t.Errorf("PullRequest = \n%+v\nwant:\n%+v", pr, tt.want)
+			}
+		})
 	}
 }
 
@@ -159,42 +163,55 @@ func TestPullRequestErrors(t *testing.T) {
 	fakePath(t, dir)
 	fakeTool(t, dir, "az", map[string]string{azArgs("none"): `[]`})
 	const azure = "https://dev.azure.com/o/p/_git/r"
+	const unsupported = "the remote is not on GitHub, GitLab, or Azure DevOps"
+	corp := vcs.Hosts{GitLab: "Git.Corp"}
 	tests := []struct {
 		remote, branch string
-		want           error  // if not nil, err must wrap it
-		msg            string // if not empty, the text of err
+		hosts          vcs.Hosts
+		wantErr        error  // if not nil, err must wrap it
+		errText        string // if not empty, a part of the text of err
 	}{
-		{remote: "", branch: "feat", msg: "no git remote"},
+		// The host selects the forge, not a name in the path.
+		{remote: "https://example.com/github.com/r.git", branch: "feat", errText: unsupported},
+		{remote: "git@example.com:gitlab/r.git", branch: "feat", errText: unsupported},
+		{remote: "https://git.corp.example/r", branch: "feat", hosts: corp, errText: unsupported},
+		{remote: "git@git.corp:o/r.git", branch: "feat", hosts: corp, errText: "glab is not installed"},
+		{remote: "ssh://git@GitHub.com:22/o/r", branch: "feat", errText: "gh is not installed"},
 		{
-			remote: "https://example.com/r.git",
-			branch: "feat",
-			msg:    "the remote is not on GitHub, GitLab, or Azure DevOps",
+			remote:  "https://u@org.visualstudio.com/p/_git/r",
+			branch:  "other",
+			errText: "unexpected call: " + azArgs("other"),
 		},
-		{remote: azure, branch: "none", want: vcs.ErrNotFound},
+		{remote: "", branch: "feat", errText: "no git remote"},
+		{remote: azure, branch: "none", wantErr: vcs.ErrNoPullRequest},
 		{
-			remote: azure,
-			branch: "other",
-			msg:    "unexpected call: " + azArgs("other"),
+			remote:  azure,
+			branch:  "other",
+			errText: "unexpected call: " + azArgs("other"),
 		},
-		{remote: "https://github.com/o/r", branch: "feat", msg: "gh isn't installed"},
+		{remote: "https://github.com/o/r", branch: "feat", errText: "gh is not installed"},
 	}
 	for _, tt := range tests {
-		r, dir := newRepo(t)
-		if tt.remote != "" {
-			git(t, dir, "remote", "add", "origin", tt.remote)
-		}
-		if tt.branch != "feat" {
-			git(t, dir, "checkout", "-qb", tt.branch)
-		}
-		_, err := r.PullRequest(t.Context(), vcs.Hosts{})
-		switch {
-		case err == nil:
-			t.Errorf("PullRequest(%q): no error, want an error", tt.remote)
-		case tt.want != nil && !errors.Is(err, tt.want):
-			t.Errorf("PullRequest(%q): err = %v, want %v", tt.remote, err, tt.want)
-		case tt.msg != "" && err.Error() != tt.msg:
-			t.Errorf("PullRequest(%q): err = %q, want %q", tt.remote, err, tt.msg)
-		}
+		// Two cases have the same remote, so the name has the branch.
+		t.Run(cmp.Or(tt.remote, "no remote")+" on "+tt.branch, func(t *testing.T) {
+			t.Parallel()
+			r, dir := newRepo(t)
+			if tt.remote != "" {
+				testgit.Git(t, dir, "remote", "add", "origin", tt.remote)
+			}
+			if tt.branch != "feat" {
+				testgit.Git(t, dir, "checkout", "-qb", tt.branch)
+			}
+			_, err := r.PullRequest(t.Context(), tt.hosts)
+			switch {
+			case err == nil:
+				t.Error("PullRequest: no error, want an error")
+			case tt.wantErr != nil && !errors.Is(err, tt.wantErr):
+				t.Errorf("PullRequest: err = %v, want %v", err, tt.wantErr)
+			case tt.errText != "" && !strings.Contains(err.Error(), tt.errText):
+				t.Errorf("PullRequest: err = %q, want %q in it", err, tt.errText)
+			}
+		})
 	}
 }
 
@@ -221,6 +238,21 @@ func TestPullRequestHostile(t *testing.T) {
 	}
 }
 
+// TestNoPullRequest checks that a gh or a glab that finds no pull request
+// gives ErrNoPullRequest. Both exit with 1 and say so.
+func TestNoPullRequest(t *testing.T) {
+	dir := t.TempDir()
+	fakePath(t, dir)
+	testgit.Script(t, dir, "gh", "echo 'no pull requests found for branch \"feat\"' >&2\nexit 1\n")
+	testgit.Script(t, dir, "glab", "echo 'no open merge request available for \"feat\"' >&2\nexit 1\n")
+	for _, remote := range []string{"https://github.com/o/r", "https://gitlab.com/o/r"} {
+		r, _ := repoAt(t, remote)
+		if _, err := r.PullRequest(t.Context(), vcs.Hosts{}); !errors.Is(err, vcs.ErrNoPullRequest) {
+			t.Errorf("PullRequest(%s) = %v, want ErrNoPullRequest", remote, err)
+		}
+	}
+}
+
 // fakePath sets PATH to dir and the system directories, and links git into
 // dir. Then PATH has the fake forge tools and no real ones.
 func fakePath(t *testing.T, dir string) {
@@ -232,5 +264,5 @@ func fakePath(t *testing.T, dir string) {
 	if err := os.Symlink(p, filepath.Join(dir, "git")); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+":/bin:/usr/bin")
+	t.Setenv("PATH", strings.Join([]string{dir, "/bin", "/usr/bin"}, string(os.PathListSeparator)))
 }

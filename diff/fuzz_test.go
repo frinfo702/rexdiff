@@ -66,7 +66,7 @@ func fuzzOptions(layout, width, offset uint8, colored bool) diff.Options {
 func checkLines(t *testing.T, d *diff.Diff, o diff.Options) {
 	t.Helper()
 	if len(d.Lines) != len(d.Rows) {
-		t.Fatalf("got %d lines for %d rows, want one line for each row",
+		t.Fatalf("%d lines for %d rows, want one line for each row",
 			len(d.Lines), len(d.Rows))
 	}
 	for i, l := range d.Lines {
@@ -259,7 +259,8 @@ func FuzzComments(f *testing.F) {
 		c := cs.Add(commentOn(path, diff.SideNew, before, s+1, e+1))
 		c.Text = text
 		if c.Start != s+1 || c.End != e+1 {
-			t.Errorf("commentOn lines %d-%d: %+v", s+1, e+1, c)
+			t.Errorf("commentOn lines %d-%d = %+v, want lines %d-%d",
+				s+1, e+1, c, s+1, e+1)
 		}
 		cs.Add(comment(path, diff.SideOld, before, after, text))
 		r := cs.Review(text)

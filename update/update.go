@@ -31,6 +31,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/rednafi/rexdiff/internal/proc"
 )
 
 // latestURL is the GitHub API address of the latest release of rexdiff.
@@ -162,8 +164,9 @@ func (u *Updater) Latest(ctx context.Context) (Release, bool, error) {
 
 // Install installs the release r. Then it checks that the binary of rexdiff
 // has the version of r. Install does not stop the running rexdiff. Install
-// ignores a cancel of ctx, because a brew that stops early can leave a broken
-// cask. Install stops after five minutes.
+// uses the values of ctx, but ignores its cancel. An install that stops
+// early can leave a broken cask or binary. Install stops after five
+// minutes.
 func (u *Updater) Install(ctx context.Context, r Release) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), installTimeout)
 	defer cancel()
@@ -177,19 +180,19 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 		// brew updates its taps at most once a day. Thus brew upgrade can
 		// miss a new release. Update the taps first. Then
 		// HOMEBREW_NO_AUTO_UPDATE stops a second update.
-		if _, err = u.command(ctx, env, brew, "update", "--quiet"); err == nil {
+		if _, err = u.runProgram(ctx, env, brew, "update", "--quiet"); err == nil {
 			env = append(env, "HOMEBREW_NO_AUTO_UPDATE=1")
-			_, err = u.command(ctx, env, brew, "upgrade", "--cask", "rexdiff")
+			_, err = u.runProgram(ctx, env, brew, "upgrade", "--cask", "rexdiff")
 		}
 	case methodGo:
 		// GOBIN puts the new binary where the old one is.
 		env := []string{"GOBIN=" + filepath.Dir(u.bin)}
 		goTool := "go"
 		// Rex starts panes with a PATH without Go.
-		if _, err := exec.LookPath(goTool); err != nil {
+		if _, lerr := exec.LookPath(goTool); lerr != nil {
 			goTool = tool("go", "/opt/homebrew/bin", "/usr/local/go/bin", "/usr/local/bin")
 		}
-		_, err = u.command(ctx, env, goTool, "install", modulePath+"@"+r.Tag)
+		_, err = u.runProgram(ctx, env, goTool, "install", modulePath+"@"+r.Tag)
 	default:
 		return u.download(ctx, r) // it checks the version before the replace
 	}
@@ -202,7 +205,7 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 // checkVersion checks that the binary at bin is the version tag, so that a
 // restart does not run a broken or an old binary.
 func (u *Updater) checkVersion(ctx context.Context, bin, tag string) error {
-	out, err := u.command(ctx, nil, bin, "-version")
+	out, err := u.runProgram(ctx, nil, bin, "-version")
 	if err != nil {
 		return fmt.Errorf("check the new rexdiff: %w", err)
 	}
@@ -212,9 +215,9 @@ func (u *Updater) checkVersion(ctx context.Context, bin, tag string) error {
 	return nil
 }
 
-// command runs name with args, with env added to the environment. Its
+// runProgram runs name with args, with env added to the environment. Its
 // error has the end of the output, which tells what went wrong.
-func (u *Updater) command(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
+func (u *Updater) runProgram(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
 	run := u.run
 	if run == nil {
 		run = runCommand
@@ -223,8 +226,11 @@ func (u *Updater) command(ctx context.Context, env []string, name string, args .
 	if err == nil {
 		return out, nil
 	}
-	if last := lastLine(out); last != "" {
-		return out, fmt.Errorf("%s: %w: %s", filepath.Base(name), err, last)
+	if errors.Is(err, exec.ErrNotFound) {
+		return out, proc.NotInstalled(name)
+	}
+	if last := proc.LastLine(string(out)); last != "" {
+		return out, fmt.Errorf("%s: %s: %w", filepath.Base(name), last, err)
 	}
 	return out, fmt.Errorf("%s: %w", filepath.Base(name), err)
 }
@@ -245,20 +251,16 @@ func tool(name string, dirs ...string) string {
 
 // runCommand is the run of an Updater outside tests.
 func runCommand(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd := proc.Command(ctx, name, args...)
+	if env != nil {
+		cmd.Env = append(cmd.Environ(), env...)
+	}
 	return cmd.CombinedOutput()
 }
 
-// lastLine returns the last line of out that is not blank.
-func lastLine(out []byte) string {
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	return strings.TrimSpace(lines[len(lines)-1])
-}
-
-// download downloads the archive of r for this system, checks it with the
-// checksums of r, and puts its binary in place of the file that u.bin
-// links to.
+// download downloads the archive of r for this system and checks it with
+// the checksums of r. Then it puts its binary in place of the file that
+// u.bin links to.
 func (u *Updater) download(ctx context.Context, r Release) error {
 	name := fmt.Sprintf("rexdiff-%s-%s-%s.tar.gz", r.Tag, runtime.GOOS, runtime.GOARCH)
 	archiveURL, sumsURL := assetURL(r, name), assetURL(r, "sha256sums.txt")
@@ -294,10 +296,8 @@ func (u *Updater) download(ctx context.Context, r Release) error {
 
 // assetURL returns the address of the asset of r with the name, or "".
 func assetURL(r Release, name string) string {
-	for _, a := range r.assets {
-		if a.Name == name {
-			return a.URL
-		}
+	if i := slices.IndexFunc(r.assets, func(a asset) bool { return a.Name == name }); i >= 0 {
+		return r.assets[i].URL
 	}
 	return ""
 }
@@ -330,10 +330,13 @@ func binaryOf(archive []byte) ([]byte, error) {
 		}
 		if h.Typeflag == tar.TypeReg && filepath.Base(h.Name) == "rexdiff" {
 			b, err := io.ReadAll(io.LimitReader(tr, maxBinary+1))
-			if err == nil && len(b) > maxBinary {
-				err = fmt.Errorf("rexdiff is larger than %d bytes", maxBinary)
+			if err != nil {
+				return nil, err
 			}
-			return b, err
+			if len(b) > maxBinary {
+				return nil, fmt.Errorf("rexdiff is larger than %d bytes", maxBinary)
+			}
+			return b, nil
 		}
 	}
 }
@@ -346,15 +349,15 @@ func replaceFile(path string, content []byte, check func(tmp string) error) erro
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name()) // does nothing after the rename
-	if _, err := tmp.Write(content); err != nil {
-		tmp.Close()
-		return err
+	defer func() { _ = os.Remove(tmp.Name()) }() // fails after the rename
+	_, err = tmp.Write(content)
+	if err == nil {
+		err = tmp.Chmod(0o755)
 	}
-	if err := tmp.Close(); err != nil {
-		return err
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
 	}
-	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
+	if err != nil {
 		return err
 	}
 	if err := check(tmp.Name()); err != nil {
@@ -374,7 +377,7 @@ func get(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
 	}

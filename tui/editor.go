@@ -2,7 +2,7 @@ package tui
 
 import (
 	"bytes"
-	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/rednafi/rexdiff/internal/editor"
+	"github.com/rednafi/rexdiff/internal/proc"
 )
 
 // openEditor opens the file at path, at line. It uses the editor of the
@@ -24,23 +25,13 @@ import (
 // background. The messages are the same as in herdr-reviewr.
 func (m *model) openEditor(path string, line int) tea.Cmd {
 	abs := filepath.Join(m.repo.Root(), path)
-	var ed editor.Command
-	if m.cfg.Editor != "" {
-		ed = editor.Template(m.cfg.Editor, abs, line)
-	} else {
-		e := cmp.Or(
-			strings.TrimSpace(os.Getenv("VISUAL")),
-			strings.TrimSpace(os.Getenv("EDITOR")),
-			strings.TrimSpace(m.repo.Editor(m.ctx)),
-		)
-		if e == "" {
-			m.flash("no editor: set `editor` in rexdiff.lua, $EDITOR, or git's core.editor")
-			return nil
-		}
-		ed = editor.Program(e, abs, line)
+	var git string
+	if m.cfg.Editor == "" {
+		git = m.repo.Editor(m.ctx)
 	}
-	if ed.Program == "" {
-		m.flash("the editor command names no program")
+	ed, err := editor.Resolve(m.cfg.Editor, os.Getenv("VISUAL"), os.Getenv("EDITOR"), git, abs, line)
+	if err != nil {
+		m.flash("editor failed: " + err.Error())
 		return nil
 	}
 	// The editor makes the file again when it saves, so do not open a
@@ -50,22 +41,39 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 		return nil
 	}
 	if _, err := exec.LookPath(ed.Program); err != nil {
-		m.flash("editor not found: " + ed.Program)
+		m.flash(proc.NotInstalled(ed.Program).Error())
 		return nil
 	}
 	m.log.Debug("editor", "command", ed.Script, "window", ed.Window)
 	if ed.Window {
 		return m.runWindowEditor(path, ed.Script)
 	}
-	if m.rex != nil {
-		err := m.rex.Split(m.ctx, m.repo.Root(), "sh", "-c", ed.Script)
-		if err == nil {
-			m.flash("opened " + path)
-			return nil
-		}
-		m.log.Debug("editor split", "err", err)
+	if m.rex == nil {
+		return m.runHere(path, ed.Script)
 	}
-	return tea.ExecProcess(exec.Command("sh", "-c", ed.Script), func(err error) tea.Msg {
+	c, ctx, root := m.rex, m.ctx, m.repo.Root()
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(ctx, rexTimeout)
+		defer cancel()
+		err := c.Split(ctx, root, "sh", "-c", ed.Script)
+		return splitMsg{path: path, script: ed.Script, err: err}
+	}
+}
+
+// onSplit tells that the editor opens in a new pane. If Rex cannot open
+// the pane, the editor runs in this pane.
+func (m *model) onSplit(msg splitMsg) tea.Cmd {
+	if msg.err == nil {
+		m.flash("opened " + msg.path)
+		return nil
+	}
+	m.log.Debug("editor split failed", "err", msg.err)
+	return m.runHere(msg.path, msg.script)
+}
+
+// runHere runs the editor script in this pane, in place of rexdiff.
+func (m *model) runHere(path, script string) tea.Cmd {
+	return tea.ExecProcess(command("sh", "-c", script), func(err error) tea.Msg {
 		return editorDoneMsg{path: path, err: err}
 	})
 }
@@ -75,37 +83,48 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 // If the editor fails, the returned command gives the error and the last
 // line of the stderr of the editor.
 func (m *model) runWindowEditor(path, script string) tea.Cmd {
-	cmd := exec.Command("sh", "-c", script)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
+	wait, err := detach("editor", "sh", "-c", script)
+	if err != nil {
 		m.flash("editor failed: " + err.Error())
 		return nil
 	}
 	m.flash("opened " + path)
-	return func() tea.Msg {
-		err := cmd.Wait()
-		if err == nil {
-			return nil
-		}
-		lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
-		if last := lines[len(lines)-1]; last != "" {
-			err = fmt.Errorf("%w: %s", err, last)
-		}
-		return editorDoneMsg{window: true, err: err}
-	}
+	return wait
 }
 
-// onEditorDone shows how the editor stops. A terminal editor that stops
-// with an error code can still save the file.
+// detach starts a program in its own session and with no terminal, so
+// that it cannot read the keys of rexdiff. The returned command waits for
+// the program. If the program fails, the command gives a detachedMsg with
+// the last line of the stderr of the program.
+func detach(what, name string, args ...string) (tea.Cmd, error) {
+	cmd := command(name, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return func() tea.Msg {
+		err := cmd.Wait()
+		if err == nil || errors.Is(err, exec.ErrWaitDelay) {
+			return nil
+		}
+		if last := proc.LastLine(stderr.String()); last != "" {
+			err = fmt.Errorf("%s: %w", last, err)
+		}
+		return detachedMsg{what: what, err: err}
+	}, nil
+}
+
+// onEditorDone shows how the editor in this pane stops. An editor that
+// stops with an error code can still save the file.
 func (m *model) onEditorDone(msg editorDoneMsg) {
 	exit, isExit := errors.AsType[*exec.ExitError](msg.err)
 	switch {
 	case msg.err == nil:
 		m.flash("edited " + msg.path)
-	case !msg.window && isExit:
-		m.flash("editor exited with " + exit.Error())
+	case isExit:
+		m.flash("editor stopped: " + exit.Error())
 	default:
 		m.flash("editor failed: " + msg.err.Error())
 	}
@@ -113,27 +132,23 @@ func (m *model) onEditorDone(msg editorDoneMsg) {
 }
 
 // openURL opens url with the URL opener of the settings, else with
-// the opener of the system.
-func openURL(cfg config, url string) error {
+// the opener of the system. The command waits for the opener.
+func openURL(cfg config, url string) (tea.Cmd, error) {
 	if cfg.URLOpener != "" {
 		script := strings.ReplaceAll(cfg.URLOpener, "{url}", editor.ShellQuote(url))
-		return start("sh", "-c", script)
+		return detach("open", "sh", "-c", script)
 	}
 	opener := "xdg-open"
 	if runtime.GOOS == "darwin" {
 		opener = "open"
 	}
-	return start(opener, url)
+	return detach("open", opener, url)
 }
 
-// start starts a program and does not wait for it to stop. A goroutine
-// waits for the program, so that the program does not stay a zombie
-// process.
-func start(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	go cmd.Wait()
-	return nil
+// command returns the command for an editor or a URL opener. The context
+// of the command has no end, because the program must not stop when
+// rexdiff stops. For example, a kill of the editor can lose the edits of
+// the user.
+func command(name string, args ...string) *exec.Cmd {
+	return proc.Command(context.Background(), name, args...)
 }
