@@ -56,6 +56,8 @@ GitHub Actions runs the tests, builds the binaries, and updates the Homebrew cas
 - Write short, plain comments that match the existing code.
 - Text from git, Rex, or a pull request can contain escape codes. Clean it with
   `internal/termtext` before you show it.
+- Start a program with `internal/proc`, so that its errors have the same form as the
+  others.
 - `internal/diffview` is copied from crush. Record each change to it in
   `internal/VENDORED.md`.
 - When the right behaviour is unclear, follow herdr-reviewr.

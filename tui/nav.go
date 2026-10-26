@@ -378,7 +378,7 @@ type openFolds struct {
 	Ranges [][2]int `json:"ranges"` // the first and the last line of each range
 }
 
-// hash returns the FNV-1a hash of s.
+// hash returns the 64-bit FNV-1a hash of s.
 func hash(s string) uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(s)) // a hash.Hash does not fail
@@ -505,8 +505,9 @@ func (m *model) stepChange(d int) {
 	p.cur = max(changeRow(p.rows, from, d), 0)
 }
 
-// changeRow returns the first row of the next (d = 1) or the previous
-// (d = -1) block of changed rows from row from, or -1.
+// changeRow returns the first row of a block of changed rows, or -1. It
+// starts at row from and goes in the direction d. A d of 1 finds the next
+// block, and a d of -1 finds the previous block.
 func changeRow(rows []diff.Row, from, d int) int {
 	isChange := func(i int) bool {
 		k := rows[i].Kind

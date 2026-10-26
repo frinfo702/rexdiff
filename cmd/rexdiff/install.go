@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -234,7 +235,7 @@ func luaPath() string { return filepath.Join(filepath.Dir(rex.ConfigPath()), lua
 // file.
 func readFile(path string) (string, error) {
 	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) {
 		return "", nil
 	}
 	return string(b), err
@@ -296,9 +297,9 @@ func install(ctx context.Context, bin string, args []string, stdout, stderr io.W
 // upgrade replaces the code part of rexdiff.lua with the code for bin, if
 // they differ, and keeps the settings. It is not the update of rexdiff
 // itself (see the update package). It upgrades only the Lua code of the
-// action. It does nothing if there is no
-// rexdiff.lua, or if the file runs another rexdiff, for example a build
-// for development. It returns what the user must know, or "".
+// action. It does nothing if there is no rexdiff.lua, or if the file runs
+// another rexdiff, for example a build for development. It returns what
+// the user must know, or "".
 func upgrade(ctx context.Context, bin string) string {
 	lua := luaPath()
 	old, err := readFile(lua)
@@ -329,8 +330,10 @@ func addRequire(path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if slices.ContainsFunc(slices.Collect(strings.Lines(s)), isRequire) {
-		return false, nil
+	for line := range strings.Lines(s) {
+		if isRequire(line) {
+			return false, nil
+		}
 	}
 	if s != "" && !strings.HasSuffix(s, "\n") {
 		s += "\n"
@@ -374,7 +377,7 @@ func uninstall(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	if err := removeRequire(initPath); err != nil {
 		return err
 	}
-	if err := os.Remove(luaPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(luaPath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	fmt.Fprintln(stdout, "removed the rexdiff action, its key, and its settings from Rex")
@@ -389,6 +392,7 @@ func removeRequire(path string) error {
 	if err != nil || s == "" {
 		return err
 	}
+	// Split, not Lines, because Join needs the lines without their ends.
 	lines := slices.DeleteFunc(strings.Split(s, "\n"), isRequire)
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }

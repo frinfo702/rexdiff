@@ -9,7 +9,6 @@ package vcs
 import (
 	"bufio"
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -23,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rednafi/rexdiff/internal/proc"
 )
 
 // emptyTree is the ID of the tree that has no files.
@@ -98,64 +99,40 @@ func (r *Repo) run(ctx context.Context, env []string, args ...string) (string, e
 }
 
 // runInput is like run. git reads its standard input from in.
-func (r *Repo) runInput(
-	ctx context.Context,
-	env []string,
-	in io.Reader,
-	args ...string,
-) (string, error) {
-	out, err := runProgram(ctx, r.root, env, in, "git", args...)
+func (r *Repo) runInput(ctx context.Context, env []string, in io.Reader, args ...string) (string, error) {
+	cmd, stderr := r.command(ctx, env, "git", args...)
+	cmd.Stdin = in
+	out, err := output(cmd, stderr)
 	if err != nil {
 		return out, fmt.Errorf("git %s: %w", args[0], err)
 	}
 	return out, nil
 }
 
-// runProgram runs the program name in dir and returns its standard output.
-// env adds to the environment of the process, and stdin is its standard
-// input, or nil for none. The error has the first line
-// of the standard error. It wraps the error of the process, so callers can
-// check its exit code.
-func runProgram(
-	ctx context.Context,
-	dir string,
-	env []string,
-	stdin io.Reader,
-	name string,
-	args ...string,
-) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir, cmd.Stdin = dir, stdin
-	cmd.WaitDelay = waitDelay
+// command returns the command "name args..." in the root directory. env
+// adds to the environment of the process. The buffer gets the standard
+// error.
+func (r *Repo) command(ctx context.Context, env []string, name string, args ...string) (*exec.Cmd, *bytes.Buffer) {
+	cmd := proc.Command(ctx, name, args...)
+	cmd.Dir = r.root
 	if env != nil {
 		cmd.Env = append(cmd.Environ(), env...) // Environ sets PWD to cmd.Dir
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	return cmd, &stderr
+}
+
+// output runs cmd and returns its standard output. The error has the first
+// line of the standard error. It wraps the error of the process, so
+// callers can examine its exit code.
+func output(cmd *exec.Cmd, stderr *bytes.Buffer) (string, error) {
 	out, err := cmd.Output()
-	if errors.Is(err, exec.ErrNotFound) {
-		return "", fmt.Errorf("%s is not installed", name)
-	}
 	if err != nil {
-		msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
-		return string(out), &runError{cmp.Or(msg, err.Error()), err}
+		return string(out), proc.Error(cmd.Args[0], err, stderr.Bytes())
 	}
 	return string(out), nil
 }
-
-// waitDelay is how long a stopped process can keep its output open. A
-// child of gh or az can keep it open after the process ends.
-const waitDelay = time.Second
-
-// runError shows the message of the program, but keeps the error of the
-// process.
-type runError struct {
-	msg string
-	err error
-}
-
-func (e *runError) Error() string { return e.msg }
-func (e *runError) Unwrap() error { return e.err }
 
 // exitedOne reports whether err is from a process that exited with code 1.
 func exitedOne(err error) bool {
@@ -170,7 +147,7 @@ func (r *Repo) Resolve(ctx context.Context, rev string) (string, error) {
 		return "", fmt.Errorf("git: unknown revision %q", rev)
 	}
 	if err != nil {
-		return "", fmt.Errorf("git rev-parse: %w", err)
+		return "", err
 	}
 	return strings.TrimSpace(out), nil
 }
@@ -276,8 +253,9 @@ func (r *Repo) Snapshot(ctx context.Context) (string, error) {
 }
 
 // copyIndex copies the real index to dst. If there is no real index, it
-// does nothing. The copy keeps the modification time of the index. git uses this time
-// to find files that changed in the same second as the index.
+// does nothing. The copy keeps the modification time of the index. git
+// uses this time to find files that changed in the same second as the
+// index.
 func (r *Repo) copyIndex(dst string) error {
 	st, err := os.Stat(r.index)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -423,29 +401,21 @@ func (r *Repo) readBlobs(ctx context.Context, ids []string, blobs []blob) error 
 	if len(batch) == 0 {
 		return nil
 	}
-	cmd := exec.CommandContext(ctx, "git", "cat-file", "--batch")
-	cmd.WaitDelay = waitDelay
-	cmd.Dir = r.root
+	cmd, stderr := r.command(ctx, nil, "git", "cat-file", "--batch")
 	cmd.Stdin = strings.NewReader(in.String())
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
 	}
 	if err := cmd.Start(); err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			err = errors.New("git is not installed")
-		}
-		return fmt.Errorf("git cat-file: %w", err)
+		return fmt.Errorf("git cat-file: %w", proc.Error("git", err, nil))
 	}
 	err = readBatch(bufio.NewReader(out), batch, blobs)
 	if err != nil {
 		_ = cmd.Process.Kill()
 	}
 	if werr := cmd.Wait(); err == nil && werr != nil {
-		msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
-		err = &runError{cmp.Or(msg, werr.Error()), werr}
+		err = proc.Error("git", werr, stderr.Bytes())
 	}
 	if err != nil {
 		return fmt.Errorf("git cat-file: %w", err)
@@ -566,7 +536,8 @@ func (r *Repo) Owns(ctx context.Context, dir string) (bool, error) {
 	if !filepath.IsAbs(dir) || !r.Contains(dir) {
 		return false, nil
 	}
-	out, err := runProgram(ctx, r.root, nil, nil, "git", "-C", dir, "rev-parse", "--show-toplevel")
+	cmd, stderr := r.command(ctx, nil, "git", "-C", dir, "rev-parse", "--show-toplevel")
+	out, err := output(cmd, stderr)
 	if _, ok := errors.AsType[*exec.ExitError](err); ok {
 		return false, nil // dir is in no working tree
 	}

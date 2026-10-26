@@ -30,7 +30,8 @@ type Options struct {
 	// empty text means the default settings.
 	Config string
 	// Layout and Scope override the settings if they are not empty. Set
-	// them from the command-line flags.
+	// them from the command-line flags -layout and -scope. The error of a
+	// bad value names the flag.
 	Layout Layout
 	Scope  Scope
 	// Agent is the block ID or the label of the agent that the program
@@ -59,13 +60,19 @@ func (o Options) check() error {
 	if o.Repo == nil {
 		return errors.New("no repository")
 	}
-	if o.Layout != "" {
-		if err := choice("layout", o.Layout, layouts); err != nil {
+	return CheckFlags(o.Layout, o.Scope)
+}
+
+// CheckFlags returns the error of the values of the flags -layout and
+// -scope, or nil if rexdiff accepts them. An empty value is the default.
+func CheckFlags(layout Layout, scope Scope) error {
+	if layout != "" {
+		if err := choice("-layout", layout, layouts); err != nil {
 			return err
 		}
 	}
-	if o.Scope != "" {
-		return choice("scope", o.Scope, configScopes)
+	if scope != "" {
+		return choice("-scope", scope, configScopes)
 	}
 	return nil
 }
@@ -140,7 +147,7 @@ func startModel(ctx context.Context, o Options, cfg config) model {
 	}
 	if o.Rex != nil && o.Rex.Block() != "" {
 		if err := o.Rex.SetLabel(ctx, o.Rex.Block(), appName); err != nil {
-			m.log.Debug("set label", "err", err)
+			m.log.Debug("set label failed", "err", err)
 		}
 	}
 	return m

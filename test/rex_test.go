@@ -65,14 +65,9 @@ func (r *realRex) write(block, data string) {
 func (r *realRex) waitFor(block string, texts ...string) {
 	r.t.Helper()
 	var s string
-	eventually(r.t, func() bool {
+	poll(r.t, func() bool {
 		s = r.run("capture", "-s", r.session, "-b", block)
-		for _, text := range texts {
-			if !strings.Contains(s, text) {
-				return false
-			}
-		}
-		return true
+		return hasAll(s, texts...)
 	}, func() string { return "block " + block + " does not show " + strings.Join(texts, ", ") + ":\n" + s })
 }
 
@@ -90,8 +85,8 @@ func TestRealRex(t *testing.T) {
 	r := &realRex{t: t, bin: bin, session: "rexdiff-test-" + strconv.Itoa(os.Getpid())}
 	r.run("new", r.session, "--cwd", repo, "--", "sh")
 	t.Cleanup(func() {
-		// t.Context is done in a cleanup.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// t.Context is done in a cleanup, so drop its cancel.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 10*time.Second)
 		defer cancel()
 		kill := exec.CommandContext(ctx, bin, "--autostart=false", "kill", r.session)
 		kill.Env = append(os.Environ(), "HOME="+home)
@@ -104,7 +99,7 @@ func TestRealRex(t *testing.T) {
 	r.run("split", "-s", r.session, "-b", shell, "--cwd", repo, "--shell=none",
 		"--", binary(t), "-config", `{"focus_agent_after_send": false}`, repo)
 	var pane string
-	eventually(t, func() bool {
+	poll(t, func() bool {
 		for label, id := range r.blocks() {
 			if label != "agent" {
 				pane = id

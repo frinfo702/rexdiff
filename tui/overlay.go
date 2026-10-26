@@ -186,14 +186,14 @@ func (m *model) updateOverlay(msg tea.KeyPressMsg) tea.Cmd {
 	case overlaySearch:
 		pv := ov.search.preview
 		switch {
-		case key.Matches(msg, overlayKeys.Flip):
+		case key.Matches(msg, k.Flip):
 			ov.search.code = !ov.search.code
 			ov.showSearch()
 			return nil
-		case key.Matches(msg, overlayKeys.PreviewDown) && pv != nil:
+		case key.Matches(msg, k.PreviewDown) && pv != nil:
 			pv.scroll(pickerPage)
 			return nil
-		case key.Matches(msg, overlayKeys.PreviewUp) && pv != nil:
+		case key.Matches(msg, k.PreviewUp) && pv != nil:
 			pv.scroll(-pickerPage)
 			return nil
 		}

@@ -51,7 +51,7 @@ func fromTemplate(template, file string, line int) Command {
 	if !strings.Contains(template, "{file}") {
 		script += " " + ShellQuote(file)
 	}
-	return Command{script, program(template), dialectOf(template).window}
+	return Command{Script: script, Program: program(template), Window: dialectOf(template).window}
 }
 
 // fromEditor returns the command that opens file at line in an editor.
@@ -74,7 +74,7 @@ func fromEditor(command, file string, line int) Command {
 	case argFlag:
 		args = "--line " + n + " " + f
 	}
-	return Command{command + " " + args, program(command), d.window}
+	return Command{Script: command + " " + args, Program: program(command), Window: d.window}
 }
 
 // ShellQuote quotes s as one word for sh.

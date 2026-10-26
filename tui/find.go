@@ -1,9 +1,5 @@
 package tui
 
-// This file has the find band of herdr-reviewr. The band opens at the
-// bottom of the screen and stays open. Enter or down goes to the next hit,
-// up goes to the previous hit, and esc closes the band.
-
 import (
 	"fmt"
 	"strconv"
@@ -16,6 +12,10 @@ import (
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/internal/search"
 )
+
+// This file has the find band of herdr-reviewr. The band opens at the
+// bottom of the screen and stays open. Enter or down goes to the next hit,
+// up goes to the previous hit, and esc closes the band.
 
 // findState is the query of the find band. The band is open in modeFind.
 type findState struct {

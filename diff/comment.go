@@ -127,10 +127,8 @@ func (cs *Comments) SetOldRev(rev string) {
 
 // Find returns the comment with the given ID, or nil.
 func (cs *Comments) Find(id int) *Comment {
-	for _, c := range cs.items {
-		if c.ID == id {
-			return c
-		}
+	if i := slices.IndexFunc(cs.items, func(c *Comment) bool { return c.ID == id }); i >= 0 {
+		return cs.items[i]
 	}
 	return nil
 }

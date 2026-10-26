@@ -57,9 +57,18 @@ func Build(entries []Entry, toggled map[string]bool, expanded bool) []Row {
 	for i, e := range entries {
 		insert(root, e, i)
 	}
-	var rows []Row
-	flatten(&rows, root, "", 0, toggled, expanded, entries)
-	return rows
+	b := builder{toggled: toggled, expanded: expanded, entries: entries}
+	b.flatten(root, "", 0)
+	return b.rows
+}
+
+// builder makes the rows of a tree. The fields are the arguments of
+// [Build].
+type builder struct {
+	rows     []Row
+	toggled  map[string]bool
+	expanded bool
+	entries  []Entry
 }
 
 // insert adds entry e with index i to the tree under root.
@@ -96,18 +105,16 @@ func (n *node) child(name string) *node {
 }
 
 // flatten adds the rows of the children of dir at path prefix.
-func flatten(rows *[]Row, dir *node, prefix string, depth int, toggled map[string]bool,
-	expanded bool, entries []Entry,
-) {
+func (b *builder) flatten(dir *node, prefix string, depth int) {
 	for _, name := range slices.Sorted(maps.Keys(dir.dirs)) {
 		display, path, n := compress(name, join(prefix, name), dir.dirs[name])
 		if fname, i, ok := loneFile(n); ok {
 			// A chain that ends in one file shows as one file row.
-			*rows = append(*rows, fileRow(depth, display+"/"+fname, i, entries))
+			b.rows = append(b.rows, b.fileRow(depth, display+"/"+fname, i))
 			continue
 		}
-		open := expanded != toggled[path]
-		*rows = append(*rows, Row{
+		open := b.expanded != b.toggled[path]
+		b.rows = append(b.rows, Row{
 			Depth:    depth,
 			Name:     display,
 			Dir:      path,
@@ -117,11 +124,11 @@ func flatten(rows *[]Row, dir *node, prefix string, depth int, toggled map[strin
 			Ignored:  n.ignored,
 		})
 		if open {
-			flatten(rows, n, path, depth+1, toggled, expanded, entries)
+			b.flatten(n, path, depth+1)
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(dir.files)) {
-		*rows = append(*rows, fileRow(depth, name, dir.files[name], entries))
+		b.rows = append(b.rows, b.fileRow(depth, name, dir.files[name]))
 	}
 }
 
@@ -149,8 +156,8 @@ func loneFile(n *node) (name string, i int, ok bool) {
 }
 
 // fileRow returns the row of entry i at depth, with the name name.
-func fileRow(depth int, name string, i int, entries []Entry) Row {
-	return Row{Depth: depth, Name: name, File: i, Ignored: entries[i].Ignored}
+func (b *builder) fileRow(depth int, name string, i int) Row {
+	return Row{Depth: depth, Name: name, File: i, Ignored: b.entries[i].Ignored}
 }
 
 // join returns the path of name in the directory prefix. An empty prefix

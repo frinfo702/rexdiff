@@ -41,8 +41,8 @@ type searchState struct {
 
 // showSearch shows the results of the search in its mode, with the
 // cursor on the first result. As in herdr-reviewr, the code matches show
-// under a header for each file, and a "… more" row tells that the list
-// does not show all the results. An error shows in place of the results.
+// under a header for each file. A "… more" row tells that the list does
+// not show all the results. An error shows in place of the results.
 func (o *overlay) showSearch() {
 	s := &o.search
 	var items []pickItem

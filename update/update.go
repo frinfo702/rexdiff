@@ -31,6 +31,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/rednafi/rexdiff/internal/proc"
 )
 
 // latestURL is the GitHub API address of the latest release of rexdiff.
@@ -187,7 +189,7 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 		env := []string{"GOBIN=" + filepath.Dir(u.bin)}
 		goTool := "go"
 		// Rex starts panes with a PATH without Go.
-		if _, err := exec.LookPath(goTool); err != nil {
+		if _, lerr := exec.LookPath(goTool); lerr != nil {
 			goTool = tool("go", "/opt/homebrew/bin", "/usr/local/go/bin", "/usr/local/bin")
 		}
 		_, err = u.runProgram(ctx, env, goTool, "install", modulePath+"@"+r.Tag)
@@ -225,10 +227,10 @@ func (u *Updater) runProgram(ctx context.Context, env []string, name string, arg
 		return out, nil
 	}
 	if errors.Is(err, exec.ErrNotFound) {
-		return out, fmt.Errorf("%s is not installed", filepath.Base(name))
+		return out, proc.NotInstalled(name)
 	}
-	if last := lastLine(out); last != "" {
-		return out, fmt.Errorf("%s: %w: %s", filepath.Base(name), err, last)
+	if last := proc.LastLine(string(out)); last != "" {
+		return out, fmt.Errorf("%s: %s: %w", filepath.Base(name), last, err)
 	}
 	return out, fmt.Errorf("%s: %w", filepath.Base(name), err)
 }
@@ -249,23 +251,16 @@ func tool(name string, dirs ...string) string {
 
 // runCommand is the run of an Updater outside tests.
 func runCommand(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := proc.Command(ctx, name, args...)
 	if env != nil {
 		cmd.Env = append(cmd.Environ(), env...)
 	}
-	cmd.WaitDelay = time.Second // a child of brew can keep the output open
 	return cmd.CombinedOutput()
 }
 
-// lastLine returns the last line of out that is not blank.
-func lastLine(out []byte) string {
-	s := strings.TrimSpace(string(out))
-	return strings.TrimSpace(s[strings.LastIndexByte(s, '\n')+1:])
-}
-
-// download downloads the archive of r for this system, checks it with the
-// checksums of r, and puts its binary in place of the file that u.bin
-// links to.
+// download downloads the archive of r for this system and checks it with
+// the checksums of r. Then it puts its binary in place of the file that
+// u.bin links to.
 func (u *Updater) download(ctx context.Context, r Release) error {
 	name := fmt.Sprintf("rexdiff-%s-%s-%s.tar.gz", r.Tag, runtime.GOOS, runtime.GOARCH)
 	archiveURL, sumsURL := assetURL(r, name), assetURL(r, "sha256sums.txt")

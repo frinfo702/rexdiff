@@ -58,8 +58,8 @@ func (m *model) searchLines(inner int) (lines []string, listY int) {
 	return lines, listY
 }
 
-// splitAxis returns the part of n that pct percent takes, with at least
-// 3 for each part if n has room, as herdr-reviewr splits a pane.
+// splitAxis returns the part of n that pct percent takes, as
+// herdr-reviewr splits a pane. Each part gets at least 3 if n has room.
 func splitAxis(n, pct int) int {
 	if n < 6 {
 		return n / 2

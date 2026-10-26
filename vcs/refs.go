@@ -2,19 +2,18 @@ package vcs
 
 import (
 	"bufio"
-	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/rednafi/rexdiff/internal/proc"
 )
 
 // Commit is a commit in the log.
@@ -204,6 +203,7 @@ type Match struct {
 // that contain the text q. The search ignores case and binary files. When
 // it finds limit lines, it stops git, and more is true if there are
 // others.
+//
 // After the time budget, Grep stops git when it has a line, and returns
 // the lines with more set to true. At the deadline of ctx, Grep stops git
 // and returns the lines that it finds before it, with more set to true.
@@ -215,12 +215,9 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int, budget time.Durati
 	}
 	// --no-column overrides the git setting grep.column. That setting adds a
 	// field to each match.
-	cmd := exec.CommandContext(ctx, "git",
+	cmd, stderr := r.command(ctx, nil, "git",
 		"grep", "-n", "--no-column", "-z", "-I", "-i", "-F", "--untracked", "--no-color",
 		"-e", q)
-	cmd.Dir, cmd.WaitDelay = r.root, waitDelay
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, false, err
@@ -229,10 +226,7 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int, budget time.Durati
 		if pastDeadline(ctx) {
 			return nil, true, nil
 		}
-		if errors.Is(err, exec.ErrNotFound) {
-			err = errors.New("git is not installed")
-		}
-		return nil, false, fmt.Errorf("git grep: %w", err)
+		return nil, false, fmt.Errorf("git grep: %w", proc.Error("git", err, nil))
 	}
 	// Past the budget, Grep stops git if it has a line, or else at the
 	// next line.
@@ -262,8 +256,7 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int, budget time.Durati
 	case ctx.Err() != nil:
 		return nil, false, ctx.Err()
 	}
-	msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
-	return nil, false, fmt.Errorf("git grep: %w", &runError{cmp.Or(msg, err.Error()), err})
+	return nil, false, fmt.Errorf("git grep: %w", proc.Error("git", err, stderr.Bytes()))
 }
 
 // pastDeadline reports whether ctx ends at its deadline.

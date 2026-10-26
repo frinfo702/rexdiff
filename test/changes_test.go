@@ -6,13 +6,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/rednafi/rexdiff/internal/testgit"
 )
 
-// TestChanges checks the Changes tab: the file list with its counts, the
-// diff of a file, the next and the previous file, and a fold that opens.
+// TestChanges checks the Changes tab. It checks the file list with its
+// counts, the diff of a file, and the next and the previous file. It also
+// checks a fold that opens.
 func TestChanges(t *testing.T) {
 	tm := start(t, newRepo(t), opts{})
 	tm.waitFor("Changes (2)", "M a.go", "+2 -1", "M long.txt", "+2 -2",
@@ -26,8 +26,8 @@ func TestChanges(t *testing.T) {
 	tm.waitFor("x := 2")
 }
 
-// TestMove checks the keys that move the cursor: the next and the
-// previous change, a page, half a page, and : for a line.
+// TestMove checks the keys that move the cursor. They go to the next and
+// the previous change, a page, half a page, a line, and a line number.
 func TestMove(t *testing.T) {
 	tm := start(t, newRepo(t), opts{height: 16})
 	tm.keys("f", "j", "j", "j", "j", "j", "j", "right") // all of long.txt
@@ -44,6 +44,14 @@ func TestMove(t *testing.T) {
 	}
 	tm.keys(":", "3", "3", "enter")
 	tm.waitCursor("line 33")
+	tm.keys(":", "$", "enter")
+	tm.waitCursor("last")
+	tm.keys(":", "0", "enter")
+	tm.waitCursor("first")
+	tm.keys("down")
+	tm.waitCursor("line 2")
+	tm.keys("up")
+	tm.waitCursor("first")
 }
 
 // TestScopes checks that each scope shows its changes, and the pickers of
@@ -80,8 +88,8 @@ func TestFlags(t *testing.T) {
 		"-scope", "branch", "-base", "main", "-layout", "split", "-log", log,
 	}})
 	s := tm.waitFor("vs main", "Changes (3)")
-	if ls := lines(s, "return 1"); len(ls) != 1 || !strings.Contains(ls[0], "x := 2") {
-		t.Errorf("lines %q, want return 1 beside x := 2", ls)
+	if !sameLine(s, "return 1", "x := 2") {
+		t.Errorf("the screen does not show return 1 beside x := 2. It shows:\n%s", s)
 	}
 	tm.keys("q")
 	if err := tm.exited(); err != nil {
@@ -93,18 +101,12 @@ func TestFlags(t *testing.T) {
 }
 
 // TestSplit checks that | shows the old and the new lines side by side
-// on a wide screen, and tells why it does not on a narrow one.
+// on a wide screen. On a narrow screen, it tells why it cannot.
 func TestSplit(t *testing.T) {
 	tm := start(t, newRepo(t), opts{width: 220})
 	tm.keys("|")
-	tm.waitUntil(func(s string) bool {
-		for _, l := range lines(s, "return 1") {
-			if strings.Contains(l, "x := 2") {
-				return true
-			}
-		}
-		return false
-	}, "show return 1 beside x := 2")
+	tm.waitUntil(func(s string) bool { return sameLine(s, "return 1", "x := 2") },
+		"show return 1 beside x := 2")
 
 	narrow := start(t, newRepo(t), opts{width: 120})
 	narrow.keys("|")
@@ -131,9 +133,8 @@ func TestWrap(t *testing.T) {
 // column returns the column of text in the first line of s that has it,
 // or -1.
 func column(s, text string) int {
-	for _, l := range lines(s, text) {
-		before, _, _ := strings.Cut(l, text)
-		return utf8.RuneCountInString(before)
+	if x, _, ok := position(s, text); ok {
+		return x
 	}
 	return -1
 }
@@ -149,12 +150,8 @@ func TestFileList(t *testing.T) {
 	tm.waitUntil(func(s string) bool { return column(s, "Changes (2)") > right }, "narrow the list")
 	tm.keys("p") // bottom
 	tm.waitUntil(func(s string) bool {
-		for i, l := range strings.Split(s, "\n") {
-			if strings.Contains(l, "Changes (2)") {
-				return i > 10
-			}
-		}
-		return false
+		_, y, ok := position(s, "Changes (2)")
+		return ok && y > 10
 	}, "show the list at the bottom")
 	tm.keys("z")
 	tm.waitGone("Changes (2)")
@@ -182,9 +179,9 @@ func TestFind(t *testing.T) {
 	tm.waitCursor("line 3")
 }
 
-// TestSettings checks that the settings change the layout, the marks of
-// the changed lines, the place and the width of the file list, the
-// scope, and the keys.
+// TestSettings checks that the settings change the layout and the marks
+// of the changed lines. They also change the place and the width of the
+// file list, the scope, and the keys.
 func TestSettings(t *testing.T) {
 	tm := start(t, newRepo(t), opts{width: 220, args: []string{
 		"-config",
@@ -193,10 +190,8 @@ func TestSettings(t *testing.T) {
 			` "keybindings": {"next-file": ["x"]}}`,
 	}})
 	s := tm.waitFor("vs main", "4 -     return 1", "4 +     x := 2", "x/F next/prev file")
-	for _, l := range lines(s, "return 1") {
-		if !strings.Contains(l, "x := 2") {
-			t.Errorf("line %q, want the old and the new line side by side", l)
-		}
+	if !sameLine(s, "return 1", "x := 2") {
+		t.Errorf("the screen does not show the old and the new line side by side. It shows:\n%s", s)
 	}
 	if c := column(s, "Changes (3)"); c < 0 || c > 5 {
 		t.Errorf("the list starts at column %d, want it at the left", c)

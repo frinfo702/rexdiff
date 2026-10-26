@@ -33,11 +33,9 @@ func TestUpgradeAtStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := read(t, lua); got != edited {
-		t.Errorf("rexdiff.lua after the start:\n%s\nwant the new code under the settings:\n%s", got, edited)
+		t.Errorf("rexdiff.lua after the start = \n%s\nwant the new code under the settings:\n%s", got, edited)
 	}
-	if calls := rex.calls(t); !strings.Contains(calls, "config reload") {
-		t.Errorf("rex calls:\n%s\nwant a config reload", calls)
-	}
+	rex.expectCalls(t, "config reload")
 
 	const mark = "-- rexdiff code below. Install and upgrades replace it. Do not edit this line.\n"
 	noMark := strings.Replace(edited, mark, "", 1)
@@ -45,7 +43,7 @@ func TestUpgradeAtStart(t *testing.T) {
 	tm = start(t, repo, opts{rex: rex, env: env})
 	tm.waitFor("rexdiff.lua upgrade failed")
 	if got := read(t, lua); got != noMark {
-		t.Errorf("rexdiff.lua without the line changes to:\n%s", got)
+		t.Errorf("rexdiff.lua without the line = \n%s\nwant:\n%s", got, noMark)
 	}
 }
 

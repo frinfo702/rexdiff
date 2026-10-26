@@ -28,8 +28,8 @@ func numbered(n int, upper ...int) string {
 // foldText writes a hunk header with fold f, for example "@14/14+13".
 func foldText(f diff.Fold) string { return fmt.Sprintf("@%d/%d+%d", f.Old, f.New, f.Lines) }
 
-// layout writes the rows of d as one entry each: "@" and its fold for a
-// hunk header, else the old and the new line number.
+// layout writes each row of d as one entry. A hunk header is "@" and its
+// fold. Another row is its old and its new line number.
 func layout(d *diff.Diff) []string {
 	var out []string
 	for _, r := range d.Rows {
@@ -98,7 +98,7 @@ func TestFolds(t *testing.T) {
 			o := diff.Options{Width: 60, Expanded: tt.expanded}
 			d := diff.Render("f.txt", old, new, o)
 			if got := layout(d); !slices.Equal(got, tt.want) {
-				t.Errorf("layout = %v\nwant %v", got, tt.want)
+				t.Errorf("layout = \n%v\nwant:\n%v", got, tt.want)
 			}
 		})
 	}
@@ -158,7 +158,7 @@ func TestFoldEdges(t *testing.T) {
 			t.Parallel()
 			d := diff.Render("f.txt", tt.old, tt.new, diff.Options{Width: 80})
 			if got := strings.Join(layout(d), " "); got != tt.want {
-				t.Errorf("layout = %s\nwant %s", got, tt.want)
+				t.Errorf("layout = \n%s\nwant:\n%s", got, tt.want)
 			}
 			// The split layout has the same folds.
 			o := diff.Options{Width: 80, Split: true}

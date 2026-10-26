@@ -113,7 +113,7 @@ func runeAt(line string, col int) int {
 func lineAt(src string, n int) (string, bool) {
 	for l := range strings.Lines(src) {
 		if n--; n == 0 {
-			return strings.TrimSuffix(strings.TrimSuffix(l, "\n"), "\r"), true
+			return trimEOL(l), true
 		}
 	}
 	return "", false

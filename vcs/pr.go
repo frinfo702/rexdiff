@@ -162,14 +162,9 @@ func cleanPR(pr *PullRequest) {
 // runJSON runs a forge tool in the root directory and decodes its JSON
 // output into v. env adds to the environment. The error names the tool
 // and its subcommand, for example "gh pr".
-func (r *Repo) runJSON(
-	ctx context.Context,
-	env []string,
-	v any,
-	name string,
-	args ...string,
-) error {
-	out, err := runProgram(ctx, r.root, env, nil, name, args...)
+func (r *Repo) runJSON(ctx context.Context, env []string, v any, name string, args ...string) error {
+	cmd, stderr := r.command(ctx, env, name, args...)
+	out, err := output(cmd, stderr)
 	if err == nil {
 		err = json.Unmarshal([]byte(out), v)
 	}

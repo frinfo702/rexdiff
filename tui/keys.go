@@ -255,10 +255,10 @@ func (k *keyMap) pairs() [][]*key.Binding {
 	}
 }
 
-// namedKeys are the names of the keys that are not one character, as
-// herdr-reviewr spells them, with the names that bubbletea uses and the
-// labels on the screen.
-var namedKeys = []struct{ name, tea, label string }{
+// namedKeys are the keys that are not one character. Each has its name as
+// herdr-reviewr spells it, its bubbletea name, and its label on the
+// screen.
+var namedKeys = []namedKey{
 	{"left", "left", "←"},
 	{"right", "right", "→"},
 	{"up", "up", "↑"},
@@ -267,16 +267,30 @@ var namedKeys = []struct{ name, tea, label string }{
 	{"pagedown", "pgdown", "PageDown"},
 }
 
+// namedKey is a key that is not one character.
+type namedKey struct{ name, tea, label string }
+
+// teaKey returns the named key whose bubbletea name is name without its
+// modifier, and the modifier. ok is false if no named key has this name.
+func teaKey(name string) (mod string, k namedKey, ok bool) {
+	mod, rest := cutModifier(name)
+	i := slices.IndexFunc(namedKeys, func(k namedKey) bool { return k.tea == rest })
+	if i < 0 {
+		return mod, namedKey{}, false
+	}
+	return mod, namedKeys[i], true
+}
+
 // keyName returns the bubbletea name of the key s of the keybindings
-// setting. s is one character or a named key, alone or after "ctrl+" or
-// "alt+", as in herdr-reviewr. The bubbletea names "pgup" and "pgdown" are
-// also valid. ok is false if s is not a valid key.
+// setting. It is the inverse of [herdrReviewrKeyName]. s is one character
+// or a named key, alone or after "ctrl+" or "alt+", as in herdr-reviewr.
+// The bubbletea names "pgup" and "pgdown" are also valid. ok is false if s
+// is not a valid key.
 func keyName(s string) (name string, ok bool) {
 	mod, rest := cutModifier(s)
-	for _, k := range namedKeys {
-		if rest == k.name || rest == k.tea {
-			return mod + k.tea, true
-		}
+	named := func(k namedKey) bool { return rest == k.name || rest == k.tea }
+	if i := slices.IndexFunc(namedKeys, named); i >= 0 {
+		return mod + namedKeys[i].tea, true
 	}
 	r, size := utf8.DecodeRuneInString(rest)
 	if size == 0 || size != len(rest) || r == utf8.RuneError || unicode.IsSpace(r) ||
@@ -287,13 +301,11 @@ func keyName(s string) (name string, ok bool) {
 }
 
 // herdrReviewrKeyName returns the bubbletea key name as herdr-reviewr
-// spells it, for example "pageup" for "pgup".
+// spells it, for example "pageup" for "pgup". It is the inverse of
+// [keyName].
 func herdrReviewrKeyName(name string) string {
-	mod, rest := cutModifier(name)
-	for _, k := range namedKeys {
-		if rest == k.tea {
-			return mod + k.name
-		}
+	if mod, k, ok := teaKey(name); ok {
+		return mod + k.name
 	}
 	return name
 }
@@ -403,11 +415,8 @@ func firstKey(b key.Binding) string {
 	if len(ks) == 0 {
 		return ""
 	}
-	mod, rest := cutModifier(ks[0])
-	for _, k := range namedKeys {
-		if rest == k.tea {
-			return mod + k.label
-		}
+	if mod, k, ok := teaKey(ks[0]); ok {
+		return mod + k.label
 	}
 	return ks[0]
 }

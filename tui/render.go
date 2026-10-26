@@ -278,7 +278,7 @@ func (m *model) refreshViewer() {
 		p.path = ""
 		p.set([]string{dimStyle.Render("  " + note)}, nil)
 	case err != nil:
-		m.log.Debug("read file", "path", path, "err", err)
+		m.log.Warn("read file failed", "path", path, "err", err)
 		p.path = ""
 		p.set([]string{dimStyle.Render("  could not read this file")}, nil)
 	case m.rendered && isMarkdown(path):
@@ -293,7 +293,7 @@ func (m *model) refreshViewer() {
 // because a new one is slow to make.
 func (m *model) markdown(wrap int) *glamour.TermRenderer {
 	style := "dark"
-	if m.bg != nil && !m.dark {
+	if !m.dark() {
 		style = "light"
 	}
 	md := &m.md

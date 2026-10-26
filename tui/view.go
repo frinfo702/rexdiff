@@ -36,6 +36,12 @@ var (
 // truncate cuts s to w columns, with an ellipsis.
 func truncate(s string, w int) string { return ansi.Truncate(s, max(w, 0), "…") }
 
+// dark reports whether the terminal background is dark. A background that
+// is not known counts as dark.
+func (m *model) dark() bool {
+	return m.bg == nil || tea.BackgroundColorMsg{Color: m.bg}.IsDark()
+}
+
 // selStyle returns the style of a selected row. The style is a tint of the
 // terminal background.
 func (m *model) selStyle() lipgloss.Style {
@@ -43,7 +49,7 @@ func (m *model) selStyle() lipgloss.Style {
 		return lipgloss.NewStyle().Reverse(true)
 	}
 	tint := lipgloss.Lighten(m.bg, 0.15)
-	if !m.dark {
+	if !m.dark() {
 		tint = lipgloss.Darken(m.bg, 0.15)
 	}
 	return lipgloss.NewStyle().Bold(true).Background(tint)
@@ -355,9 +361,9 @@ func (m *model) mainLines(h int, hits []findHit) (lines []string, rowAt []int) {
 		}
 	}
 	marked := map[int]bool{}
-	for _, h := range hits {
-		if h.line == 0 { // a hit in a fold has no row of its own
-			marked[h.row] = true
+	for _, hit := range hits {
+		if hit.line == 0 { // a hit in a fold has no row of its own
+			marked[hit.row] = true
 		}
 	}
 	for i := p.top; i < len(p.lines) && len(lines) < h; i++ {

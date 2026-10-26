@@ -1,8 +1,5 @@
 package tui
 
-// The PR tab shows the pull request of the branch. The tab cannot change
-// the pull request.
-
 import (
 	"context"
 	"errors"
@@ -17,6 +14,9 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
+// The PR tab shows the pull request of the branch. The tab cannot change
+// the pull request.
+
 // The times of the reads of the pull request, as in herdr-reviewr.
 const (
 	// prPoll is the time between two reads while the PR tab shows. A
@@ -28,7 +28,7 @@ const (
 
 // prFetch follows the reads of the pull request.
 type prFetch struct {
-	gen      int       // the read whose result shows; others are stale
+	gen      int       // the read whose result shows. Other reads are stale.
 	inFlight bool      // the read gen runs
 	polled   time.Time // the last request, for prPoll
 	cancel   context.CancelFunc

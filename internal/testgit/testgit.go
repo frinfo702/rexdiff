@@ -157,12 +157,12 @@ func (f *Fixture) Copy(tb testing.TB, dir string) {
 	tb.Helper()
 	ready(tb)
 	f.once.Do(func() {
-		dir, err := os.MkdirTemp(root, "fixture")
+		tmp, err := os.MkdirTemp(root, "fixture")
 		if err != nil {
 			tb.Fatal(err)
 		}
-		f.build(tb, dir)
-		f.dir = dir
+		f.build(tb, tmp)
+		f.dir = tmp
 	})
 	if f.dir == "" {
 		tb.Fatal("testgit: the fixture fails to build")

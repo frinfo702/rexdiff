@@ -2,6 +2,7 @@ package test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -136,11 +137,25 @@ EOF
 	})
 }
 
-// TestNoPR checks that the PR tab tells why it has no pull request.
+// TestNoPR checks that the PR tab tells why it has no pull request: the
+// repository has no remote, or the tool of the remote is not installed.
 func TestNoPR(t *testing.T) {
 	tm := start(t, newRepo(t), opts{})
 	tm.keys("3")
-	tm.waitUntil(func(s string) bool {
-		return strings.Contains(s, "no git remote")
-	}, "tell why there is no pull request")
+	tm.waitFor("no git remote")
+
+	repo := newRepo(t)
+	testgit.Git(t, repo, "remote", "add", "origin", "https://github.com/o/r.git")
+	// PATH has only git, so it has no gh.
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	if err := os.Symlink(git, filepath.Join(bin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	tm = start(t, repo, opts{env: []string{"PATH=" + bin}})
+	tm.keys("3")
+	tm.waitFor("gh is not installed")
 }

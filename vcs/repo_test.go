@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -378,8 +377,8 @@ func TestWorktree(t *testing.T) {
 }
 
 // TestOwns checks which directories are in the working tree, as in
-// herdr-reviewr: a subdirectory is, a nested repository and a relative or
-// outside path are not.
+// herdr-reviewr. A subdirectory is in it. A nested repository, a relative
+// path, and an outside path are not.
 func TestOwns(t *testing.T) {
 	t.Parallel()
 	r, dir := newRepo(t)
@@ -496,7 +495,7 @@ func TestDiffRenameAndSubmodule(t *testing.T) {
 			New:    "Subproject commit " + b + "\n",
 		},
 	}
-	if !reflect.DeepEqual(got, want) {
+	if !slices.Equal(got, want) {
 		t.Errorf("Diff = \n%+v\nwant:\n%+v", got, want)
 	}
 }

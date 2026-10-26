@@ -65,7 +65,8 @@ var userEnv = []string{
 
 // opts are the options of a rexdiff run.
 type opts struct {
-	args   []string // the flags; start adds the repo
+	args   []string // the flags. start adds the repo.
+	bin    string   // the rexdiff to run, or "" for the one of binary
 	width  uint16   // 0 means 160
 	height uint16   // 0 means 40
 	rex    *fakeRex // nil runs rexdiff outside Rex
@@ -77,22 +78,26 @@ type opts struct {
 type term struct {
 	t    *testing.T
 	emu  *vt.Emulator
-	mu   sync.Mutex    // guards emu
-	wait func() error  // waits for rexdiff once, and keeps its error
-	done chan struct{} // closed when the screen gets no more output
+	mu   sync.Mutex   // guards emu
+	wait func() error // waits for rexdiff once, and keeps its error
+	// changed gets a value after each write to the screen. It holds one
+	// value, so a write that comes before a wait is not lost.
+	changed chan struct{}
+	done    chan struct{} // closed when the screen gets no more output
 }
+
+// waitTime is how long a test waits for the screen or for a file.
+const waitTime = 15 * time.Second
 
 // start runs rexdiff on repo in a new terminal. The test stops it at the
 // end.
 func start(t *testing.T, repo string, o opts) *term {
 	t.Helper()
-	return startBin(t, binary(t), repo, o)
-}
-
-// startBin is start with the rexdiff at bin.
-func startBin(t *testing.T, bin, repo string, o opts) *term {
-	t.Helper()
 	w, h := cmp.Or(o.width, 160), cmp.Or(o.height, 40)
+	bin := o.bin
+	if bin == "" {
+		bin = binary(t)
+	}
 	cmd := exec.CommandContext(t.Context(), bin, append(o.args, repo)...)
 	cmd.Dir = repo
 	// A stop lets rexdiff remove its files before it exits.
@@ -118,7 +123,13 @@ func startBin(t *testing.T, bin, repo string, o opts) *term {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tm := &term{t: t, emu: vt.NewEmulator(int(w), int(h)), wait: sync.OnceValue(cmd.Wait), done: make(chan struct{})}
+	tm := &term{
+		t:       t,
+		emu:     vt.NewEmulator(int(w), int(h)),
+		wait:    sync.OnceValue(cmd.Wait),
+		changed: make(chan struct{}, 1),
+		done:    make(chan struct{}),
+	}
 	go func() {
 		defer close(tm.done)
 		buf := make([]byte, 32<<10)
@@ -128,15 +139,19 @@ func startBin(t *testing.T, bin, repo string, o opts) *term {
 				tm.mu.Lock()
 				_, _ = tm.emu.Write(buf[:n])
 				tm.mu.Unlock()
+				select {
+				case tm.changed <- struct{}{}:
+				default: // the wait has a value that it does not take yet
+				}
 			}
 			if err != nil {
 				return
 			}
 		}
 	}()
-	// The input of rexdiff comes from the emulator, as from a terminal:
-	// the keys and the mouse of the test, and the answers to the queries
-	// of rexdiff, for example for the colours.
+	// The input of rexdiff comes from the emulator, as from a terminal. It
+	// has the keys and the mouse of the test. It also has the answers to
+	// the queries of rexdiff, for example for the colours.
 	input := make(chan struct{})
 	go func() {
 		defer close(input)
@@ -200,19 +215,27 @@ var keyCodes = map[string]vt.KeyPressEvent{
 	"ctrl+u": {Code: 'u', Mod: vt.ModCtrl},
 	"ctrl+f": {Code: 'f', Mod: vt.ModCtrl},
 	"ctrl+j": {Code: 'j', Mod: vt.ModCtrl},
+	"up":     {Code: vt.KeyUp},
+	"down":   {Code: vt.KeyDown},
+	"bs":     {Code: vt.KeyBackspace},
 }
 
 // at returns the column and the line of text on the screen, from 0.
 func (tm *term) at(text string) (x, y int) {
 	tm.t.Helper()
-	s := tm.waitFor(text)
+	x, y, _ = position(tm.waitFor(text), text)
+	return x, y
+}
+
+// position returns the column and the line of the first text in s, from
+// 0. ok is false if s does not have text.
+func position(s, text string) (x, y int, ok bool) {
 	for i, l := range strings.Split(s, "\n") {
-		if before, _, ok := strings.Cut(l, text); ok {
-			return utf8.RuneCountInString(before), i
+		if before, _, found := strings.Cut(l, text); found {
+			return utf8.RuneCountInString(before), i, true
 		}
 	}
-	tm.t.Fatalf("the screen does not show %s. It shows:\n%s", text, s)
-	return 0, 0
+	return 0, 0, false
 }
 
 // mouse sends the mouse event m, as the terminal encodes it.
@@ -256,62 +279,88 @@ func (tm *term) wheel(text string, n int) {
 // screen.
 func (tm *term) waitFor(texts ...string) string {
 	tm.t.Helper()
-	return tm.waitUntil(func(s string) bool {
-		for _, text := range texts {
-			if !strings.Contains(s, text) {
-				return false
-			}
-		}
-		return true
-	}, "show "+strings.Join(texts, ", "))
+	return tm.waitUntil(func(s string) bool { return hasAll(s, texts...) },
+		"show "+strings.Join(texts, ", "))
 }
 
 // waitGone waits until the screen shows none of texts.
 func (tm *term) waitGone(texts ...string) string {
 	tm.t.Helper()
-	return tm.waitUntil(func(s string) bool {
-		for _, text := range texts {
-			if strings.Contains(s, text) {
-				return false
-			}
+	return tm.waitUntil(func(s string) bool { return !hasAny(s, texts...) },
+		"not show "+strings.Join(texts, ", "))
+}
+
+// hasAll reports whether s has each of texts.
+func hasAll(s string, texts ...string) bool {
+	return !slices.ContainsFunc(texts, func(t string) bool { return !strings.Contains(s, t) })
+}
+
+// hasAny reports whether s has one of texts.
+func hasAny(s string, texts ...string) bool {
+	return slices.ContainsFunc(texts, func(t string) bool { return strings.Contains(s, t) })
+}
+
+// sameLine reports whether a line of s has each of texts.
+func sameLine(s string, texts ...string) bool {
+	for l := range strings.Lines(s) {
+		if hasAll(l, texts...) {
+			return true
 		}
-		return true
-	}, "not show "+strings.Join(texts, ", "))
+	}
+	return false
 }
 
 // waitCursor waits until the line of the cursor shows text.
 func (tm *term) waitCursor(text string) {
 	tm.t.Helper()
-	tm.waitUntil(func(s string) bool {
-		for _, l := range lines(s, "▶") {
-			if strings.Contains(l, text) {
-				return true
-			}
-		}
-		return false
-	}, "put the cursor on "+text)
+	tm.waitUntil(func(s string) bool { return sameLine(s, "▶", text) },
+		"put the cursor on "+text)
 }
 
 // waitUntil waits until ok is true for the screen, and returns the screen.
+// It checks the screen after each write to it.
 func (tm *term) waitUntil(ok func(string) bool, what string) string {
 	tm.t.Helper()
-	var s string
-	eventually(tm.t, func() bool { s = tm.screen(); return ok(s) }, func() string {
-		return "the screen does not " + what + ". It shows:\n" + s
-	})
-	return s
+	timeout := time.NewTimer(waitTime)
+	defer timeout.Stop()
+	for {
+		s := tm.screen()
+		if ok(s) {
+			return s
+		}
+		select {
+		case <-tm.changed:
+		case <-tm.done:
+			// rexdiff writes no more. The last write can come after the
+			// check.
+			if s = tm.screen(); ok(s) {
+				return s
+			}
+			tm.t.Fatalf("rexdiff stops, and the screen does not %s. It shows:\n%s", what, s)
+		case <-timeout.C:
+			tm.t.Fatalf("the screen does not %s. It shows:\n%s", what, s)
+		}
+	}
 }
 
-// eventually waits until ok is true. It fails the test with the text of
-// why after a while.
-func eventually(t *testing.T, ok func() bool, why func() string) {
+// pollTime is the time between two checks of poll.
+const pollTime = 20 * time.Millisecond
+
+// poll checks again and again until ok is true. It is for the files that
+// the fake tools write, and for other programs, because they give no
+// event. It fails the test with the text of why after waitTime.
+func poll(t *testing.T, ok func() bool, why func() string) {
 	t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	timeout := time.NewTimer(waitTime)
+	defer timeout.Stop()
+	tick := time.NewTicker(pollTime)
+	defer tick.Stop()
 	for !ok() {
-		if time.Now().After(deadline) {
+		select {
+		case <-tick.C:
+		case <-timeout.C:
 			t.Fatal(why())
 		}
-		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -319,7 +368,7 @@ func eventually(t *testing.T, ok func() bool, why func() string) {
 func waitFile(t *testing.T, path string, content func(string) bool) string {
 	t.Helper()
 	var s string
-	eventually(t, func() bool {
+	poll(t, func() bool {
 		b, _ := os.ReadFile(path)
 		s = string(b)
 		return content(s)
@@ -335,7 +384,7 @@ func (tm *term) exited() error {
 	select {
 	case err := <-errc:
 		return err
-	case <-time.After(15 * time.Second):
+	case <-time.After(waitTime):
 		tm.t.Fatalf("rexdiff does not exit. The screen shows:\n%s", tm.screen())
 		return nil
 	}

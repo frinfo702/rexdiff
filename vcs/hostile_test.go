@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -83,7 +83,7 @@ func TestHostilePaths(t *testing.T) {
 		}
 		got[f.Path] = f.New
 	}
-	if !reflect.DeepEqual(got, want) {
+	if !maps.Equal(got, want) {
 		t.Errorf("Diff = \n%q\nwant:\n%q", got, want)
 	}
 
@@ -153,7 +153,7 @@ func TestDiffFileKinds(t *testing.T) {
 		{Path: "out", Status: vcs.StatusAdded, New: outside},
 		{Path: "type", Status: vcs.StatusModified, Old: "a file\n", New: "a.txt"},
 	}
-	if got := changes(t, r, head(t, r), snapshot(t, r)); !reflect.DeepEqual(got, want) {
+	if got := changes(t, r, head(t, r), snapshot(t, r)); !slices.Equal(got, want) {
 		t.Errorf("Diff = \n%+v\nwant:\n%+v", got, want)
 	}
 }
@@ -286,7 +286,7 @@ func TestGrepIsLiteral(t *testing.T) {
 		for _, m := range ms {
 			got = append(got, m.Text)
 		}
-		if !reflect.DeepEqual(got, tt.want) {
+		if !slices.Equal(got, tt.want) {
 			t.Errorf("Grep(%q) = %q, want %q", tt.q, got, tt.want)
 		}
 	}
@@ -313,7 +313,7 @@ func TestCommitsHostileSubject(t *testing.T) {
 		}
 	}
 	want := []string{subjects[2], subjects[1], subjects[0], "b", "init"}
-	if !reflect.DeepEqual(got, want) {
+	if !slices.Equal(got, want) {
 		t.Errorf("Commits subjects = %q, want %q", got, want)
 	}
 }

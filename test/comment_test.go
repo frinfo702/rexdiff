@@ -2,6 +2,7 @@ package test
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -21,12 +22,19 @@ func comment(tm *term, text string) {
 }
 
 // TestCommentList checks that a comment shows on its line and in the
-// list, that n moves to it, and that the list edits and deletes it.
+// list. n and N move to it. The list edits the comment and deletes it. An
+// edit with blank text keeps the comment.
 func TestCommentList(t *testing.T) {
 	tm := start(t, newRepo(t), opts{})
 	comment(tm, "hi")
 	tm.waitFor("comment added", "●1")
-	tm.keys("k", "k", "n") // n stays in the file, as in herdr-reviewr
+	tm.keys("k")
+	tm.waitCursor("func A")
+	tm.keys("n") // n stays in the file, as in herdr-reviewr
+	tm.waitCursor("return 1")
+	tm.keys("j", "j")
+	tm.waitCursor("return x")
+	tm.keys("N")
 	tm.waitCursor("return 1")
 	tm.keys("l")
 	tm.waitFor("Comments (1)", "a.go:4 (removed)  hi")
@@ -34,56 +42,65 @@ func TestCommentList(t *testing.T) {
 	tm.typed("more")
 	tm.keys("enter")
 	tm.waitFor("a.go:4 (removed)  hi more")
+	// The flash of the edit hides the badge of the draft, so wait for
+	// the keys of the box.
+	tm.keys("e")
+	tm.waitFor("enter save")
+	tm.keys(slices.Repeat([]string{"bs"}, len("hi more"))...)
+	tm.keys("enter")
+	tm.waitGone("enter save")
+	tm.waitFor("a.go:4 (removed)  hi more")
 	tm.keys("d") // the list closes with its last comment
 	tm.waitGone("Comments (", "💬")
 }
 
-// TestCommentBox checks that the box takes more than one line, that esc
-// drops a new comment, and that v and a drag on the line numbers comment
-// on a range of lines.
-func TestCommentBox(t *testing.T) {
+// TestCommentDrag checks that a drag on the line numbers comments on a
+// range of lines.
+func TestCommentDrag(t *testing.T) {
 	tm := start(t, newRepo(t), opts{})
-	// The drag comes first: the flash of an added comment would hide the
-	// badge of the draft for flashTime.
 	tm.drag(" 1  1 ", " 3  3 ")
 	tm.waitFor("✎ a.go:1-3")
 	tm.keys("esc")
 	tm.waitGone("✎ a.go:1-3")
-	tm.keys("]", "c", "a", "ctrl+j", "b", "enter")
-	tm.waitFor("💬 a", "b")
-	tm.keys("j", "c", "x")
+}
+
+// TestCommentBox checks that the box takes more than one line, and that
+// esc drops a new comment. It also checks that v comments on a range of
+// lines.
+func TestCommentBox(t *testing.T) {
+	tm := start(t, newRepo(t), opts{})
+	// The draft comes first, because the flash of an added comment hides
+	// the badge of the draft.
+	tm.keys("]", "j", "c", "x")
 	tm.waitFor("✎ a.go:4 ")
 	tm.keys("esc")
 	tm.waitGone("✎")
-	tm.keys("v", "j", "c", "r", "enter", "l")
+	tm.keys("k", "c", "a", "ctrl+j", "b", "enter")
+	tm.waitFor("💬 a", "b")
+	tm.keys("j", "v", "j", "c", "r", "enter", "l")
 	tm.waitFor("a.go:4-5  r")
 }
 
 // TestSend checks that s pastes the review into the agent and gives it
-// the focus, and that S does the same.
+// the focus. S does the same, and so does s in the question before a quit.
 func TestSend(t *testing.T) {
 	repo := newRepo(t)
 	rex := newRex(t, repo)
 	tm := start(t, repo, opts{rex: rex})
 	tm.waitFor("send → 1 agent")
-	comment(tm, "hi")
-	tm.keys("s")
-	tm.waitFor("sent 1 comment to agent")
-	tm.waitGone("💬")
-	comment(tm, "again")
-	tm.keys("S")
-	tm.waitFor("sent 1 comment to agent")
-	calls := rex.calls(t)
-	for _, want := range []string{
-		`block.event {"block_id":"block:pi","event":{"type":"paste",` +
-			`"payload":{"text":"a.go:4 (removed)\n-\treturn 1\nhi"}}}`,
-		`session.focus_block {"block_id":"block:pi"}`,
-		`"payload":{"text":"a.go:4 (removed)\n-\treturn 1\nagain"}`,
-	} {
-		if !strings.Contains(calls, want) {
-			t.Errorf("rex calls:\n%s\nwant a call with %s", calls, want)
-		}
+	for _, keys := range [][]string{{"s"}, {"S"}, {"q", "s"}} {
+		text := "hi " + strings.Join(keys, "")
+		comment(tm, text)
+		tm.waitGone("sent 1 comment")
+		tm.keys(keys...)
+		tm.waitFor("sent 1 comment to agent")
+		tm.waitGone("💬")
+		rex.expectCalls(t, `"payload":{"text":"a.go:4 (removed)\n-\treturn 1\n`+text+`"}`)
 	}
+	rex.expectCalls(t,
+		`block.event {"block_id":"block:pi","event":{"type":"paste",`+
+			`"payload":{"text":"a.go:4 (removed)\n-\treturn 1\nhi s"}}}`,
+		`session.focus_block {"block_id":"block:pi"}`)
 }
 
 // TestSendWithoutAgent checks that s outside Rex tells the user to copy.
@@ -108,19 +125,29 @@ func TestAgentPicker(t *testing.T) {
 	tm.waitFor("send to which agent?", "1  agent", "2  cc")
 	tm.keys("2")
 	tm.waitFor("sent 1 comment to cc")
-	if calls := rex.calls(t); !strings.Contains(calls, `block.event {"block_id":"block:cc"`) {
-		t.Errorf("rex calls:\n%s\nwant a paste to block:cc", calls)
-	}
+	rex.expectCalls(t, `block.event {"block_id":"block:cc"`)
 }
 
-// TestCopy checks that y and Y copy the review and clear the comments.
+// TestAgentElsewhere checks that the last-turn scope tells when no agent
+// works in the repository.
+func TestAgentElsewhere(t *testing.T) {
+	repo := newRepo(t)
+	rex := newRex(t, repo)
+	rex.write(t, "process", recorded(t, "process.json", "{{CWD}}", t.TempDir()))
+	tm := start(t, repo, opts{rex: rex})
+	tm.keys("t")
+	tm.waitFor("no agent works here")
+}
+
+// TestCopy checks that y and Y copy the review and clear the comments. y
+// in the question before a quit does the same.
 func TestCopy(t *testing.T) {
-	for _, key := range []string{"y", "Y"} {
-		t.Run(key, func(t *testing.T) {
+	for _, keys := range [][]string{{"y"}, {"Y"}, {"q", "y"}} {
+		t.Run(strings.Join(keys, ""), func(t *testing.T) {
 			bin := clipboard(t)
 			tm := start(t, newRepo(t), opts{path: bin, env: clipEnv})
 			comment(tm, "hi")
-			tm.keys(key)
+			tm.keys(keys...)
 			tm.waitFor("copied 1 comment")
 			tm.waitGone("💬")
 			waitFile(t, filepath.Join(bin, "clip"), func(s string) bool { return s == review })
@@ -128,11 +155,13 @@ func TestCopy(t *testing.T) {
 	}
 }
 
-// TestMouse checks that a click picks a file, a triple click copies a
-// line, a drag on the code copies the lines, and the wheel scrolls.
+// TestMouse checks that a click picks a file, and a triple click copies a
+// line. It also checks that a drag on the code copies the lines, and that
+// the wheel scrolls.
 func TestMouse(t *testing.T) {
-	// The copy takes longer than the time between the clicks of a triple
-	// click. The triple click still copies the line.
+	// The fake pbcopy is slow, as a real tool can be. Its copy takes longer
+	// than the time between the clicks of a triple click. The triple click
+	// still copies the line.
 	slow := `sleep 0.5; cat > "${0%/*}/clip"` + "\n"
 	bin := tools(t, map[string]string{"pbcopy": slow, "wl-copy": slow})
 	clip := filepath.Join(bin, "clip")
@@ -179,7 +208,8 @@ func TestQuit(t *testing.T) {
 }
 
 // TestCommentStays checks that a comment stays when the agent edits the
-// file. As in herdr-reviewr, it keeps its line number.
+// file. As in herdr-reviewr, it keeps its line number. When the file
+// leaves the changes, the list marks the comment stale.
 func TestCommentStays(t *testing.T) {
 	repo := newRepo(t)
 	tm := start(t, repo, opts{})
@@ -190,21 +220,31 @@ func TestCommentStays(t *testing.T) {
 	tm.waitFor("It is new.")
 	tm.keys("l")
 	tm.waitFor("a.go:4  hi")
+	tm.waitGone("stale")
+	tm.keys("esc")
+	tm.waitGone("Comments (")
+	testgit.Git(t, repo, "checkout", "--", "a.go")
+	tm.waitFor("Changes (1)")
+	tm.keys("l")
+	tm.waitUntil(func(s string) bool { return sameLine(s, "a.go:4  hi", "stale") },
+		"mark the comment stale")
 }
 
 // TestEditorInPane checks that e opens a terminal editor at the line, in
-// a new Rex pane.
+// a new Rex pane. An editor that rexdiff does not know also opens there.
 func TestEditorInPane(t *testing.T) {
-	repo := newRepo(t)
-	rex := newRex(t, repo)
-	bin := tools(t, map[string]string{"nvim": ""})
-	tm := start(t, repo, opts{rex: rex, path: bin, env: []string{"EDITOR=nvim"}})
-	tm.keys("]", "j", "e")
-	want := "split -s S -b block:self --cwd " + repo + " -- sh -c nvim +4 '" +
-		filepath.Join(repo, "a.go") + "'"
-	eventually(t, func() bool { return strings.Contains(rex.calls(t), want) }, func() string {
-		return "rex calls:\n" + rex.calls(t) + "\nwant " + want
-	})
+	for _, editor := range []string{"nvim", "myed"} {
+		t.Run(editor, func(t *testing.T) {
+			repo := newRepo(t)
+			rex := newRex(t, repo)
+			bin := tools(t, map[string]string{editor: ""})
+			tm := start(t, repo, opts{rex: rex, path: bin, env: []string{"EDITOR=" + editor}})
+			tm.keys("]", "j", "e")
+			rex.expectCalls(t, "split -s S -b block:self --cwd "+repo+" -- sh -c "+
+				editor+" +4 '"+filepath.Join(repo, "a.go")+"'")
+			tm.waitFor("opened a.go")
+		})
+	}
 }
 
 // TestWindowEditor checks that e starts a window editor at the line, and

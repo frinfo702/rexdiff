@@ -154,8 +154,8 @@ func TestWatcherUnignore(t *testing.T) {
 }
 
 // TestWatcherShown checks that a file that an expanded ignored directory
-// gets or loses is a change, and an edit of a shown ignored file, as in
-// herdr-reviewr.
+// gets or loses is a change. An edit of a shown ignored file is also a
+// change, as in herdr-reviewr.
 func TestWatcherShown(t *testing.T) {
 	t.Parallel()
 	r, dir := newRepo(t)

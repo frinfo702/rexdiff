@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/rednafi/rexdiff/internal/proc"
 )
 
 // ErrNoTool tells that PATH has no clipboard tool. The user can fix it.
@@ -29,7 +31,7 @@ func Write(ctx context.Context, text string) error {
 		if err != nil {
 			continue
 		}
-		cmd := exec.CommandContext(ctx, path, t[1:]...)
+		cmd := proc.Command(ctx, path, t[1:]...)
 		cmd.Stdin = strings.NewReader(text)
 		// The output goes to the null device. xclip and wl-copy leave a
 		// process that keeps the clipboard, and a pipe stays open while it

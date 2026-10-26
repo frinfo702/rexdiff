@@ -20,8 +20,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"slices"
-	"strings"
 	"syscall"
 
 	"github.com/rednafi/rexdiff/rex"
@@ -92,6 +90,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if f.check {
 		return tui.CheckConfig(f.config)
 	}
+	if err := tui.CheckFlags(tui.Layout(f.layout), tui.Scope(f.scope)); err != nil {
+		return err
+	}
 
 	dir := cmp.Or(f.repo, ".")
 	repo, err := vcs.Open(ctx, dir)
@@ -124,8 +125,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		Updater: updater,
 		Resume:  resumeFile(),
 		Config:  f.config,
-		Layout:  f.layout,
-		Scope:   f.scope,
+		Layout:  tui.Layout(f.layout),
+		Scope:   tui.Scope(f.scope),
 		Agent:   f.agent,
 		Base:    f.base,
 		Wrap:    f.wrap,
@@ -134,17 +135,24 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err != nil || resume == "" {
 		return err
 	}
-	// After an update, run the new rexdiff in this process with the same
-	// flags. resumeEnv gives it the saved state.
+	// After an update, the new rexdiff runs in this process.
 	closeLog()
 	_ = repo.Close() // the new process does not run the deferred calls
-	if err = os.Setenv(resumeEnv, resume); err == nil {
+	return restart(bin, args, resume, stdout)
+}
+
+// restart runs the new rexdiff at bin in this process after an update,
+// with the same args. resumeEnv gives it the saved state in the file
+// resume. restart returns only if it fails.
+func restart(bin string, args []string, resume string, stdout io.Writer) error {
+	err := os.Setenv(resumeEnv, resume)
+	if err == nil {
 		err = update.Restart(bin, args) // returns only if it fails
 	}
 	// Run keeps the alternate screen for the restart. Leave that screen and
 	// show the cursor.
 	fmt.Fprint(stdout, "\x1b[?1049l\x1b[?25h")
-	return fmt.Errorf("start the new rexdiff: %w; your comments are saved in %s", err, resume)
+	return fmt.Errorf("start the new rexdiff (your comments are saved in %s): %w", resume, err)
 }
 
 // resumeEnv is the variable that gives a restarted rexdiff the path of the
@@ -168,8 +176,8 @@ var version string
 
 // flags are the command-line arguments of the diff viewer.
 type flags struct {
-	layout  tui.Layout
-	scope   tui.Scope
+	layout  string
+	scope   string
 	wrap    bool
 	base    string
 	agent   string
@@ -187,10 +195,9 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 	var f flags
 	fs := flag.NewFlagSet("rexdiff", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.Func("layout", "diff layout: unified (top to bottom) or split (side by side)",
-		oneOf(&f.layout, tui.LayoutUnified, tui.LayoutSplit))
-	fs.Func("scope", "start scope: uncommitted, branch, or last-turn",
-		oneOf(&f.scope, tui.ScopeUncommitted, tui.ScopeBranch, tui.ScopeLastTurn))
+	// tui.Run checks the layout and the scope, as in the settings.
+	fs.StringVar(&f.layout, "layout", "", "diff layout: unified (top to bottom) or split (side by side)")
+	fs.StringVar(&f.scope, "scope", "", "start scope: uncommitted, branch, or last-turn")
 	fs.BoolVar(&f.wrap, "wrap", true, "wrap of long lines (the key w toggles it)")
 	fs.StringVar(&f.base, "base", "", "base for the branch scope (default: the picked base, else the repo's default branch)")
 	fs.StringVar(&f.agent, "agent", os.Getenv("REXDIFF_AGENT"), "Rex block (ID or label) of the agent beside this pane")
@@ -213,22 +220,6 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 	}
 	f.repo = fs.Arg(0)
 	return f, nil
-}
-
-// oneOf returns a flag function that sets *p to a value from allowed.
-// Other values are an error, as in the settings.
-func oneOf[T ~string](p *T, allowed ...T) func(string) error {
-	return func(v string) error {
-		if !slices.Contains(allowed, T(v)) {
-			var want []string
-			for _, a := range allowed {
-				want = append(want, string(a))
-			}
-			return fmt.Errorf("expected one of %s", strings.Join(want, ", "))
-		}
-		*p = T(v)
-		return nil
-	}
 }
 
 // openLog returns a logger that appends to the file at path, and a function

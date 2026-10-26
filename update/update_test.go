@@ -166,7 +166,7 @@ func TestInstallBrew(t *testing.T) {
 		// The error has the last line of the output.
 		{
 			"brew fails", true, busy, "v0.2.0", false, "",
-			"brew: exit status 1: Error: another brew is running",
+			"brew: Error: another brew is running: exit status 1",
 		},
 		// The error has no empty part at its end.
 		{
@@ -252,9 +252,9 @@ func archive(t *testing.T, content string) []byte {
 	return b.Bytes()
 }
 
-// TestDownload checks the download of a release: the checksum, the binary
-// in the archive, the check of its version, and the replacement of the
-// target file of a link.
+// TestDownload checks the download of a release. It checks the checksum,
+// the binary in the archive, and the check of its version. It also checks
+// the replacement of the target file of a link.
 func TestDownload(t *testing.T) {
 	name := fmt.Sprintf("rexdiff-v0.2.0-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	newBin := "#!/bin/sh\necho v0.2.0\n"

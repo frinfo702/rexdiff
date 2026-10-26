@@ -112,14 +112,41 @@ func (r *fakeRex) addBlock(t *testing.T, block, label string) {
 func (r *fakeRex) addAgent(t *testing.T, block, label, app string) {
 	t.Helper()
 	r.addBlock(t, block, label)
-	r.write(t, "status."+block, recorded(t, "status.json", "{{STATE}}", "idle", "{{APP}}", app,
-		"{{AT}}", time.Now().Format(time.RFC3339Nano)))
+	r.status(t, block, app, "idle")
+}
+
+// status sets the state of the agent app in block. It returns the values
+// for the recorded files.
+func (r *fakeRex) status(t *testing.T, block, app, state string) []string {
+	t.Helper()
+	values := []string{
+		"{{ID}}", block, "{{STATE}}", state, "{{APP}}", app,
+		"{{AT}}", time.Now().Format(time.RFC3339Nano),
+	}
+	r.write(t, "status."+block, recorded(t, "status.json", values...))
+	return values
 }
 
 // write writes content to the file name of the fake.
 func (r *fakeRex) write(t *testing.T, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(r.dir, name), []byte(content+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// add adds the line to the file name of the fake.
+func (r *fakeRex) add(t *testing.T, name, line string) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(r.dir, name), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(line + "\n"); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -134,25 +161,21 @@ func (r *fakeRex) calls(t *testing.T) string {
 	return string(b)
 }
 
+// expectCalls waits until the calls of rex have each of wants.
+func (r *fakeRex) expectCalls(t *testing.T, wants ...string) {
+	t.Helper()
+	var calls string
+	poll(t, func() bool { calls = r.calls(t); return hasAll(calls, wants...) }, func() string {
+		return "rex calls = \n" + calls + "\nwant calls with:\n" + strings.Join(wants, "\n")
+	})
+}
+
 // setState sets the state of the agent pi and sends the event of the
 // change.
 func (r *fakeRex) setState(t *testing.T, state string) {
 	t.Helper()
-	values := []string{
-		"{{ID}}", "block:pi", "{{STATE}}", state, "{{APP}}", "pi",
-		"{{AT}}", time.Now().Format(time.RFC3339Nano),
-	}
-	r.write(t, "status.block:pi", recorded(t, "status.json", values...))
-	f, err := os.OpenFile(filepath.Join(r.dir, "events"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.WriteString(recorded(t, "event.json", values...) + "\n"); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
+	values := r.status(t, "block:pi", "pi", state)
+	r.add(t, "events", recorded(t, "event.json", values...))
 }
 
 // tools writes a fake program for each name in bodies, with its body, to

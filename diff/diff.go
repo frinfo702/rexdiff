@@ -232,8 +232,22 @@ func Count(old, new string) (added, deleted int) {
 func Lines(s string) []string {
 	var lines []string
 	for l := range strings.Lines(s) {
-		l = strings.TrimSuffix(l, "\n")
-		lines = append(lines, strings.TrimSuffix(l, "\r"))
+		lines = append(lines, trimEOL(l))
 	}
 	return lines
+}
+
+// trimEOL returns line without its LF or CRLF line ending.
+func trimEOL(line string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+}
+
+// countLines returns the number of lines of s, as [Lines] counts them. A
+// last line without a newline counts as a line.
+func countLines(s string) int {
+	n := strings.Count(s, "\n")
+	if s != "" && !strings.HasSuffix(s, "\n") {
+		n++
+	}
+	return n
 }

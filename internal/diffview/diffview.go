@@ -433,10 +433,7 @@ func (v *View) splitHeader(i int) string {
 // each screen line. l is nil if that side has no line. n is the line number
 // of l. The fill function renders an empty screen line. Use fill when the
 // other side has more screen lines.
-func (v *View) splitSide(
-	l *udiff.Line,
-	n, digits, width int,
-) (lines []string, fill func() string) {
+func (v *View) splitSide(l *udiff.Line, n, digits, width int) (lines []string, fill func() string) {
 	ls, sym, content := v.style.missingLine, symNone, ""
 	if l != nil {
 		ls, sym = v.kindStyle(l.Kind)
@@ -496,11 +493,7 @@ func (v *View) lineNum(ls lineStyle, n any, digits int) string {
 // codeLines renders one source line with nums, sym, and the code in width
 // cells. It cuts a long line. With wrap, the line continues on more screen
 // lines, which show blank in place of nums and no sym.
-func (v *View) codeLines(
-	ls lineStyle,
-	nums, blank, sym, content string,
-	width int,
-) []string {
+func (v *View) codeLines(ls lineStyle, nums, blank, sym, content string, width int) []string {
 	code := v.highlightCode(strings.TrimSuffix(content, "\n"), ls.code.GetBackground())
 	parts := []string{code}
 	if v.wrap {

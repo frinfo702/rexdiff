@@ -11,11 +11,11 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/rednafi/rexdiff/internal/editor"
+	"github.com/rednafi/rexdiff/internal/proc"
 )
 
 // openEditor opens the file at path, at line. It uses the editor of the
@@ -41,7 +41,7 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 		return nil
 	}
 	if _, err := exec.LookPath(ed.Program); err != nil {
-		m.flash(ed.Program + " is not installed")
+		m.flash(proc.NotInstalled(ed.Program).Error())
 		return nil
 	}
 	m.log.Debug("editor", "command", ed.Script, "window", ed.Window)
@@ -67,7 +67,7 @@ func (m *model) onSplit(msg splitMsg) tea.Cmd {
 		m.flash("opened " + msg.path)
 		return nil
 	}
-	m.log.Debug("editor split", "err", msg.err)
+	m.log.Debug("editor split failed", "err", msg.err)
 	return m.runHere(msg.path, msg.script)
 }
 
@@ -101,8 +101,6 @@ func detach(what, name string, args ...string) (tea.Cmd, error) {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	// A child of the program can keep stderr open after the program ends.
-	cmd.WaitDelay = time.Second
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -111,9 +109,8 @@ func detach(what, name string, args ...string) (tea.Cmd, error) {
 		if err == nil || errors.Is(err, exec.ErrWaitDelay) {
 			return nil
 		}
-		s := strings.TrimSpace(stderr.String())
-		if last := s[strings.LastIndexByte(s, '\n')+1:]; last != "" {
-			err = fmt.Errorf("%w: %s", err, last)
+		if last := proc.LastLine(stderr.String()); last != "" {
+			err = fmt.Errorf("%s: %w", last, err)
 		}
 		return detachedMsg{what: what, err: err}
 	}, nil
@@ -148,9 +145,10 @@ func openURL(cfg config, url string) (tea.Cmd, error) {
 	return detach("open", opener, url)
 }
 
-// command returns the command for an editor or a URL opener. The command
-// has no context, because the program must not stop when rexdiff stops.
-// For example, a kill of the editor can lose the edits of the user.
+// command returns the command for an editor or a URL opener. The context
+// of the command has no end, because the program must not stop when
+// rexdiff stops. For example, a kill of the editor can lose the edits of
+// the user.
 func command(name string, args ...string) *exec.Cmd {
-	return exec.Command(name, args...) //nolint:noctx // see the doc comment
+	return proc.Command(context.Background(), name, args...)
 }

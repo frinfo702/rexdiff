@@ -148,7 +148,7 @@ func TestCommands(t *testing.T) {
 		`api call -s S session.set_block_label {"block_id":"block:self","label":"rex\"diff"}`,
 	} {
 		if !strings.Contains(calls, want) {
-			t.Errorf("calls = \n%s\nwant a call %s", calls, want)
+			t.Errorf("calls = \n%s\nwant a call:\n%s", calls, want)
 		}
 	}
 }
@@ -162,8 +162,9 @@ func blockEvent(block, name, payload string) string {
 }
 
 // TestWatch checks that Watch reports only the changes of the status of
-// the program, with the time of Rex, and closed blocks. The fake rex stops after the events, so
-// Watch reports a reconnect and then the events again.
+// the program, with the time of Rex, and closed blocks. The fake rex stops
+// after the events, so Watch reports a reconnect and then the events
+// again.
 func TestWatch(t *testing.T) {
 	c, dir := fakeRex(t)
 	events := strings.Join([]string{

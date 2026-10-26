@@ -28,12 +28,8 @@ func RenderFile(path, src string, o Options) *Diff {
 		"\r", "\u240d",
 		"\t", strings.Repeat(" ", diffview.TabWidth),
 	).Replace(src)
-	hl := strings.Split(o.Cache.fileColours(path, src), "\n")
-	lines := 0
-	for range strings.Lines(src) {
-		lines++
-	}
-	hl = hl[:min(len(hl), lines)] // chroma can add a final newline
+	hl := strings.Split(o.Cache.fileColors(path, src), "\n")
+	hl = hl[:min(len(hl), countLines(src))] // chroma can add a final newline
 	digits := len(strconv.Itoa(len(hl)))
 	numWidth := digits + 2 // a space on each side of the number
 	// The style renders once, around a format for the number.
@@ -86,9 +82,9 @@ func fileLineParts(l string, code int, o Options) []string {
 	return []string{diffview.CutLeft(l, o.Offset)}
 }
 
-// fileColours returns highlight(path, src), and keeps it for the next
+// fileColors returns highlight(path, src), and keeps it for the next
 // call. A nil c keeps nothing.
-func (c *Cache) fileColours(path, src string) string {
+func (c *Cache) fileColors(path, src string) string {
 	if c == nil {
 		return highlight(path, src)
 	}

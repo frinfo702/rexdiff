@@ -14,7 +14,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json/v2"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rednafi/rexdiff/internal/proc"
 )
 
 // Client runs rex commands in one Rex session.
@@ -74,9 +75,7 @@ func binFromEnv() string {
 
 // command returns the command "rex args...".
 func (c *Client) command(ctx context.Context, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, cmp.Or(c.bin, "rex"), args...)
-	cmd.WaitDelay = time.Second // a child of rex can keep the output open
-	return cmd
+	return proc.Command(ctx, cmp.Or(c.bin, "rex"), args...)
 }
 
 // runRex runs "rex args..." and returns the output. If rex fails, the
@@ -86,32 +85,11 @@ func (c *Client) runRex(ctx context.Context, args ...string) ([]byte, error) {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
-	if err == nil {
-		return out, nil
+	if err != nil {
+		return nil, proc.Error("rex", err, stderr.Bytes())
 	}
-	if errors.Is(err, exec.ErrNotFound) {
-		return nil, errors.New("rex is not installed")
-	}
-	return nil, stderrError(err, &stderr)
+	return out, nil
 }
-
-// stderrError returns err of a run of rex with the first line of stderr.
-func stderrError(err error, stderr *bytes.Buffer) error {
-	msg := strings.TrimSpace(stderr.String())
-	msg = strings.TrimPrefix(msg, "Error: ")
-	msg, _, _ = strings.Cut(msg, "\n")
-	return &runError{msg: cmp.Or(msg, err.Error()), err: err}
-}
-
-// runError is a failed run of rex. Its text is the first line that rex
-// writes to stderr. It wraps the error of the process.
-type runError struct {
-	msg string
-	err error
-}
-
-func (e *runError) Error() string { return e.msg }
-func (e *runError) Unwrap() error { return e.err }
 
 // runRexJSON runs "rex args..." and decodes the JSON output into v. An
 // error of the decoder names the rex command.
@@ -307,10 +285,8 @@ func (c *Client) windows(ctx context.Context) []window {
 // windowLabel returns the label of the window with the ID id. If no window
 // has this ID, it returns "".
 func windowLabel(windows []window, id string) string {
-	for _, w := range windows {
-		if w.ID == id {
-			return w.Label
-		}
+	if i := slices.IndexFunc(windows, func(w window) bool { return w.ID == id }); i >= 0 {
+		return windows[i].Label
 	}
 	return ""
 }
@@ -454,10 +430,7 @@ func (c *Client) watchOnce(ctx context.Context, again bool, fn func(Event)) erro
 		return fmt.Errorf("rex events: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			return errors.New("rex is not installed")
-		}
-		return fmt.Errorf("rex events: %w", err)
+		return fmt.Errorf("rex events: %w", proc.Error("rex", err, nil))
 	}
 	if again {
 		fn(Event{Reconnect: true})
@@ -477,7 +450,7 @@ func (c *Client) watchOnce(ctx context.Context, again bool, fn func(Event)) erro
 		return fmt.Errorf("rex events: %w", err)
 	}
 	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("rex events: %w", stderrError(err, &stderr))
+		return fmt.Errorf("rex events: %w", proc.Error("rex", err, stderr.Bytes()))
 	}
 	return nil
 }

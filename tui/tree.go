@@ -207,8 +207,9 @@ func (m *model) shownPaths() []string {
 	return paths
 }
 
-// openIgnored returns the path of e without the last "/", and reports
-// whether e is an ignored directory that the user expands in the Files tab.
+// openIgnored returns the path of e without the last "/". It also reports
+// whether e is an ignored directory that the user expands in the Files
+// tab.
 func (m *model) openIgnored(e vcs.Entry) (string, bool) {
 	dir, isDir := strings.CutSuffix(e.Path, "/")
 	return dir, isDir && e.Ignored && m.allTree.toggled[dir]

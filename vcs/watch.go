@@ -68,11 +68,12 @@ func (r *Repo) Watch(ctx context.Context) (*Watcher, error) {
 	return w, nil
 }
 
-// Show sets the paths that show and that git does not list: the ignored
-// directories that the user expands, and the open file, which can be
-// ignored or a link. paths are relative to the root. Changed also reports
-// an edit of a shown file or of the target of a shown link, and a file that
-// a shown directory gets or loses. A new set reports no change.
+// Show sets the paths that show and that git does not list. These are the
+// ignored directories that the user expands, and the open file. The open
+// file can be ignored or a link. paths are relative to the root. Changed
+// also reports an edit of a shown file or of the target of a shown link.
+// It also reports a file that a shown directory gets or loses. A new set
+// reports no change.
 func (w *Watcher) Show(paths []string) {
 	abs := make([]string, len(paths))
 	for i, p := range paths {
@@ -143,8 +144,8 @@ func (w *Watcher) Changed(ctx context.Context) (Change, error) {
 // LastWrite returns the newest modification time of the listed files and
 // of their directories, as they are now. A new or a removed file changes
 // the time of its directory. LastWrite returns the zero time if no such
-// time is after the start of the watch. It does not change
-// what the next call to Changed reports.
+// time is after the start of the watch. It does not change what the next
+// call to Changed reports.
 func (w *Watcher) LastWrite() time.Time {
 	var last time.Time
 	for _, p := range slices.Concat(w.files, w.dirs) {
@@ -294,8 +295,8 @@ func sumPaths(paths []string) uint64 {
 }
 
 // sumFiles is like sumPaths. For a directory, it also adds the git files
-// of the nested repository or the submodule in it, because a commit there
-// does not change the directory.
+// of the nested repository or the submodule in it. A commit there does not
+// change the directory.
 func sumFiles(paths []string) uint64 {
 	s := newSum()
 	for _, p := range paths {
@@ -306,11 +307,11 @@ func sumFiles(paths []string) uint64 {
 	return uint64(s)
 }
 
-// sum is an FNV-64a hash. It does not allocate, as hash/fnv does for a
+// sum is a 64-bit FNV-1a hash. It does not allocate, as hash/fnv does for a
 // string.
 type sum uint64
 
-// newSum returns the sum of no bytes, the FNV-64a offset basis.
+// newSum returns the sum of no bytes, the FNV-1a offset basis.
 func newSum() sum { return 14695981039346656037 }
 
 // byte adds the byte b.

@@ -212,7 +212,6 @@ type model struct {
 	bg, fg color.Color
 	red    color.Color // the ANSI red of the terminal, or nil
 	green  color.Color // the ANSI green of the terminal, or nil
-	dark   bool
 	ticks  int
 
 	// watch tells when the files or the refs change, or is nil. If it is
@@ -398,7 +397,7 @@ type (
 		err   error
 	}
 	grepMsg struct {
-		gen  int // the search whose result shows; others are stale
+		gen  int // the search whose result shows. Other searches are stale.
 		hits []vcs.Match
 		more bool // git finds more matches than hits has
 		err  error
@@ -491,7 +490,7 @@ func (m *model) reloadIfChanged() { m.loads.want = true }
 // it runs in a command, one at a time. A request during a reload starts
 // one more reload after it.
 type reloads struct {
-	gen     int  // the reload whose result shows; others are stale
+	gen     int  // the reload whose result shows. Other reloads are stale.
 	running bool // the reload gen runs
 	want    bool // a reload is due
 	force   bool // the due reload shows the changes even if the trees are the same
@@ -765,7 +764,7 @@ func (m *model) handleMsg(msg tea.Msg) tea.Cmd {
 		cmd = tea.Batch(tick(tickInterval), m.onTick())
 	case tea.BackgroundColorMsg:
 		if !sameColor(m.bg, msg.Color) {
-			m.bg, m.dark = msg.Color, msg.IsDark()
+			m.bg = msg.Color
 			m.rerender()
 		}
 	case tea.ForegroundColorMsg:

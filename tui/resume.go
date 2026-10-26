@@ -1,9 +1,5 @@
 package tui
 
-// After an update, rexdiff starts again in the same terminal. The old
-// program saves the comments and the place of the user in a file. The new
-// program reads the file, so that the user continues from the same place.
-
 import (
 	"encoding/json/v2"
 	"os"
@@ -13,6 +9,10 @@ import (
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/vcs"
 )
+
+// After an update, rexdiff starts again in the same terminal. The old
+// program saves the comments and the place of the user in a file. The new
+// program reads the file, so that the user continues from the same place.
 
 // resumeState holds the comments, the scope, the view, the expanded folds,
 // and the places in the panes for a restart.
@@ -68,7 +68,7 @@ type resumePane struct {
 }
 
 // place returns the place of p, for the resume state.
-func (p *pane) place() resumePane { return resumePane{p.cur, p.top, p.xoff} }
+func (p *pane) place() resumePane { return resumePane{Cur: p.cur, Top: p.top, Xoff: p.xoff} }
 
 // restore moves p to the place s, within its lines.
 func (p *pane) restore(s resumePane) {
@@ -79,16 +79,29 @@ func (p *pane) restore(s resumePane) {
 // saveResume writes the state to a new file, and returns its path.
 func (m *model) saveResume() (string, error) {
 	s := resumeState{
-		Tab: m.tab, Scope: m.scope, Base: m.base, From: m.from, To: m.to,
-		Changes: m.changePane.place(),
-		Viewer:  m.allPane.place(),
-		PR:      m.prPane.place(),
-		Split:   m.split, Wrap: m.wrap, Rendered: m.rendered,
-		ListPos: m.listPos, ListHidden: m.listHidden, FocusList: m.focusList,
-		ListW: m.listW, ListPct: m.listPct, Folds: m.folds, Comments: &m.comments, LastSent: m.lastSent, Beside: m.beside,
+		Tab:        m.tab,
+		Scope:      m.scope,
+		Base:       m.base,
+		From:       m.from,
+		To:         m.to,
+		Changes:    m.changePane.place(),
+		Viewer:     m.allPane.place(),
+		PR:         m.prPane.place(),
+		Split:      m.split,
+		Wrap:       m.wrap,
+		Rendered:   m.rendered,
+		ListPos:    m.listPos,
+		ListHidden: m.listHidden,
+		FocusList:  m.focusList,
+		ListW:      m.listW,
+		ListPct:    m.listPct,
+		Folds:      m.folds,
+		Comments:   &m.comments,
+		LastSent:   m.lastSent,
+		Beside:     m.beside,
 	}
 	if t := m.turn; t != nil {
-		s.Turn = &resumeTurn{t.block, t.app, t.tree, t.running, t.at}
+		s.Turn = &resumeTurn{Block: t.block, App: t.app, Tree: t.tree, Running: t.running, At: t.at}
 	}
 	if m.prPlace != nil { // the PR has not loaded since the last restart
 		s.PR = *m.prPlace

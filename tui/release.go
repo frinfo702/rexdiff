@@ -1,10 +1,5 @@
 package tui
 
-// The footer tells the user about a newer release. A key or a click
-// starts the update to it in the background. Then rexdiff starts again in
-// the same pane, with the comments and the place of the user. The update
-// package installs the release. This file shows the state of the update.
-
 import (
 	"context"
 	"fmt"
@@ -13,6 +8,11 @@ import (
 
 	"github.com/rednafi/rexdiff/update"
 )
+
+// The footer tells the user about a newer release. A key or a click
+// starts the update to it in the background. Then rexdiff starts again in
+// the same pane, with the comments and the place of the user. The update
+// package installs the release. This file shows the state of the update.
 
 // Updater finds and installs releases. *update.Updater implements it.
 type Updater interface {

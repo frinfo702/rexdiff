@@ -373,9 +373,9 @@ func invalid(key, want, value string) error {
 // onlyPlaceholders reports whether each { in command opens one of the
 // known placeholders, for example {file}.
 func onlyPlaceholders(command string, known ...string) bool {
-	for _, s := range strings.Split(command, "{")[1:] {
-		name, _, ok := strings.Cut(s, "}")
-		if !ok || !slices.Contains(known, name) {
+	for _, rest, ok := strings.Cut(command, "{"); ok; _, rest, ok = strings.Cut(rest, "{") {
+		name, _, closed := strings.Cut(rest, "}")
+		if !closed || !slices.Contains(known, name) {
 			return false
 		}
 	}

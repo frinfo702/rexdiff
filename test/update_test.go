@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -20,7 +21,10 @@ import (
 // does. It returns the address of the latest release.
 func release(t *testing.T, tag, bin string) string {
 	t.Helper()
-	content := read(t, bin)
+	content, err := os.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var b bytes.Buffer
 	gz := gzip.NewWriter(&b)
 	tw := tar.NewWriter(gz)
@@ -28,7 +32,7 @@ func release(t *testing.T, tag, bin string) string {
 	if err := tw.WriteHeader(hdr); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tw.Write([]byte(content)); err != nil {
+	if _, err := tw.Write(content); err != nil {
 		t.Fatal(err)
 	}
 	if err := tw.Close(); err != nil {
@@ -38,9 +42,10 @@ func release(t *testing.T, tag, bin string) string {
 		t.Fatal(err)
 	}
 	name := "rexdiff-" + tag + "-" + runtime.GOOS + "-" + runtime.GOARCH + ".tar.gz"
-	sum := sha256.Sum256(b.Bytes())
+	archive := b.Bytes()
+	sum := sha256.Sum256(archive)
 	files := map[string][]byte{
-		"/" + name:        b.Bytes(),
+		"/" + name:        archive,
 		"/sha256sums.txt": []byte(hex.EncodeToString(sum[:]) + "  " + name + "\n"),
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,20 +78,17 @@ func TestUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	latest := release(t, "v0.2.0", next)
-	tm := startBin(t, bin, newRepo(t), opts{env: []string{"REXDIFF_LATEST_URL=" + latest}})
+	tm := start(t, newRepo(t), opts{bin: bin, env: []string{"REXDIFF_LATEST_URL=" + latest}})
 	tm.waitFor("rexdiff v0.2.0 is out: press U or click here to update")
 	comment(tm, "hi")
 	tm.keys("U")
-	var version string
-	eventually(t, func() bool {
-		out, _ := exec.CommandContext(t.Context(), bin, "-version").Output()
-		version = strings.TrimSpace(string(out))
-		return version == "v0.2.0"
-	}, func() string { return "rexdiff -version is " + version + ", want v0.2.0" })
 	// The new rexdiff is the latest, so it shows no update. It has the
 	// comment, but not the message of the old one.
 	tm.waitUntil(func(s string) bool {
-		return strings.Contains(s, "💬 hi") && !strings.Contains(s, "is out") &&
-			!strings.Contains(s, "updating") && !strings.Contains(s, "comment added")
+		return strings.Contains(s, "💬 hi") && !hasAny(s, "is out", "updating", "comment added")
 	}, "show the comment in the new rexdiff")
+	out, err := exec.CommandContext(t.Context(), bin, "-version").Output()
+	if got := strings.TrimSpace(string(out)); err != nil || got != "v0.2.0" {
+		t.Errorf("rexdiff -version = %q (%v), want v0.2.0", got, err)
+	}
 }
