@@ -307,8 +307,13 @@ func frame(start time.Time) tea.Cmd {
 }
 
 // shimmer renders s in style with a band of light that sweeps from left
-// to right, d after the start, as Rex marks a working agent.
-func shimmer(style lipgloss.Style, s string, d time.Duration) string {
+// to right, d after the start, as Rex marks a working agent. The band is
+// white on a dark background and black on a light one.
+func shimmer(style lipgloss.Style, s string, d time.Duration, dark bool) string {
+	band := lipgloss.Color("#000000")
+	if dark {
+		band = lipgloss.Color("#ffffff")
+	}
 	rs := []rune(s)
 	const tail = 3 // the frames that the band is off the text at each end
 	pos := int(d/guideFrame)%(len(rs)+2*tail) - tail
@@ -317,7 +322,7 @@ func shimmer(style lipgloss.Style, s string, d time.Duration) string {
 		st := style // the band lights the text from the colour of the style
 		switch abs(i - pos) {
 		case 0:
-			st = style.Foreground(lipgloss.Color("3")).Bold(true)
+			st = style.Foreground(band).Bold(true)
 		case 1:
 			st = style.UnsetForeground()
 		}

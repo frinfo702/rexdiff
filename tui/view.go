@@ -90,7 +90,7 @@ func (m *model) header() (string, []headerSpan) {
 		}
 		var label string
 		if t == tabGuide && m.guide.running {
-			label = style.Render(fmt.Sprintf("%d ", i+1)) + shimmer(style, tabNames[t], time.Since(m.guide.started))
+			label = style.Render(fmt.Sprintf("%d ", i+1)) + shimmer(style, tabNames[t], time.Since(m.guide.started), m.bg == nil || m.dark)
 		} else {
 			label = style.Render(fmt.Sprintf("%d %s", i+1, tabNames[t]))
 		}

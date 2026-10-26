@@ -926,7 +926,7 @@ func TestGuide(t *testing.T) {
 // TestShimmer checks that the band of the shimmer moves along the text
 // and keeps the text.
 func TestShimmer(t *testing.T) {
-	a, b := shimmer(dimStyle, "Guide", 3*guideFrame), shimmer(dimStyle, "Guide", 4*guideFrame)
+	a, b := shimmer(dimStyle, "Guide", 3*guideFrame, true), shimmer(dimStyle, "Guide", 4*guideFrame, true)
 	if a == b || ansi.Strip(a) != "Guide" || ansi.Strip(b) != "Guide" {
 		t.Errorf("shimmer: %q, %q", a, b)
 	}
