@@ -5,6 +5,7 @@ package diffview
 import (
 	"fmt"
 	"image/color"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -60,6 +61,7 @@ type View struct {
 	isComputed bool
 	err        error
 	unified    udiff.UnifiedDiff
+	scopes     []string // the scope line of each hunk, see scopesOf
 
 	splitHunks []splitHunk
 
@@ -208,7 +210,68 @@ func (v *View) computeDiff() error {
 		edits,
 		udiff.DefaultContextLines,
 	)
+	firsts := make([]int, len(v.unified.Hunks))
+	for i, h := range v.unified.Hunks {
+		firsts[i] = h.ToLine - 1
+	}
+	v.scopes = scopesOf(strings.Split(v.after.content, "\n"), firsts)
 	return v.err
+}
+
+// declaration matches a line that declares a function, a type, or a
+// module in most languages, after optional modifiers such as "pub".
+var declaration = regexp.MustCompile(`^\s*(?:(?:export|pub(?:\([a-z]+\))?|public|private|protected|internal|static|async|abstract|final|sealed|open|override|default|unsafe|inline|virtual|extern|data|const)\s+)*(?:def|class|func|fn|fun|function|struct|enum|union|trait|impl|interface|type|module|mod|namespace|object|record|protocol|extension|actor|macro|sub|proc)\b`)
+
+// scopesOf returns the scope of each line in firsts (0-based, ascending):
+// the line that encloses it, as "def foo(" or "func (v *View) text() string {",
+// or "" if none does. The scope is the nearest line above with less indent
+// that is a declaration, or that starts at column 0 with a word, as git's
+// default funcname does. One pass over lines finds all the scopes.
+// ponytail: a keyword heuristic, not a parser; it can miss a method in a
+// language without keywords (Java, C++), or pick a multiline statement.
+func scopesOf(lines []string, firsts []int) []string {
+	indent := func(s string) int { return len(s) - len(strings.TrimLeft(s, " \t")) }
+	type decl struct {
+		indent int
+		line   string
+	}
+	var stack []decl // the declarations above the current line, by growing indent
+	scopes := make([]string, len(firsts))
+	i := 0
+	for k, first := range firsts {
+		for ; i < min(first, len(lines)); i++ {
+			l := strings.TrimRight(lines[i], "\r")
+			if strings.TrimSpace(l) == "" {
+				continue
+			}
+			d := indent(l)
+			c := l[d]
+			if declaration.MatchString(l) ||
+				d == 0 && (c == '_' || c == '$' || 'a' <= c|0x20 && c|0x20 <= 'z') {
+				for len(stack) > 0 && stack[len(stack)-1].indent >= d {
+					stack = stack[:len(stack)-1]
+				}
+				stack = append(stack, decl{d, l})
+			}
+		}
+		if first < 0 || first >= len(lines) {
+			continue
+		}
+		target := indent(lines[first])
+		for _, l := range lines[first:] { // the first line can be blank
+			if strings.TrimSpace(l) != "" {
+				target = indent(l)
+				break
+			}
+		}
+		for j := len(stack) - 1; j >= 0; j-- {
+			if stack[j].indent < target {
+				scopes[k] = Escape(strings.ReplaceAll(strings.TrimSpace(stack[j].line), "\t", " "))
+				break
+			}
+		}
+	}
+	return scopes
 }
 
 // convertDiffToSplit makes the split hunks, if the layout is split.
@@ -270,7 +333,7 @@ func codeWidthOf(l *udiff.Line) int {
 func (v *View) detectUnifiedCodeWidth() {
 	v.codeWidth = 0
 	for i, h := range v.unified.Hunks {
-		headerWidth := ansi.StringWidth(v.hunkHeader(i))
+		headerWidth := v.headerWidth(i)
 		for _, l := range h.Lines {
 			v.codeWidth = max(v.codeWidth, codeWidthOf(&l), headerWidth)
 		}
@@ -282,7 +345,7 @@ func (v *View) detectUnifiedCodeWidth() {
 func (v *View) detectSplitCodeWidth() {
 	v.codeWidth = 0
 	for i, h := range v.splitHunks {
-		headerWidth := ansi.StringWidth(v.hunkHeader(i))
+		headerWidth := v.headerWidth(i)
 		for _, l := range h.lines {
 			if l.before != nil {
 				v.codeWidth = max(v.codeWidth, codeWidthOf(l.before), headerWidth)
@@ -321,6 +384,7 @@ func (v *View) renderUnified() string {
 	}
 	for i, h := range v.unified.Hunks {
 		b.WriteString(v.unifiedHeader(i) + "\n")
+		v.writeScope(&b, i)
 		oldN, newN := h.FromLine, h.ToLine
 		for _, l := range h.Lines {
 			ls, sym := v.kindStyle(l.Kind)
@@ -360,6 +424,7 @@ func (v *View) renderSplit() string {
 	afterWidth := v.codeWidth + btoi(v.extraColOnAfter)
 	for i, h := range v.splitHunks {
 		b.WriteString(v.splitHeader(i) + "\n")
+		v.writeScope(&b, i)
 		oldN, newN := h.fromLine, h.toLine
 		for _, l := range h.lines {
 			left, leftFill := v.splitSide(l.before, oldN, v.beforeNumDigits, v.codeWidth)
@@ -511,6 +576,34 @@ func (v *View) hunkHeader(i int) string {
 	default:
 		return fmt.Sprintf("  ↕ %d unchanged lines ", n)
 	}
+}
+
+// headerWidth returns the width of the header and the scope row of hunk i.
+func (v *View) headerWidth(i int) int {
+	return max(ansi.StringWidth(v.hunkHeader(i)), ansi.StringWidth(v.scopes[i])+1)
+}
+
+// writeScope writes the scope row of hunk i below its header, if the hunk
+// has a scope: the enclosing line in grey, in the code column, with no line
+// number. In the split layout it shows on the left side only, as the header.
+func (v *View) writeScope(b *strings.Builder, i int) {
+	scope := v.scopes[i]
+	if scope == "" {
+		return
+	}
+	ls := v.style.equalLine
+	grey := lipgloss.NewStyle().Foreground(ls.lineNumber.GetForeground())
+	nums := v.lineNum(ls, " ", v.beforeNumDigits)
+	if v.layout == layoutUnified {
+		nums += v.lineNum(ls, " ", v.afterNumDigits)
+	}
+	code := ansi.Truncate(scope, v.codeWidth, ellipsis)
+	b.WriteString(nums + ls.symbol.Render(symNone) + grey.Width(v.codeWidth).Render(code))
+	if v.layout == layoutSplit {
+		b.WriteString(v.lineNum(ls, " ", v.afterNumDigits) +
+			ls.code.Width(v.fullCodeWidth+btoi(v.extraColOnAfter)).Render(" "))
+	}
+	b.WriteByte('\n')
 }
 
 // hunkLineCounts returns the number of old and new lines in hunk h.

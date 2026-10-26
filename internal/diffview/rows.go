@@ -45,7 +45,7 @@ func (v *View) rows() []Row {
 }
 
 // lineRows returns one row for each source line, and one for each hunk
-// header.
+// header and scope row.
 func (v *View) lineRows() []Row {
 	if v.layout == layoutSplit {
 		return v.splitRows()
@@ -56,8 +56,8 @@ func (v *View) lineRows() []Row {
 // unifiedRows returns the rows of the unified layout.
 func (v *View) unifiedRows() []Row {
 	var rows []Row
-	for _, h := range v.unified.Hunks {
-		rows = append(rows, Row{Kind: RowHunk})
+	for i, h := range v.unified.Hunks {
+		rows = v.headerRows(rows, i)
 		b, a := h.FromLine, h.ToLine
 		for _, l := range h.Lines {
 			switch l.Kind {
@@ -80,8 +80,8 @@ func (v *View) unifiedRows() []Row {
 // splitRows returns the rows of the split layout.
 func (v *View) splitRows() []Row {
 	var rows []Row
-	for _, h := range v.splitHunks {
-		rows = append(rows, Row{Kind: RowHunk})
+	for i, h := range v.splitHunks {
+		rows = v.headerRows(rows, i)
 		b, a := h.fromLine, h.toLine
 		for _, l := range h.lines {
 			r := Row{Kind: splitKind(l)}
@@ -95,6 +95,16 @@ func (v *View) splitRows() []Row {
 			}
 			rows = append(rows, r)
 		}
+	}
+	return rows
+}
+
+// headerRows adds the rows of the header of hunk i to rows: the header, and
+// the scope row if the hunk has a scope.
+func (v *View) headerRows(rows []Row, i int) []Row {
+	rows = append(rows, Row{Kind: RowHunk})
+	if v.scopes[i] != "" {
+		rows = append(rows, Row{Kind: RowHunk})
 	}
 	return rows
 }
