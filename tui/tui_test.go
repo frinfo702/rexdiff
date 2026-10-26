@@ -901,7 +901,11 @@ func TestGuide(t *testing.T) {
 	if cmd == nil || !m.guide.running {
 		t.Fatal("the Guide tab did not start the agent")
 	}
-	m = step(t, m, cmd())
+	for _, c := range cmd().(tea.BatchMsg) { // the agent, not the frame of the shimmer
+		if msg, ok := c().(guideMsg); ok {
+			m = step(t, m, msg)
+		}
+	}
 	if !shows(m, "Use a local in A", "01 / 02", "A keeps x.", "x := 2") {
 		t.Errorf("Guide tab:\n%s", view(m))
 	}
@@ -916,6 +920,15 @@ func TestGuide(t *testing.T) {
 	m2.shownTrees = m.shownTrees
 	if m2.ensureGuide(); len(m2.guide.sections) != 1 {
 		t.Errorf("the guide was not kept: %+v", m2.guide)
+	}
+}
+
+// TestShimmer checks that the band of the shimmer moves along the text
+// and keeps the text.
+func TestShimmer(t *testing.T) {
+	a, b := shimmer(dimStyle, "Guide", 3*guideFrame), shimmer(dimStyle, "Guide", 4*guideFrame)
+	if a == b || ansi.Strip(a) != "Guide" || ansi.Strip(b) != "Guide" {
+		t.Errorf("shimmer: %q, %q", a, b)
 	}
 }
 

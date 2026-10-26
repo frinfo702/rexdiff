@@ -32,11 +32,12 @@ import (
 
 // Limits of the guide.
 const (
-	guideWidth    = 48              // the widest column of the guide text
-	guideMaxDiff  = 200_000         // the most bytes of diff that the agent reads
-	guideTimeout  = 5 * time.Minute // the longest that the agent can take
-	guideCommits  = 20              // the most commit subjects in the prompt
-	guideMaxTitle = 80              // the longest title, in columns
+	guideWidth    = 48                    // the widest column of the guide text
+	guideMaxDiff  = 200_000               // the most bytes of diff that the agent reads
+	guideTimeout  = 5 * time.Minute       // the longest that the agent can take
+	guideCommits  = 20                    // the most commit subjects in the prompt
+	guideMaxTitle = 80                    // the longest title, in columns
+	guideFrame    = 80 * time.Millisecond // a step of the shimmer of the Guide tab
 )
 
 // guideAgents are the agent CLIs that can write the guide, in the order
@@ -286,7 +287,7 @@ func (m *model) writeGuide() tea.Cmd {
 
 	ctx, dir, trees := m.ctx, m.repo.Root(), m.shownTrees
 	prompt := guidePrompt(m.guideCommits(), m.files)
-	return func() tea.Msg {
+	return tea.Batch(frame(m.guide.started), func() tea.Msg {
 		out, err := runAgent(ctx, dir, agent, prompt)
 		if err != nil {
 			return guideMsg{trees: trees, err: err}
@@ -296,8 +297,36 @@ func (m *model) writeGuide() tea.Cmd {
 			saveGuide(trees, secs)
 		}
 		return guideMsg{trees: trees, sections: secs, err: err}
-	}
+	})
 }
+
+// frame returns a command that sends the next frame of the shimmer of
+// the run that started at start.
+func frame(start time.Time) tea.Cmd {
+	return tea.Tick(guideFrame, func(time.Time) tea.Msg { return frameMsg(start) })
+}
+
+// shimmer renders s in style with a band of light that sweeps from left
+// to right, d after the start, as Rex marks a working agent.
+func shimmer(style lipgloss.Style, s string, d time.Duration) string {
+	rs := []rune(s)
+	const tail = 3 // the frames that the band is off the text at each end
+	pos := int(d/guideFrame)%(len(rs)+2*tail) - tail
+	var b strings.Builder
+	for i, r := range rs {
+		st := style // the band lights the text from the colour of the style
+		switch abs(i - pos) {
+		case 0:
+			st = style.Foreground(lipgloss.Color("3")).Bold(true)
+		case 1:
+			st = style.UnsetForeground()
+		}
+		b.WriteString(st.Render(string(r)))
+	}
+	return b.String()
+}
+
+func abs(n int) int { return max(n, -n) }
 
 // onGuide shows the guide that the agent wrote. After an error, the old
 // guide stays.

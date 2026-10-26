@@ -320,6 +320,7 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 // Messages.
 type (
 	tickMsg   struct{}
+	frameMsg  time.Time // a frame of the shimmer of the guide run that started then
 	agentsMsg struct {
 		agents []rex.Agent
 		err    error
@@ -559,6 +560,10 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		m.onPR(msg)
 	case guideMsg:
 		m.onGuide(msg)
+	case frameMsg:
+		if m.guide.running && m.guide.started.Equal(time.Time(msg)) { // one chain per run
+			cmd = frame(m.guide.started)
+		}
 	case grepMsg:
 		m.onGrep(msg)
 	case *update.Release:
