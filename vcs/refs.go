@@ -2,6 +2,7 @@ package vcs
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,12 +18,18 @@ type Commit struct {
 
 // Commits returns the last n commits of HEAD, the newest first.
 func (r *Repo) Commits(ctx context.Context, n int) ([]Commit, error) {
+	return r.Log(ctx, "HEAD", n)
+}
+
+// Log returns the last n commits of the revision range rev, for example
+// "main..HEAD", the newest first.
+func (r *Repo) Log(ctx context.Context, rev string, n int) ([]Commit, error) {
 	// The subject is last, because it can have the separator.
 	const (
 		format  = "--format=%H%x1f%h%x1f%ar%x1f%an%x1f%s"
 		nFields = 5 // the number of fields in format
 	)
-	out, err := r.run(ctx, nil, "log", "-n", strconv.Itoa(n), format)
+	out, err := r.run(ctx, nil, "log", "-n", strconv.Itoa(n), format, "--end-of-options", rev)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +81,42 @@ func (r *Repo) DefaultBase(ctx context.Context) string {
 		}
 	}
 	return "HEAD"
+}
+
+// Branch returns the name of the branch that HEAD points to, or "" if
+// HEAD is detached or has no commits.
+func (r *Repo) Branch(ctx context.Context) string {
+	out, err := r.run(ctx, nil, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// Upstream returns the branch that the current branch tracks, for example
+// "origin/main", or "" if it tracks none.
+func (r *Repo) Upstream(ctx context.Context) string {
+	out, err := r.run(ctx, nil, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// AheadBehind counts the commits that HEAD has and base does not
+// (ahead), and the commits that base has and HEAD does not (behind).
+func (r *Repo) AheadBehind(ctx context.Context, base string) (ahead, behind int, err error) {
+	out, err := r.run(ctx, nil, "rev-list", "--left-right", "--count", "--end-of-options", "HEAD..."+base)
+	if err != nil {
+		return 0, 0, err
+	}
+	f := strings.Fields(out)
+	if len(f) != 2 {
+		return 0, 0, fmt.Errorf("git rev-list: bad output %q", out)
+	}
+	ahead, _ = strconv.Atoi(f[0])
+	behind, _ = strconv.Atoi(f[1])
+	return ahead, behind, nil
 }
 
 // currentBranch returns the name of the branch that HEAD points to.

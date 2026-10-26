@@ -309,6 +309,18 @@ func TestRefs(t *testing.T) {
 	if _, err := r.Resolve(ctx, "nosuchref"); err == nil {
 		t.Error("Resolve(nosuchref): no error")
 	}
+	if b := r.Branch(ctx); b != "feat" {
+		t.Errorf("Branch = %q", b)
+	}
+	if u := r.Upstream(ctx); u != "" {
+		t.Errorf("Upstream = %q, want none", u)
+	}
+	if a, b, err := r.AheadBehind(ctx, "main"); a != 1 || b != 0 || err != nil {
+		t.Errorf("AheadBehind(main) = %d, %d, %v; want 1, 0", a, b, err)
+	}
+	if cs, err := r.Log(ctx, "main..HEAD", 10); err != nil || len(cs) != 1 || cs[0].Subject != "b" {
+		t.Errorf("Log(main..HEAD) = %v, %v", cs, err)
+	}
 }
 
 // TestEditor checks that Editor returns core.editor, or "" if it is not set.
