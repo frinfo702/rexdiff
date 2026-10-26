@@ -15,16 +15,16 @@ import (
 type state int
 
 const (
-	// resting tells that each agent rests, or that there is no agent.
-	resting state = iota
-	// working tells that at least one agent works.
-	working
-	// held tells that no agent works, but one does not rest. For example,
-	// it waits at a prompt. A turn that is open stays open.
-	held
+	// stateResting tells that each agent rests, or that there is no agent.
+	stateResting state = iota
+	// stateWorking tells that at least one agent works.
+	stateWorking
+	// stateHeld tells that no agent works, but one does not rest. For
+	// example, it waits at a prompt. A turn that is open stays open.
+	stateHeld
 )
 
-// rests tells if s is a state between turns. A blocked agent and an
+// rests reports whether s is a state between turns. A blocked agent and an
 // unknown state are in the middle of a turn.
 func rests(s rex.State) bool { return s == rex.StateIdle || s == rex.StateDone }
 
@@ -32,21 +32,21 @@ func rests(s rex.State) bool { return s == rex.StateIdle || s == rex.StateDone }
 // states. One working agent makes the repository work.
 func fold(states ...rex.State) state {
 	if slices.Contains(states, rex.StateWorking) {
-		return working
+		return stateWorking
 	}
 	if slices.ContainsFunc(states, func(s rex.State) bool { return !rests(s) }) {
-		return held
+		return stateHeld
 	}
-	return resting
+	return stateResting
 }
 
 // Tracker finds the start and the end of each turn in a series of states.
 // The zero Tracker is ready to use.
 type Tracker struct {
-	// prevResting tells if the last state is resting. It is false at
+	// prevResting is true if the last state is resting. It is false at
 	// first, so the first state starts no turn.
 	prevResting bool
-	// worked tells if the repository works after its last rest. An end
+	// worked is true if the repository works after its last rest. An end
 	// can come through held, but a start cannot. Thus the two edges keep
 	// different memories.
 	worked bool
@@ -61,13 +61,13 @@ func (t *Tracker) Observe(states ...rex.State) (started, ended bool) {
 
 // observe takes the next state of the repository.
 func (t *Tracker) observe(s state) (started, ended bool) {
-	started = s == working && t.prevResting
-	ended = t.worked && s == resting
-	t.prevResting = s == resting
+	started = s == stateWorking && t.prevResting
+	ended = t.worked && s == stateResting
+	t.prevResting = s == stateResting
 	switch s {
-	case working:
+	case stateWorking:
 		t.worked = true
-	case resting:
+	case stateResting:
 		t.worked = false
 	}
 	return started, ended

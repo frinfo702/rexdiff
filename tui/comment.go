@@ -41,10 +41,10 @@ func (m *model) target(i int, pref diff.Side) *targetLine {
 
 // selectedChange returns the selected file of the Changes tab, or nil.
 func (m *model) selectedChange() *changedFile {
-	if m.changeSel >= len(m.files) {
+	if m.changeSel >= len(m.changeFiles) {
 		return nil
 	}
-	return &m.files[m.changeSel]
+	return &m.changeFiles[m.changeSel]
 }
 
 // contentFor returns the text of side s of the file at path.
@@ -92,7 +92,7 @@ func (m *model) revCurrent(c *diff.Comment) bool {
 // stale if its file is gone.
 func (m *model) stale(c *diff.Comment) bool {
 	if c.Anchor.InDiff {
-		return !slices.ContainsFunc(m.files, func(f changedFile) bool { return f.Path == c.Path })
+		return !slices.ContainsFunc(m.changeFiles, func(f changedFile) bool { return f.Path == c.Path })
 	}
 	_, err := os.Lstat(filepath.Join(m.repo.Root(), c.Path))
 	return err != nil
@@ -217,10 +217,10 @@ func (m *model) closeComment() {
 	}
 }
 
-// newLineNear returns the new line of row i. A row with no new line, such
+// nearNewLine returns the new line of row i. A row with no new line, such
 // as a deleted line, gives the next new line below it. If there is none, it
 // gives the last new line above it. If there is none, it gives 1.
-func newLineNear(rows []diff.Row, i int) int {
+func nearNewLine(rows []diff.Row, i int) int {
 	for _, r := range rows[i:] {
 		if r.New > 0 {
 			return r.New
@@ -244,5 +244,5 @@ func (m *model) editOrOpen() tea.Cmd {
 	if p.path == "" {
 		return nil
 	}
-	return m.openEditor(p.path, newLineNear(p.rows, p.cur))
+	return m.openEditor(p.path, nearNewLine(p.rows, p.cur))
 }

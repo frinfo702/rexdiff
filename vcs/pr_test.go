@@ -97,7 +97,7 @@ func TestPullRequest(t *testing.T) {
 			Forge:  vcs.ForgeGitHub,
 			Number: 7,
 			Title:  "Add x",
-			State:  vcs.StateDraft,
+			State:  vcs.PRDraft,
 			URL:    "https://github.com/o/r/pull/7",
 			Author: "ann",
 			Head:   "feat",
@@ -119,7 +119,7 @@ func TestPullRequest(t *testing.T) {
 			Forge:  vcs.ForgeGitLab,
 			Number: 3,
 			Title:  "Fix y",
-			State:  vcs.StateOpen,
+			State:  vcs.PROpen,
 			URL:    "https://gitlab.com/o/r/-/merge_requests/3",
 			Author: "cy",
 			Head:   "fix",
@@ -134,7 +134,7 @@ func TestPullRequest(t *testing.T) {
 			Forge:  vcs.ForgeAzure,
 			Number: 9,
 			Title:  "Z",
-			State:  vcs.StateOpen,
+			State:  vcs.PROpen,
 			URL:    "https://dev.azure.com/o/p/_git/r/pullrequest/9",
 			Author: "Dee",
 			Head:   "feat",
@@ -175,8 +175,8 @@ func TestPullRequestErrors(t *testing.T) {
 		{remote: "https://example.com/github.com/r.git", branch: "feat", errText: unsupported},
 		{remote: "git@example.com:gitlab/r.git", branch: "feat", errText: unsupported},
 		{remote: "https://git.corp.example/r", branch: "feat", hosts: corp, errText: unsupported},
-		{remote: "git@git.corp:o/r.git", branch: "feat", hosts: corp, errText: "glab isn't installed"},
-		{remote: "ssh://git@GitHub.com:22/o/r", branch: "feat", errText: "gh isn't installed"},
+		{remote: "git@git.corp:o/r.git", branch: "feat", hosts: corp, errText: "glab is not installed"},
+		{remote: "ssh://git@GitHub.com:22/o/r", branch: "feat", errText: "gh is not installed"},
 		{
 			remote:  "https://u@org.visualstudio.com/p/_git/r",
 			branch:  "other",
@@ -189,7 +189,7 @@ func TestPullRequestErrors(t *testing.T) {
 			branch:  "other",
 			errText: "unexpected call: " + azArgs("other"),
 		},
-		{remote: "https://github.com/o/r", branch: "feat", errText: "gh isn't installed"},
+		{remote: "https://github.com/o/r", branch: "feat", errText: "gh is not installed"},
 	}
 	for _, tt := range tests {
 		// Two cases have the same remote, so the name has the branch.

@@ -24,6 +24,7 @@ const maxSend = 256 << 10
 // msg.send to send the review to them.
 func (m *model) listAgents(msg agentsMsg) tea.Cmd {
 	c, ctx := m.rex, m.ctx
+	msg.gen = m.agentsGen
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, rexTimeout)
 		defer cancel()
@@ -39,8 +40,8 @@ func (m *model) listAgents(msg agentsMsg) tea.Cmd {
 // Rex that does not answer then fails the action.
 const rexTimeout = 10 * time.Second
 
-// inRepo tells if dir is in the repository. An empty dir is unknown, and
-// counts as in the repository.
+// inRepo reports whether dir is in the repository. An empty dir is
+// unknown, and counts as in the repository.
 func (m *model) inRepo(dir string) bool { return dir == "" || m.repo.Contains(dir) }
 
 // agent returns the state of the agent in block. If the block is new, agent
@@ -57,12 +58,18 @@ func (m *model) agent(block string) *agentState {
 // onEvent keeps the state of the agent in the block of e, and follows the
 // turns. After a reconnect, it forgets the agents and lists them again,
 // as herdr-reviewr does after a lost connection. Nobody sees the agents
-// in the gap, so the next state starts no turn.
+// in the gap, so the next state starts no turn. A list from before the
+// gap is stale. An event with an error only goes to the log.
 func (m *model) onEvent(e rex.Event) tea.Cmd {
+	if e.Err != nil {
+		m.log.Warn("rex events failed", "err", e.Err)
+		return nil
+	}
 	if e.Reconnect {
 		m.tracker.Gap()
 		clear(m.agents)
 		m.sampled = false
+		m.agentsGen++
 		return m.listAgents(agentsMsg{})
 	}
 	if e.Closed {
@@ -91,7 +98,7 @@ type member struct {
 func (m *model) members() (ms []member, ask string, ok bool) {
 	for _, block := range slices.Sorted(maps.Keys(m.agents)) {
 		a := m.agents[block]
-		if a.state == "" || a.app == appName || (m.rex != nil && block == m.rex.Block) {
+		if a.state == "" || a.app == appName || (m.rex != nil && block == m.rex.Block()) {
 			continue
 		}
 		if !a.hasCwd {
@@ -125,7 +132,7 @@ func (m *model) askCwd(block string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(ctx, rexTimeout)
 		defer cancel()
 		cwd, err := c.Cwd(ctx, block)
-		return cwdMsg{block, cwd, err}
+		return cwdMsg{block: block, cwd: cwd, err: err}
 	}
 }
 
@@ -145,8 +152,8 @@ func (m *model) onCwd(msg cwdMsg) tea.Cmd {
 	return m.observeTurn()
 }
 
-// owns tells if dir is in this working tree. It keeps the directories
-// that are, because their top directory does not move.
+// owns reports whether dir is in this working tree. It keeps the
+// directories that are, because their top directory does not move.
 func (m *model) owns(dir string) (bool, error) {
 	if m.memberDirs[dir] {
 		return true, nil
@@ -294,18 +301,18 @@ func (m *model) endTurn() {
 }
 
 // onAgents keeps the states of the agents. For a send, onAgents sends the
-// review to the agent, or lets the user pick one.
+// review to the agent, or lets the user pick one. A list from before a
+// reconnect does not change the states, because they can be old.
 func (m *model) onAgents(msg agentsMsg) tea.Cmd {
-	for _, a := range msg.agents {
-		*m.agent(a.Block) = agentState{
-			app:    a.Status.App,
-			state:  a.Status.State,
-			since:  cmp.Or(a.Status.At, time.Now()),
-			cwd:    a.Cwd,
-			hasCwd: true,
-		}
+	stale := msg.gen != m.agentsGen
+	if stale && !msg.send {
+		return nil // the list after the reconnect follows
+	}
+	if !stale {
+		m.keepAgents(msg.agents)
 	}
 	switch {
+	case stale:
 	case msg.err == nil:
 		m.sampled = true
 	case !m.sampled && !msg.send:
@@ -345,11 +352,25 @@ func (m *model) onAgents(msg agentsMsg) tea.Cmd {
 		// load. A picker on top can hide the box and lose the comment. The
 		// picker can take the place of the comment list, as in
 		// herdr-reviewr.
-		m.flash("several agents: close the box, then press s to pick one")
+		m.flash("several agents: close the box, then press " +
+			firstKey(m.keys.Send) + " to pick one")
 		return nil
 	}
 	m.openAgentPicker(here)
 	return nil
+}
+
+// keepAgents keeps the states of the agents of a list.
+func (m *model) keepAgents(agents []rex.Agent) {
+	for _, a := range agents {
+		*m.agent(a.Block) = agentState{
+			app:    a.Status.App,
+			state:  a.Status.State,
+			since:  cmp.Or(a.Status.At, time.Now()),
+			cwd:    a.Cwd,
+			hasCwd: true,
+		}
+	}
 }
 
 // commentIDs returns the IDs of the comments.
@@ -373,7 +394,7 @@ func (m *model) deliver(a rex.Agent) tea.Cmd {
 	m.sends++
 	c, ctx := m.rex, m.ctx
 	text, ids := m.reviewText(), m.commentIDs()
-	focus := m.cfg.focusAgent()
+	focus := m.cfg.focusesAgent()
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, rexTimeout)
 		defer cancel()
@@ -389,7 +410,7 @@ func (m *model) deliver(a rex.Agent) tea.Cmd {
 			return sentMsg{agent: a, err: err}
 		}
 		if err := c.Paste(ctx, a.Block, text); err != nil {
-			return sentMsg{agent: a, err: err}
+			return sentMsg{agent: a, err: fmt.Errorf("paste into %s: %w", a.Name, err)}
 		}
 		if focus {
 			// Ignore the error, because the paste works.
@@ -424,7 +445,7 @@ func (m *model) startSend() tea.Cmd {
 		m.flashCopy("review too large to send")
 		return nil
 	case m.rex == nil:
-		m.flashCopy("not inside Rex")
+		m.flashCopy("not in Rex")
 		return nil
 	}
 	m.flash("sending…")
@@ -455,18 +476,18 @@ func (m *model) copyText(text, done string, ids []int) {
 	defer cancel()
 	err := clipboard.Write(ctx, text)
 	switch {
-	case errors.Is(err, clipboard.ErrNoTool):
-		m.flash("copy failed: install wl-clipboard, xclip, or xsel")
 	case err != nil:
-		m.log.Warn("copy failed", "err", err)
-		m.flash("copy failed")
+		if !errors.Is(err, clipboard.ErrNoTool) {
+			m.log.Warn("copy failed", "err", err)
+		}
+		m.flash("copy failed: " + err.Error())
 	default:
 		m.clearComments(ids)
 		m.flash(done)
 	}
 }
 
-// inCommentList tells if the comment list is open.
+// inCommentList reports whether the comment list is open.
 func (m *model) inCommentList() bool {
 	return m.mode == modeOverlay && m.overlay != nil && m.overlay.kind == overlayComments
 }
@@ -488,7 +509,9 @@ func (m *model) clearComments(ids []int) {
 
 // flashCopy shows why the review cannot go to an agent, and tells the
 // user to copy it.
-func (m *model) flashCopy(why string) { m.flash(why + ", press y to copy") }
+func (m *model) flashCopy(why string) {
+	m.flash(why + ", press " + firstKey(m.keys.Copy) + " to copy")
+}
 
 // plural returns n and word, with an s if n is not 1.
 func plural(n int, word string) string {

@@ -67,6 +67,7 @@ func set(paths ...string) map[string]bool {
 	return m
 }
 
+// TestBuild checks the rows that Build makes.
 func TestBuild(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

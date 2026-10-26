@@ -104,9 +104,9 @@ func Git(tb testing.TB, dir string, args ...string) string {
 	return string(out)
 }
 
-// NewRepo makes a repository in dir with the branch main. It makes dir
+// InitRepo makes a repository in dir with the branch main. It makes dir
 // if it does not exist.
-func NewRepo(tb testing.TB, dir string) {
+func InitRepo(tb testing.TB, dir string) {
 	tb.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		tb.Fatal(err)

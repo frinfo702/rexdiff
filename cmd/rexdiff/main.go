@@ -36,15 +36,15 @@ func main() {
 	switch {
 	case errors.Is(err, flag.ErrHelp):
 	case errors.Is(err, errUsage):
-		os.Exit(2) // the flag package prints the error
+		os.Exit(2) // stderr already has the error
 	case err != nil:
 		fmt.Fprintln(os.Stderr, "rexdiff:", err)
 		os.Exit(1)
 	}
 }
 
-// errUsage is the error of bad flags. The flag package prints it and the
-// usage.
+// errUsage is the error of a bad flag or argument. stderr already has the
+// error and the usage.
 var errUsage = errors.New("bad usage")
 
 // usageError returns err of flag parsing for -h, and errUsage for the
@@ -56,6 +56,7 @@ func usageError(err error) error {
 	return errUsage
 }
 
+// usage is the text above the flags in the help of the diff viewer.
 const usage = `usage: rexdiff [flags] [repo]
        rexdiff install
        rexdiff uninstall
@@ -176,7 +177,7 @@ type flags struct {
 
 // parseFlags parses the arguments of the diff viewer. It writes the usage
 // and the errors of the flags to stderr. For -h, it returns
-// [flag.ErrHelp], and for a bad flag errUsage.
+// [flag.ErrHelp], and for a bad flag or argument errUsage.
 func parseFlags(args []string, stderr io.Writer) (flags, error) {
 	var f flags
 	fs := flag.NewFlagSet("rexdiff", flag.ContinueOnError)
@@ -185,22 +186,25 @@ func parseFlags(args []string, stderr io.Writer) (flags, error) {
 		oneOf(&f.layout, tui.LayoutUnified, tui.LayoutSplit))
 	fs.Func("scope", "start scope: uncommitted, branch, or last-turn",
 		oneOf(&f.scope, tui.ScopeUncommitted, tui.ScopeBranch, tui.ScopeLastTurn))
-	fs.BoolVar(&f.wrap, "wrap", true, "wrap long lines; w toggles it")
+	fs.BoolVar(&f.wrap, "wrap", true, "wrap of long lines (the key w toggles it)")
 	fs.StringVar(&f.base, "base", "", "base for the branch scope (default: the picked base, else the repo's default branch)")
-	fs.StringVar(&f.agent, "agent", os.Getenv("REX_AGENT_BLOCK"), "the agent's Rex block (id or label) this pane was opened beside")
-	fs.StringVar(&f.logPath, "log", os.Getenv("REXDIFF_LOG"), "append a debug log to this file")
-	fs.StringVar(&f.config, "config", "", "the settings as JSON; the Rex action passes them from rexdiff.lua")
-	fs.BoolVar(&f.check, "check", false, "check the settings of -config and exit")
-	fs.BoolVar(&f.version, "version", false, "print the version and exit")
+	fs.StringVar(&f.agent, "agent", os.Getenv("REXDIFF_AGENT"), "Rex block (ID or label) of the agent beside this pane")
+	fs.StringVar(&f.logPath, "log", os.Getenv("REXDIFF_LOG"), "file for a debug log")
+	fs.StringVar(&f.config, "config", "", "settings as JSON (the Rex action gives them from rexdiff.lua)")
+	fs.BoolVar(&f.check, "check", false, "settings check only: check -config, then exit")
+	fs.BoolVar(&f.version, "version", false, "version only: print it, then exit")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, usage)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
-		return f, usageError(err)
+		return flags{}, usageError(err)
 	}
 	if fs.NArg() > 1 {
-		return f, fmt.Errorf("unknown argument %q (flags go before the repo)", fs.Arg(1))
+		// Show the usage, as the flag package does for a bad flag.
+		fmt.Fprintf(stderr, "unknown argument %q (flags go before the repo)\n", fs.Arg(1))
+		fs.Usage()
+		return flags{}, errUsage
 	}
 	f.repo = fs.Arg(0)
 	return f, nil

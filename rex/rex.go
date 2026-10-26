@@ -14,6 +14,8 @@ import (
 	"cmp"
 	"context"
 	"encoding/json/v2"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,7 +27,7 @@ import (
 
 // Client runs rex commands in one Rex session.
 type Client struct {
-	Block   string // the block of this process, or ""
+	block   string // the block of this process, or ""
 	session string // the ID of the session
 	bin     string // the path of the rex command, or "" for "rex" in PATH
 }
@@ -39,11 +41,14 @@ func FromEnv() *Client {
 		return nil
 	}
 	return &Client{
-		Block:   os.Getenv("REX_BLOCK"),
+		block:   os.Getenv("REX_BLOCK"),
 		session: session,
 		bin:     binFromEnv(),
 	}
 }
+
+// Block returns the block of this process, or "" if Rex does not tell it.
+func (c *Client) Block() string { return c.block }
 
 // binFromEnv returns the path of the rex command, or "" for the rex in PATH.
 // Rex sets REX_BIN_DIR in its terminals. Other programs, for example brew,
@@ -84,10 +89,18 @@ func (c *Client) runRex(ctx context.Context, args ...string) ([]byte, error) {
 	if err == nil {
 		return out, nil
 	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return nil, errors.New("rex is not installed")
+	}
+	return nil, stderrError(err, &stderr)
+}
+
+// stderrError returns err of a run of rex with the first line of stderr.
+func stderrError(err error, stderr *bytes.Buffer) error {
 	msg := strings.TrimSpace(stderr.String())
 	msg = strings.TrimPrefix(msg, "Error: ")
 	msg, _, _ = strings.Cut(msg, "\n")
-	return nil, &runError{msg: cmp.Or(msg, err.Error()), err: err}
+	return &runError{msg: cmp.Or(msg, err.Error()), err: err}
 }
 
 // runError is a failed run of rex. Its text is the first line that rex
@@ -100,13 +113,17 @@ type runError struct {
 func (e *runError) Error() string { return e.msg }
 func (e *runError) Unwrap() error { return e.err }
 
-// runRexJSON runs "rex args..." and decodes the JSON output into v.
+// runRexJSON runs "rex args..." and decodes the JSON output into v. An
+// error of the decoder names the rex command.
 func (c *Client) runRexJSON(ctx context.Context, v any, args ...string) error {
 	out, err := c.runRex(ctx, args...)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(out, v)
+	if err := json.Unmarshal(out, v); err != nil {
+		return fmt.Errorf("rex %s: %w", strings.Join(args[:min(len(args), 2)], " "), err)
+	}
+	return nil
 }
 
 // request sends a request to the API of the session. It runs
@@ -121,7 +138,10 @@ func (c *Client) request(ctx context.Context, method string, args, reply any) er
 	if err != nil || reply == nil {
 		return err
 	}
-	return json.Unmarshal(out, reply)
+	if err := json.Unmarshal(out, reply); err != nil {
+		return fmt.Errorf("rex api call %s: %w", method, err)
+	}
+	return nil
 }
 
 // Status is the status that a program sends to Rex with OSC 7501.
@@ -242,7 +262,7 @@ func (c *Client) Agents(ctx context.Context) ([]Agent, error) {
 	// an agent if its program sends an app name.
 	agents := make([]Agent, len(reply.Blocks))
 	for i, b := range reply.Blocks {
-		if b.ID == c.Block || b.Creator != terminalCreator {
+		if b.ID == c.block || b.Creator != terminalCreator {
 			continue
 		}
 		wg.Go(func() {
@@ -355,7 +375,7 @@ func (c *Client) SetLabel(ctx context.Context, block, label string) error {
 // Split opens a new terminal block next to the block of the client. The
 // new block runs the command argv in the directory cwd.
 func (c *Client) Split(ctx context.Context, cwd string, argv ...string) error {
-	args := []string{"split", "-s", c.session, "-b", c.Block, "--cwd", cwd, "--"}
+	args := []string{"split", "-s", c.session, "-b", c.block, "--cwd", cwd, "--"}
 	_, err := c.runRex(ctx, append(args, argv...)...)
 	return err
 }
@@ -393,6 +413,10 @@ type Event struct {
 	// Reconnect is true if Watch starts rex again. The events between the
 	// two runs of rex are lost. A Reconnect event has no block.
 	Reconnect bool
+	// Err is the error of a run of rex that fails, with the first line
+	// of its stderr. An event with Err has no block. Watch starts rex
+	// again after the event.
+	Err error
 }
 
 const (
@@ -403,12 +427,15 @@ const (
 )
 
 // Watch calls fn for each event in the session, from one goroutine. It
-// runs "rex events" to get the events. If rex stops, Watch starts it again
-// after 2 seconds. Then it calls fn with a Reconnect event before the
-// next events. Watch returns the error of ctx when ctx is done.
+// runs "rex events" to get the events. If rex fails, Watch calls fn with
+// an event that has the error. If rex stops, Watch starts it again after
+// 2 seconds. Then it calls fn with a Reconnect event before the next
+// events. Watch returns the error of ctx when ctx is done.
 func (c *Client) Watch(ctx context.Context, fn func(Event)) error {
 	for again := false; ; again = true {
-		c.watchOnce(ctx, again, fn)
+		if err := c.watchOnce(ctx, again, fn); err != nil && ctx.Err() == nil {
+			fn(Event{Err: err})
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -418,12 +445,21 @@ func (c *Client) Watch(ctx context.Context, fn func(Event)) error {
 }
 
 // watchOnce runs "rex events" and calls fn for each event until rex stops.
-// If again is true, the first event is a Reconnect event.
-func (c *Client) watchOnce(ctx context.Context, again bool, fn func(Event)) {
+// If again is true, the first event is a Reconnect event. It returns the
+// error of rex, with the first line of its stderr.
+func (c *Client) watchOnce(ctx context.Context, again bool, fn func(Event)) error {
 	cmd := c.command(ctx, "events", "-s", c.session, "--json")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.StdoutPipe()
-	if err != nil || cmd.Start() != nil {
-		return
+	if err != nil {
+		return fmt.Errorf("rex events: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return errors.New("rex is not installed")
+		}
+		return fmt.Errorf("rex events: %w", err)
 	}
 	if again {
 		fn(Event{Reconnect: true})
@@ -435,12 +471,17 @@ func (c *Client) watchOnce(ctx context.Context, again bool, fn func(Event)) {
 			fn(ev)
 		}
 	}
-	if lines.Err() != nil {
+	if err := lines.Err(); err != nil {
 		// A line is too long. Stop rex, because rex can wait until Watch
 		// reads the rest of its output.
 		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return fmt.Errorf("rex events: %w", err)
 	}
-	_ = cmd.Wait() // Watch starts rex again, whatever the error
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("rex events: %w", stderrError(err, &stderr))
+	}
+	return nil
 }
 
 // blockEvent is an event of one block in "rex events --json".

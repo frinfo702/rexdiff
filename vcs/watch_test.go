@@ -209,7 +209,7 @@ func TestWatcherNested(t *testing.T) {
 			t.Parallel()
 			r, dir := newRepo(t)
 			other := t.TempDir()
-			testgit.NewRepo(t, other)
+			testgit.InitRepo(t, other)
 			testgit.WriteFile(t, other, "f", "1\n")
 			testgit.Git(t, other, "add", ".")
 			testgit.Git(t, other, "commit", "-qm", "1")

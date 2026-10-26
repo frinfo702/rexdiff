@@ -31,7 +31,7 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 	}
 	ed, err := editor.Resolve(m.cfg.Editor, os.Getenv("VISUAL"), os.Getenv("EDITOR"), git, abs, line)
 	if err != nil {
-		m.flash(err.Error())
+		m.flash("editor failed: " + err.Error())
 		return nil
 	}
 	// The editor makes the file again when it saves, so do not open a
@@ -41,7 +41,7 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 		return nil
 	}
 	if _, err := exec.LookPath(ed.Program); err != nil {
-		m.flash("editor not found: " + ed.Program)
+		m.flash(ed.Program + " is not installed")
 		return nil
 	}
 	m.log.Debug("editor", "command", ed.Script, "window", ed.Window)
@@ -55,7 +55,8 @@ func (m *model) openEditor(path string, line int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, rexTimeout)
 		defer cancel()
-		return splitMsg{path, ed.Script, c.Split(ctx, root, "sh", "-c", ed.Script)}
+		err := c.Split(ctx, root, "sh", "-c", ed.Script)
+		return splitMsg{path: path, script: ed.Script, err: err}
 	}
 }
 
@@ -114,7 +115,7 @@ func detach(what, name string, args ...string) (tea.Cmd, error) {
 		if last := s[strings.LastIndexByte(s, '\n')+1:]; last != "" {
 			err = fmt.Errorf("%w: %s", err, last)
 		}
-		return detachedMsg{what, err}
+		return detachedMsg{what: what, err: err}
 	}, nil
 }
 

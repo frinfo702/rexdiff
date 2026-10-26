@@ -143,7 +143,7 @@ end
 -- The key and the placement are for Rex. rexdiff gets the other settings
 -- as JSON.
 if type(settings) ~= "table" then
-  error("rexdiff.lua: settings must be a table, as in: local settings = { }", 0)
+  error("config: settings must be a table, as in: local settings = { }", 0)
 end
 local opts = {}
 for k, v in pairs(settings) do opts[k] = v end
@@ -168,7 +168,7 @@ rex.action{
     end
     local open = reviewers()
     if #open == 0 then
-      if config == nil then error("rexdiff settings: " .. encode_err, 0) end
+      if config == nil then error("config: " .. encode_err, 0) end
       check(config)
       return open_rexdiff(ctx, placement, config)
     end
@@ -209,21 +209,25 @@ func splitLua(path, content string) (settings, code string, err error) {
 		}
 		i += len(line)
 	}
-	return "", "", fmt.Errorf("%s has no line %q, so rexdiff cannot tell your settings from its code. Put that line back under your settings, or move the file away and run \"rexdiff install\" again",
+	return "", "", fmt.Errorf("%s has no line %q, so rexdiff cannot tell your settings from its code: put that line back under your settings, or move the file away and run \"rexdiff install\" again",
 		path, codeMark)
 }
 
-// newLua returns the content of rexdiff.lua with the code for bin. It
+// luaContent returns the content of rexdiff.lua with the code for bin. It
 // keeps the settings of old, the current content of the file. If old is
 // empty, it uses the default settings.
-func newLua(path, old, bin string) (string, error) {
+func luaContent(path, old, bin string) (string, error) {
 	if old == "" {
 		return defaultSettings + luaCode(bin), nil
 	}
 	settings, _, err := splitLua(path, old)
-	return settings + luaCode(bin), err
+	if err != nil {
+		return "", err
+	}
+	return settings + luaCode(bin), nil
 }
 
+// luaPath returns the path of rexdiff.lua, beside the init.lua of Rex.
 func luaPath() string { return filepath.Join(filepath.Dir(rex.ConfigPath()), luaFile) }
 
 // readFile returns the content of the file at path, or "" if there is no
@@ -265,7 +269,7 @@ func install(ctx context.Context, bin string, args []string, stdout, stderr io.W
 	if err != nil {
 		return err
 	}
-	code, err := newLua(lua, old, bin)
+	code, err := luaContent(lua, old, bin)
 	if err != nil {
 		return err
 	}
@@ -290,7 +294,9 @@ func install(ctx context.Context, bin string, args []string, stdout, stderr io.W
 }
 
 // upgrade replaces the code part of rexdiff.lua with the code for bin, if
-// they differ, and keeps the settings. It does nothing if there is no
+// they differ, and keeps the settings. It is not the update of rexdiff
+// itself (see the update package). It upgrades only the Lua code of the
+// action. It does nothing if there is no
 // rexdiff.lua, or if the file runs another rexdiff, for example a build
 // for development. It returns what the user must know, or "".
 func upgrade(ctx context.Context, bin string) string {
@@ -299,15 +305,15 @@ func upgrade(ctx context.Context, bin string) string {
 	if err != nil || !strings.Contains(old, binLine(bin)+"\n") {
 		return ""
 	}
-	code, err := newLua(lua, old, bin)
+	code, err := luaContent(lua, old, bin)
 	if err != nil {
-		return "cannot upgrade rexdiff.lua: " + err.Error()
+		return "rexdiff.lua upgrade failed: " + err.Error()
 	}
 	if code == old {
 		return ""
 	}
 	if err := os.WriteFile(lua, []byte(code), 0o644); err != nil {
-		return "cannot upgrade rexdiff.lua: " + err.Error()
+		return "rexdiff.lua upgrade failed: " + err.Error()
 	}
 	if err := rex.ReloadConfig(ctx); err != nil {
 		return "upgraded rexdiff.lua; reload Rex's config yourself: rex config reload"
@@ -348,8 +354,11 @@ func parseSub(name string, args []string, stderr io.Writer) error {
 		return usageError(err)
 	}
 	if fs.NArg() > 0 {
-		return fmt.Errorf("unknown argument %q (set the key and the placement in the settings in %s)",
+		// Show the usage, as the flag package does for a bad flag.
+		fmt.Fprintf(stderr, "unknown argument %q (set the key and the placement in the settings in %s)\n",
 			fs.Arg(0), luaPath())
+		fs.Usage()
+		return errUsage
 	}
 	return nil
 }

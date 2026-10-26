@@ -60,7 +60,7 @@ func build(dir, version string) (string, error) {
 // Each run starts with them empty.
 var userEnv = []string{
 	"REX_SESSION", "REX_BLOCK", "REX_BIN_DIR", "REX_CONFIG",
-	"REX_AGENT_BLOCK", "REXDIFF_LOG", "REXDIFF_RESUME", "EDITOR", "VISUAL",
+	"REXDIFF_AGENT", "REXDIFF_LOG", "REXDIFF_RESUME", "EDITOR", "VISUAL",
 }
 
 // opts are the options of a rexdiff run.

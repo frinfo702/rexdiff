@@ -3,10 +3,10 @@ package tui
 import (
 	"cmp"
 	"context"
-	"errors"
 	"image/color"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +24,7 @@ import (
 	"github.com/rednafi/rexdiff/vcs"
 )
 
+// tab is a tab of the program: Changes, Files, or PR.
 type tab int
 
 const (
@@ -51,6 +52,21 @@ const (
 	modeOverlay
 	modeFind // the find band
 )
+
+// String returns the name of the mode, for the log.
+func (md mode) String() string {
+	switch md {
+	case modeNormal:
+		return "normal"
+	case modeComment:
+		return "comment"
+	case modeOverlay:
+		return "overlay"
+	case modeFind:
+		return "find"
+	}
+	return "mode(" + strconv.Itoa(int(md)) + ")"
+}
 
 // pane is one view that scrolls and takes comments. It has the rendered
 // lines and the source lines that they show.
@@ -80,7 +96,7 @@ func (p *pane) set(lines []string, rows []diff.Row) {
 	}
 }
 
-// cont tells if line i continues the source line of the line above.
+// cont reports whether line i continues the source line of the line above.
 func (p *pane) cont(i int) bool { return i > 0 && i < len(p.rows) && p.rows[i].Continued }
 
 // head returns the first line of the source line that line i shows.
@@ -184,10 +200,10 @@ type model struct {
 	keys   keyMap
 	notice string // a problem that the footer shows, or ""
 
-	updater      Updater         // nil if rexdiff cannot update itself
-	release      *update.Release // a newer release, or nil
-	phase        updatePhase
-	restartState string // the file of the state for the restart, or ""
+	updater    Updater         // nil if rexdiff cannot update itself
+	release    *update.Release // a newer release, or nil
+	phase      updatePhase
+	resumePath string // the file of the resume state for the restart, or ""
 
 	// The size of the terminal. Until the terminal tells it, w and h are
 	// a guess, and sized is false.
@@ -200,7 +216,7 @@ type model struct {
 	ticks  int
 
 	// watch tells when the files or the refs change, or is nil. If it is
-	// nil, a tick reloads the current tab every pollEvery, after polled.
+	// nil, a tick reloads the current tab every reloadPoll, after polled.
 	// After a failure of the watcher, a tick starts it again.
 	watch      *vcs.Watcher
 	polled     time.Time
@@ -238,27 +254,30 @@ type model struct {
 	// After a failed list, a tick lists the agents again, as in
 	// herdr-reviewr.
 	sampleRetry retryTimer
-	// agentsHere tells if an agent works in the repository, or is nil if
-	// the program does not know.
+	// agentsGen counts the reconnects to Rex. A list of the agents with
+	// an older gen is from before a gap.
+	agentsGen int
+	// agentsHere points to true if an agent works in the repository. It
+	// is nil if the program does not know.
 	agentsHere *bool
 	memberDirs map[string]bool // the working directories of the members
 
-	files      []changedFile // the Changes tab
-	changeSel  int           // the file that shows in the Changes tab
-	shownTrees string        // the two trees of files, to notice a change
-	changeTree fileListTree
-	allFiles   []vcs.Entry // the Files tab
-	allSel     int
-	fileTree   fileListTree
+	changeFiles []changedFile // the Changes tab
+	changeSel   int           // the file that shows in the Changes tab
+	shownTrees  string        // the two trees of files, to notice a change
+	changeTree  fileListTree
+	allFiles    []vcs.Entry // the Files tab
+	allSel      int
+	allTree     fileListTree
 	// viewed and viewedPath are the content and the path in the Files
 	// tab, to notice edits. The path of the pane is "" for Markdown.
 	viewed     string
 	viewedPath string
 
-	changes, filesPane, prPane pane
-	pr                         prState
-	prf                        prFetch
-	prPlace                    *savedPane // the place of prPane after a restart
+	changePane, allPane, prPane pane
+	pr                          prState
+	prf                         prFetch
+	prPlace                     *resumePane // the place of prPane after a restart
 
 	split      bool // show the diff side by side
 	wrap       bool
@@ -350,7 +369,7 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 		// first. The picker still lists all the agents.
 		m.beside, _ = o.Rex.Resolve(ctx, o.Agent)
 	}
-	m.changes.anchor, m.filesPane.anchor, m.prPane.anchor = -1, -1, -1
+	m.changePane.anchor, m.allPane.anchor, m.prPane.anchor = -1, -1, -1
 	m.cfg = cfg
 	m.keys = defaultKeys()
 	m.keys.applyConfig(cfg.Keybindings)
@@ -369,6 +388,7 @@ type (
 		agents []rex.Agent
 		err    error
 		send   bool // true if the list is for a send, not to learn the states
+		gen    int  // the agentsGen at the start of the list
 	}
 	sentMsg struct {
 		agent rex.Agent
@@ -387,7 +407,7 @@ type (
 		err error
 	}
 	eventMsg rex.Event
-	// splitMsg tells if Rex opens the pane of the editor of path.
+	// splitMsg is the answer of Rex to the split for the editor of path.
 	splitMsg struct {
 		path, script string
 		err          error
@@ -407,6 +427,14 @@ type (
 		what string
 		err  error
 	}
+	// releaseMsg has a release that is newer than this rexdiff.
+	releaseMsg struct {
+		release update.Release
+	}
+	// updatedMsg reports the end of the update to the release.
+	updatedMsg struct {
+		err error
+	}
 )
 
 // requestColors are the commands that ask the terminal for its colours.
@@ -417,6 +445,9 @@ var requestColors = []tea.Cmd{
 	requestPalette,
 }
 
+// tickInterval is the time between two ticks.
+const tickInterval = time.Second
+
 // tick returns a command that sends a tickMsg after d.
 func tick(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return tickMsg{} })
@@ -425,7 +456,7 @@ func tick(d time.Duration) tea.Cmd {
 // Init starts the ticks, asks for the colours of the terminal, and loads
 // the pull request and the agents.
 func (m *model) Init() tea.Cmd {
-	cmds := []tea.Cmd{tick(time.Second), m.requestPR(true)}
+	cmds := []tea.Cmd{tick(tickInterval), m.requestPR(true)}
 	cmds = append(cmds, requestColors...)
 	if m.rex != nil {
 		cmds = append(cmds, m.listAgents(agentsMsg{}))
@@ -453,7 +484,9 @@ func (m *model) treeIDs() (from, to, note string, err error) {
 	switch m.scope {
 	case scopeCommits:
 		if m.to == "" {
-			return "", "", "no commits picked: press G to pick one or a range", nil
+			note := "no commits picked: press " + firstKey(m.keys.CommitPick) +
+				" to pick one or a range"
+			return "", "", note, nil
 		}
 		if from, err = m.repo.ParentTree(ctx, m.from); err != nil {
 			return "", "", "", err
@@ -509,7 +542,7 @@ func (m *model) loadChanges(force bool) {
 	if err == nil && note == "" && same {
 		return
 	}
-	if err != nil && len(m.files) > 0 {
+	if err != nil && len(m.changeFiles) > 0 {
 		m.flash("refresh failed: " + err.Error())
 		return
 	}
@@ -517,7 +550,7 @@ func (m *model) loadChanges(force bool) {
 		note = err.Error()
 	}
 	if note != "" {
-		m.changes.note, m.files, m.shownTrees = note, nil, ""
+		m.changePane.note, m.changeFiles, m.shownTrees = note, nil, ""
 		m.buildTrees()
 		m.renderChanges()
 		return
@@ -526,14 +559,14 @@ func (m *model) loadChanges(force bool) {
 	if f := m.selectedChange(); f != nil {
 		selPath = f.Path
 	}
-	prev := make(map[string]changedFile, len(m.files))
-	for _, c := range m.files {
+	prev := make(map[string]changedFile, len(m.changeFiles))
+	for _, c := range m.changeFiles {
 		prev[c.Path] = c
 	}
-	m.files = make([]changedFile, len(files))
-	m.shownTrees, m.changeSel, m.changes.note = trees, -1, ""
+	m.changeFiles = make([]changedFile, len(files))
+	m.shownTrees, m.changeSel, m.changePane.note = trees, -1, ""
 	for i, f := range files {
-		c := &m.files[i]
+		c := &m.changeFiles[i]
 		if p, ok := prev[f.Path]; ok && p.Old == f.Old && p.New == f.New {
 			*c = p // the same change, so the counts stay
 		} else if !f.Binary && !f.TooBig {
@@ -548,10 +581,10 @@ func (m *model) loadChanges(force bool) {
 	m.buildTrees()
 	if f := m.selectedChange(); f == nil || f.Path != selPath {
 		// Another file shows, so the cursor and the selection do not apply.
-		m.changes.cur, m.changes.top, m.changes.anchor = 0, 0, -1
+		m.changePane.cur, m.changePane.top, m.changePane.anchor = 0, 0, -1
 	}
-	if len(m.files) == 0 {
-		m.changes.note = "no changes"
+	if len(m.changeFiles) == 0 {
+		m.changePane.note = "no changes"
 	}
 	m.renderChanges()
 }
@@ -596,11 +629,11 @@ func (m *model) buildTrees() {
 	}
 }
 
-// Update handles a message. After an install, Update restarts the program
+// Update handles a message. After an update, Update restarts the program
 // when no work can get lost.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmd := m.handle(msg)
-	if m.phase != phaseInstalled {
+	if m.phase != phaseUpdated {
 		return m, cmd
 	}
 	// The work of a tick runs again in the new process, so it is not
@@ -626,7 +659,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case tea.FocusMsg:
 		m.reloadIfChanged()
 	case tickMsg:
-		cmd = tea.Batch(tick(time.Second), m.onTick())
+		cmd = tea.Batch(tick(tickInterval), m.onTick())
 	case tea.BackgroundColorMsg:
 		if !sameColor(m.bg, msg.Color) {
 			m.bg, m.dark = msg.Color, msg.IsDark()
@@ -649,10 +682,10 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		cmd = m.onPR(msg)
 	case grepMsg:
 		m.onGrep(msg)
-	case *update.Release:
-		m.release = msg
-	case installedMsg:
-		m.onInstalled(msg)
+	case releaseMsg:
+		m.release = &msg.release
+	case updatedMsg:
+		m.onUpdated(msg)
 	case editorDoneMsg:
 		m.onEditorDone(msg)
 	case detachedMsg:
@@ -667,7 +700,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case tea.MouseMotionMsg:
 		m.onDrag(msg.Mouse())
 	case tea.MouseReleaseMsg:
-		cmd = m.onRelease() // the comment box can open below the screen
+		cmd = m.onMouseUp() // the comment box can open below the screen
 	case tea.MouseWheelMsg:
 		m.onWheel(msg.Mouse())
 	case tea.PasteMsg:
@@ -684,7 +717,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 // followCursor makes the panes keep the cursor on the screen again. A key
 // or a click can move the cursor.
 func (m *model) followCursor() {
-	m.changes.free, m.filesPane.free, m.prPane.free = false, false, false
+	m.changePane.free, m.allPane.free, m.prPane.free = false, false, false
 }
 
 // onKey gives a key to the part of the screen that takes the keys.
@@ -706,60 +739,6 @@ func (m *model) onKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateFind(msg)
 	}
 	return m.updateNormal(msg)
-}
-
-// onGrep keeps the code matches of the search, but only if the search
-// still shows their query. The list shows them in the code mode.
-func (m *model) onGrep(msg grepMsg) {
-	ov := m.overlay
-	if ov == nil || ov.kind != overlaySearch || msg.gen != m.grepGen {
-		return
-	}
-	s := &ov.search
-	s.hits, s.hitsMore, s.err = msg.hits, msg.more, ""
-	if msg.err != nil {
-		// Show only the error, and no old results under it.
-		s.hits, s.hitsMore, s.err = nil, false, msg.err.Error()
-	}
-	// The list of the file matches stays, with its cursor. The chips
-	// show the count of the code matches.
-	if s.code {
-		ov.showSearch()
-	}
-}
-
-// onPR shows the pull request that loadPR reads, unless a later read
-// replaces it. After a read with a trailing request, onPR starts the next
-// read.
-func (m *model) onPR(msg prMsg) tea.Cmd {
-	f := &m.prf
-	if msg.gen != f.gen {
-		return nil
-	}
-	f.inFlight, f.cancel = false, nil
-	var next tea.Cmd
-	if f.trailing {
-		next = m.loadPR()
-	}
-	// As in herdr-reviewr, a failed read keeps the last good pull request.
-	// The end of the pull request is not a failure.
-	if msg.err != nil && m.pr.pr != nil && !errors.Is(msg.err, vcs.ErrNoPullRequest) {
-		m.pr.loading = false
-		m.flash("refresh failed: " + msg.err.Error())
-		m.renderPR()
-		return next
-	}
-	m.pr = prState{pr: msg.pr}
-	if msg.err != nil {
-		m.pr.err = msg.err.Error()
-	}
-	m.renderPR()
-	// prPlace is from before a restart.
-	if p := m.prPlace; p != nil && msg.err == nil && msg.pr != nil {
-		m.prPlace = nil
-		m.prPane.restore(*p)
-	}
-	return next
 }
 
 // onPaste adds text to the comment box or to the input of the overlay.
@@ -786,16 +765,18 @@ const colorTicks = 3
 
 // The waits of a reload, as in herdr-reviewr.
 const (
-	// budgetFactor sets the pause after a reload on a tick. The next one
-	// waits this many times as long as the last one took.
-	budgetFactor = 20
-	retryFirst   = time.Second // the first wait after a failure
-	retryMax     = time.Minute // the longest wait after a failure
+	// reloadPauseFactor sets the pause after a reload on a tick. The
+	// next reload waits this many times as long as the last one took.
+	// The pause of the watcher in vcs has the same value, but it is a
+	// different pause. Thus each package has its own constant.
+	reloadPauseFactor = 20
+	retryFirst        = time.Second // the first wait after a failure
+	retryMax          = time.Minute // the longest wait after a failure
 )
 
-// pollEvery is the time between two reloads without a watcher, as in
+// reloadPoll is the time between two reloads without a watcher, as in
 // herdr-reviewr.
-const pollEvery = 5 * time.Second
+const reloadPoll = 5 * time.Second
 
 // retryTimer tells when to try again after a failure. Each failure
 // doubles the wait, from retryFirst to retryMax.
@@ -846,7 +827,7 @@ func (m *model) startWatch() error {
 }
 
 // watchChanges tells what the watcher sees. Without a watcher, it tells
-// that both change every pollEvery. After an error, it drops the watcher
+// that both change every reloadPoll. After an error, it drops the watcher
 // and tells that both change.
 func (m *model) watchChanges() vcs.Change {
 	all := vcs.Change{Files: true, Refs: true}
@@ -857,7 +838,7 @@ func (m *model) watchChanges() vcs.Change {
 		}
 	}
 	if m.watch == nil {
-		if now.Sub(m.polled) < pollEvery {
+		if now.Sub(m.polled) < reloadPoll {
 			return vcs.Change{}
 		}
 		m.polled = now
@@ -887,7 +868,7 @@ func (m *model) onTick() tea.Cmd {
 	m.filesOwed = m.filesOwed || ch.Files
 	now := time.Now()
 	m.reloadDue()
-	if m.status != "" && time.Now().After(m.statusTill) {
+	if m.status != "" && now.After(m.statusTill) {
 		m.status = ""
 	}
 	var cmds []tea.Cmd
@@ -922,7 +903,7 @@ func (m *model) reloadDue() {
 	case m.tab == tabChanges && m.reloadOwed && !now.Before(m.reloadAt) && !now.Before(m.reloadRetry.at):
 		m.reloadIfChanged()
 		end := time.Now()
-		m.reloadAt = end.Add(budgetFactor * end.Sub(now))
+		m.reloadAt = end.Add(reloadPauseFactor * end.Sub(now))
 	case m.tab == tabFiles && m.filesOwed:
 		m.reloadFiles() // reloadFiles renders the file too
 	case m.tab == tabFiles && m.watch == nil:
@@ -934,28 +915,11 @@ func (m *model) reloadDue() {
 func (m *model) cur() *pane {
 	switch m.tab {
 	case tabFiles:
-		return &m.filesPane
+		return &m.allPane
 	case tabPR:
 		return &m.prPane
 	}
-	return &m.changes
-}
-
-// onPalette takes the red or the green from an OSC 4 reply.
-func (m *model) onPalette(reply string) {
-	i, c, ok := paletteReply(reply)
-	if !ok {
-		return
-	}
-	switch {
-	case i == 1 && !sameColor(m.red, c):
-		m.red = c
-	case i == 2 && !sameColor(m.green, c):
-		m.green = c
-	default:
-		return
-	}
-	m.rerender()
+	return &m.changePane
 }
 
 // sameColor reports whether a and b are the same colour. Nil is the same

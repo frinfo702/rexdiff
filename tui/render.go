@@ -144,7 +144,7 @@ func (m *model) splitAllowed() bool {
 		return false
 	}
 	f := m.selectedChange()
-	return f != nil && !f.Binary && !f.TooBig && !m.showsMarkdown(f) &&
+	return f != nil && !f.Binary && !f.TooBig && !m.isRendered(f) &&
 		f.Old != "" && f.New != "" && f.Old != f.New
 }
 
@@ -155,9 +155,9 @@ func (m *model) splitShown() bool {
 	return m.split && m.codeWidth() >= splitMinWidth && m.splitAllowed()
 }
 
-// showsMarkdown reports whether the Changes tab shows f as rendered
+// isRendered reports whether the Changes tab shows f as rendered
 // markdown.
-func (m *model) showsMarkdown(f *changedFile) bool {
+func (m *model) isRendered(f *changedFile) bool {
 	return m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted
 }
 
@@ -207,7 +207,7 @@ func fileNote(err error) (string, bool) {
 
 // renderChanges shows the selected file in the Changes tab.
 func (m *model) renderChanges() {
-	p := &m.changes
+	p := &m.changePane
 	f := m.selectedChange()
 	if f == nil {
 		p.path = ""
@@ -227,7 +227,7 @@ func (m *model) renderChanges() {
 			note = "renamed from " + termtext.Quote(f.From) + ", no change to the content"
 		}
 		p.setNote(note)
-	case m.showsMarkdown(f):
+	case m.isRendered(f):
 		m.setMarkdown(p, f.New)
 	default:
 		if o := m.folds[f.Path]; o != nil && o.Old != f.oldHash {
@@ -259,7 +259,7 @@ func (m *model) renderViewer() {
 // refreshViewer shows the selected file in the Files tab if the file
 // changes.
 func (m *model) refreshViewer() {
-	p := &m.filesPane
+	p := &m.allPane
 	if m.allSel >= len(m.allFiles) {
 		p.path, m.viewedPath = "", ""
 		p.set(nil, nil)
@@ -280,7 +280,7 @@ func (m *model) refreshViewer() {
 	case err != nil:
 		m.log.Debug("read file", "path", path, "err", err)
 		p.path = ""
-		p.set([]string{dimStyle.Render("  couldn't read this file")}, nil)
+		p.set([]string{dimStyle.Render("  could not read this file")}, nil)
 	case m.rendered && isMarkdown(path):
 		m.setMarkdown(p, content)
 	default:

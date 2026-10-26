@@ -110,7 +110,10 @@ func (r *Repo) DefaultBase(ctx context.Context) string {
 // detached HEAD, it returns "HEAD".
 func (r *Repo) Branch(ctx context.Context) (string, error) {
 	out, err := r.run(ctx, nil, "rev-parse", "--abbrev-ref", "HEAD")
-	return strings.TrimSpace(out), err
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // remoteURL returns the URL of the remote "upstream", so that forks work, or
@@ -199,7 +202,8 @@ type Match struct {
 
 // Grep returns at most limit lines of the tracked and the untracked files
 // that contain the text q. The search ignores case and binary files. When
-// it finds limit lines, it stops git, and more tells if there are others.
+// it finds limit lines, it stops git, and more is true if there are
+// others.
 // After the time budget, Grep stops git when it has a line, and returns
 // the lines with more set to true. At the deadline of ctx, Grep stops git
 // and returns the lines that it finds before it, with more set to true.
@@ -226,7 +230,7 @@ func (r *Repo) Grep(ctx context.Context, q string, limit int, budget time.Durati
 			return nil, true, nil
 		}
 		if errors.Is(err, exec.ErrNotFound) {
-			err = errors.New("git isn't installed")
+			err = errors.New("git is not installed")
 		}
 		return nil, false, fmt.Errorf("git grep: %w", err)
 	}
@@ -270,7 +274,7 @@ func pastDeadline(ctx context.Context) bool {
 // readMatches reads at most limit matches of "git grep -n -z". Each match
 // is "path NUL line NUL text LF". Only the text ends with a newline,
 // because the path can have a newline. After each match, a true stop ends
-// the read. more tells if there is more output.
+// the read. more is true if there is more output.
 func readMatches(r *bufio.Reader, limit int, stop func() bool) (ms []Match, more bool) {
 	for len(ms) < limit {
 		path, err := r.ReadString(0)

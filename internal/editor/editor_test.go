@@ -94,7 +94,7 @@ func TestResolveOrder(t *testing.T) {
 				tt.template, tt.visual, tt.env, tt.git, got.Program, err, tt.want)
 		}
 	}
-	const noEditor = "no editor: set `editor` in rexdiff.lua, $EDITOR, or git's core.editor"
+	const noEditor = `no editor: set "editor" in rexdiff.lua, $EDITOR, or git's core.editor`
 	if _, err := editor.Resolve("", " ", "", "\n", "/a", 1); err == nil || err.Error() != noEditor {
 		t.Errorf("Resolve with no editor: error = %v, want %q", err, noEditor)
 	}

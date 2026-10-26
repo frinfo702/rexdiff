@@ -32,7 +32,7 @@ func TestFiles(t *testing.T) {
 		{"recent does not rank a query", "go", paths, []string{"main.go"}, 2, []string{"a.go", "b.go"}, 4},
 		{"no match", "zzz", paths, nil, 50, nil, 0},
 		// A query shows at most the limit, and counts all the matches.
-		{"query limit", "f", many, nil, search.FileLimit, many[:search.FileLimit], 60},
+		{"query limit", "f", many, nil, search.MaxFiles, many[:search.MaxFiles], 60},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -71,5 +71,18 @@ func TestMatch(t *testing.T) {
 			t.Errorf("Match(%q, %q) = %v, want %v",
 				tt.text, tt.query, got, tt.want)
 		}
+	}
+}
+
+// TestIndices checks that Indices returns the indices of the labels that
+// match, the best match first.
+func TestIndices(t *testing.T) {
+	t.Parallel()
+	labels := []string{"main feat", "dev", "feature x"}
+	if got, want := search.Indices("feat", labels), []int{2, 0}; !slices.Equal(got, want) {
+		t.Errorf("Indices(%q, %q) = %v, want %v", "feat", labels, got, want)
+	}
+	if got := search.Indices("zzz", labels); len(got) != 0 {
+		t.Errorf("Indices(%q, %q) = %v, want none", "zzz", labels, got)
 	}
 }

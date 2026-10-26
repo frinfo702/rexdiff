@@ -40,7 +40,7 @@ var (
 	ErrBinary = errors.New("binary file")
 	// ErrTooBig means that a file is larger than 2,000,000 bytes or has
 	// more than 50,000 lines.
-	ErrTooBig = errors.New("file too big")
+	ErrTooBig = errors.New("file too large")
 )
 
 // Repo is a git repository.
@@ -86,19 +86,19 @@ func (r *Repo) runInput(
 	in io.Reader,
 	args ...string,
 ) (string, error) {
-	out, err := command(ctx, r.root, env, in, "git", args...)
+	out, err := runProgram(ctx, r.root, env, in, "git", args...)
 	if err != nil {
 		return out, fmt.Errorf("git %s: %w", args[0], err)
 	}
 	return out, nil
 }
 
-// command runs the program name in dir and returns its standard output.
+// runProgram runs the program name in dir and returns its standard output.
 // env adds to the environment of the process, and stdin is its standard
 // input, or nil for none. The error has the first line
 // of the standard error. It wraps the error of the process, so callers can
 // check its exit code.
-func command(
+func runProgram(
 	ctx context.Context,
 	dir string,
 	env []string,
@@ -116,7 +116,7 @@ func command(
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if errors.Is(err, exec.ErrNotFound) {
-		return "", fmt.Errorf("%s isn't installed", name)
+		return "", fmt.Errorf("%s is not installed", name)
 	}
 	if err != nil {
 		msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
@@ -347,7 +347,7 @@ func (r *Repo) Diff(ctx context.Context, from, to string) ([]File, error) {
 	for i := range files {
 		f := &files[i]
 		f.Old, f.New = f.use(blobs[2*i]), f.use(blobs[2*i+1])
-		f.TooBig = f.TooBig || tooBig(f.Old, f.New)
+		f.TooBig = f.TooBig || isTooBig(f.Old, f.New)
 		if f.Binary || f.TooBig {
 			f.Old, f.New = "", ""
 		}
@@ -409,6 +409,9 @@ func (r *Repo) readBlobs(ctx context.Context, ids []string, blobs []blob) error 
 		return err
 	}
 	if err := cmd.Start(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			err = errors.New("git is not installed")
+		}
 		return fmt.Errorf("git cat-file: %w", err)
 	}
 	err = readBatch(bufio.NewReader(out), batch, blobs)
@@ -471,10 +474,10 @@ func readBatch(r *bufio.Reader, batch []int, blobs []blob) error {
 // isBinary reports whether s has a NUL byte.
 func isBinary(s string) bool { return strings.Contains(s, "\x00") }
 
-// tooBig reports whether the versions together are larger than
+// isTooBig reports whether the versions together are larger than
 // maxFileSize bytes or have more than maxLines lines. A last line without
 // a newline counts as a line, as in diff.Lines.
-func tooBig(versions ...string) bool {
+func isTooBig(versions ...string) bool {
 	size, lines := 0, 0
 	for _, s := range versions {
 		size += len(s)
@@ -503,7 +506,7 @@ func (r *Repo) ReadFile(path string) (string, error) {
 	}
 	// Do not read a device or a named pipe. The read can block or not end.
 	if !st.Mode().IsRegular() {
-		return "", fmt.Errorf("%s is not a regular file", path)
+		return "", fmt.Errorf("%q is not a regular file", path)
 	}
 	if st.Size() > maxFileSize {
 		return "", ErrTooBig
@@ -515,7 +518,7 @@ func (r *Repo) ReadFile(path string) (string, error) {
 	switch s := string(b); {
 	case isBinary(s):
 		return "", ErrBinary
-	case tooBig(s):
+	case isTooBig(s):
 		return "", ErrTooBig
 	default:
 		return s, nil
@@ -538,12 +541,12 @@ func (r *Repo) Owns(ctx context.Context, dir string) (bool, error) {
 	if !filepath.IsAbs(dir) || !r.Contains(dir) {
 		return false, nil
 	}
-	out, err := command(ctx, r.root, nil, nil, "git", "-C", dir, "rev-parse", "--show-toplevel")
+	out, err := runProgram(ctx, r.root, nil, nil, "git", "-C", dir, "rev-parse", "--show-toplevel")
 	if _, ok := errors.AsType[*exec.ExitError](err); ok {
 		return false, nil // dir is in no working tree
 	}
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("git rev-parse: %w", err)
 	}
 	top := strings.TrimSuffix(out, "\n")
 	return top != "" && evalSymlinks(top) == r.root, nil

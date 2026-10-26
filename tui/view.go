@@ -20,7 +20,10 @@ import (
 
 // The colours are ANSI palette indices, so they follow the terminal theme.
 var (
-	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	// dimColor is the colour of the dim text and of the borders.
+	dimColor    = lipgloss.Color("8")
+	dimStyle    = lipgloss.NewStyle().Foreground(dimColor)
+	boldStyle   = lipgloss.NewStyle().Bold(true)
 	addStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	delStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
@@ -177,7 +180,7 @@ func (m *model) agentLabel() string {
 	}
 	n := 0
 	for block, a := range m.agents {
-		if a.state != "" && block != m.rex.Block {
+		if a.state != "" && block != m.rex.Block() {
 			n++
 		}
 	}
@@ -210,7 +213,7 @@ func (m *model) listLines(h int) []string {
 		return nil
 	}
 	w := m.listWidth()
-	title := fmt.Sprintf("Changes (%d)", len(m.files))
+	title := fmt.Sprintf("Changes (%d)", len(m.changeFiles))
 	if m.tab == tabFiles {
 		n := 0
 		for _, e := range m.allFiles {
@@ -238,7 +241,7 @@ func (m *model) treeRow(r tree.Row, w int) string {
 	case r.File < 0:
 		return m.dirRow(r, indent, w)
 	case m.tab == tabChanges:
-		return m.changedRow(m.files[r.File], indent, r.Name, w)
+		return m.changedRow(m.changeFiles[r.File], indent, r.Name, w)
 	}
 	return m.entryRow(m.allFiles[r.File], indent, r.Name, w)
 }
@@ -255,7 +258,7 @@ func (m *model) dirRow(r tree.Row, indent string, w int) string {
 		mark = noteStyle.Render("•")
 	}
 	room := w - ansi.StringWidth(indent) - lipgloss.Width(mark) - 4
-	name := lipgloss.NewStyle().Bold(true).Render(fitName(r.Name+"/", room))
+	name := boldStyle.Render(fitName(r.Name+"/", room))
 	if r.Ignored {
 		name = dimStyle.Render(fitName(r.Name+"/", room))
 	}
@@ -276,14 +279,14 @@ func (m *model) changedRow(f changedFile, indent, name string, w int) string {
 	return fileRow(indent, statusMark(f.Status), name, stat, w)
 }
 
-// entryRow renders file f of the Files tab in the file list, w columns
+// entryRow renders entry e of the Files tab in the file list, w columns
 // wide. The row shows the name in the tree, after indent.
-func (m *model) entryRow(f vcs.Entry, indent, name string, w int) string {
-	if f.Ignored {
+func (m *model) entryRow(e vcs.Entry, indent, name string, w int) string {
+	if e.Ignored {
 		return dimStyle.Render(fileRow(indent, " ", name, "", w))
 	}
 	stat := ""
-	if c := m.comments.Count(m.anchorOf(tabFiles), f.Path); c > 0 {
+	if c := m.comments.Count(m.anchorOf(tabFiles), e.Path); c > 0 {
 		stat = cursorStyle.Render(fmt.Sprintf("●%d", c))
 	}
 	return fileRow(indent, " ", name, stat, w)
@@ -379,7 +382,7 @@ func (m *model) emptyNote() string {
 	case len(p.lines) > 0:
 		return ""
 	case p.note != "":
-		return p.note
+		return termtext.Quote(p.note) // the note can come from git or a forge
 	case m.tab == tabPR && m.pr.loading:
 		return "loading the pull request…"
 	case m.tab == tabFiles && len(m.allFiles) == 0:
@@ -500,7 +503,8 @@ func (m *model) ensureVisible() {
 // the find band.
 func (m *model) footer(hits []findHit) string {
 	if m.notice != "" {
-		return delStyle.Render(wrapWords(m.notice, m.w)) + "\n" + m.footerLine(hits)
+		notice := termtext.Quote(m.notice) // the notice can have a path
+		return delStyle.Render(wrapWords(notice, m.w)) + "\n" + m.footerLine(hits)
 	}
 	return m.footerLine(hits)
 }
@@ -560,7 +564,7 @@ func (m *model) footerLine(hits []findHit) string {
 		tab:    m.tab,
 		split:  m.splitShown(),
 		visual: m.cur().anchor >= 0,
-		onFold: m.onFold(),
+		atFold: m.atFold(),
 		armed:  m.armed,
 	}
 	if m.help.ShowAll {
@@ -650,7 +654,7 @@ func box(lines []string, w, h int) string {
 // programStatus returns the status that rexdiff reports to Rex with OSC 7501.
 // Rex shows it in its tabs and its sidebar.
 func (m *model) programStatus() *tea.ProgramStatus {
-	msg := "reviewing " + plural(len(m.files), "file")
+	msg := "reviewing " + plural(len(m.changeFiles), "file")
 	if n := m.comments.Len(); n > 0 {
 		msg = plural(n, "unsent comment")
 	}

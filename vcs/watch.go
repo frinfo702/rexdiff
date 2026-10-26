@@ -11,12 +11,12 @@ import (
 	"time"
 )
 
-// budgetFactor sets the pause after a check of a [Watcher]. The next check
+// pauseFactor sets the pause after a check of a [Watcher]. The next check
 // waits this many times as long as the last check took. Thus the checks
 // use less than 1/21 of a core. herdr-reviewr uses the same factor.
-const budgetFactor = 20
+const pauseFactor = 20
 
-// Watcher tells if the working tree or the refs can have changed. It
+// Watcher reports whether the working tree or the refs can have changed. It
 // compares the file status of the files that git lists, of their
 // directories, and of the git files. While nothing changes, it runs no
 // git process. After a change, it runs git to list the files again.
@@ -86,7 +86,10 @@ func (w *Watcher) Show(paths []string) {
 // gitPath returns the absolute path that rev-parse gives for flag.
 func (r *Repo) gitPath(ctx context.Context, flag string) (string, error) {
 	out, err := r.run(ctx, nil, "rev-parse", "--path-format=absolute", flag)
-	return strings.TrimSuffix(out, "\n"), err
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(out, "\n"), nil
 }
 
 // Changed tells what can have changed since the last call. The first call
@@ -100,7 +103,7 @@ func (w *Watcher) Changed(ctx context.Context) (Change, error) {
 	}
 	defer func() {
 		end := w.now()
-		w.next = end.Add(budgetFactor * end.Sub(start))
+		w.next = end.Add(pauseFactor * end.Sub(start))
 	}()
 
 	refs, index := w.sumRefs(), w.sumIndex()
@@ -307,8 +310,10 @@ func sumFiles(paths []string) uint64 {
 // string.
 type sum uint64
 
+// newSum returns the sum of no bytes, the FNV-64a offset basis.
 func newSum() sum { return 14695981039346656037 }
 
+// byte adds the byte b.
 func (s *sum) byte(b byte) { *s = (*s ^ sum(b)) * 1099511628211 }
 
 // str adds v and a NUL, so that two strings do not join.
@@ -319,6 +324,7 @@ func (s *sum) str(v string) {
 	s.byte(0)
 }
 
+// num adds the 8 bytes of v, the low byte first.
 func (s *sum) num(v uint64) {
 	for range 8 {
 		s.byte(byte(v))

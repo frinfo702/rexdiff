@@ -107,12 +107,12 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 	cancel()
 	wg.Wait()
 	if fm, ok := final.(*model); ok && err == nil {
-		if fm.restartState != "" {
+		if fm.resumePath != "" {
 			// Keep the last screen until the new rexdiff draws, so that
 			// the restart does not show the shell of the pane.
 			fmt.Print("\x1b[?1049h\x1b[?25l\x1b[H" + fm.View().Content)
 		}
-		return fm.restartState, nil
+		return fm.resumePath, nil
 	}
 	return "", err
 }
@@ -125,11 +125,11 @@ func startModel(ctx context.Context, o Options, cfg config) model {
 	if err := m.startWatch(); err != nil {
 		m.dropWatch(err)
 	}
-	var saved *savedState
+	var saved *resumeState
 	if o.Resume != "" {
 		var err error
-		if saved, err = loadState(o.Resume); err != nil {
-			m.flash("cannot read the comments from before the update: " + err.Error())
+		if saved, err = loadResume(o.Resume); err != nil {
+			m.flash("restore of the comments failed: " + err.Error())
 		} else {
 			m.restoreSettings(saved)
 		}
@@ -138,8 +138,8 @@ func startModel(ctx context.Context, o Options, cfg config) model {
 	if saved != nil {
 		m.restorePlaces(saved)
 	}
-	if o.Rex != nil && o.Rex.Block != "" {
-		if err := o.Rex.SetLabel(ctx, o.Rex.Block, appName); err != nil {
+	if o.Rex != nil && o.Rex.Block() != "" {
+		if err := o.Rex.SetLabel(ctx, o.Rex.Block(), appName); err != nil {
 			m.log.Debug("set label", "err", err)
 		}
 	}

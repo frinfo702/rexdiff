@@ -166,7 +166,7 @@ func TestFileList(t *testing.T) {
 func TestKeys(t *testing.T) {
 	tm := start(t, newRepo(t), opts{})
 	tm.keys("?")
-	tm.waitFor("search files & code", "pick commits", "move file list")
+	tm.waitFor("search files and code", "pick commits", "move list")
 	tm.keys("esc")
 	tm.waitGone("pick commits")
 }
@@ -192,7 +192,7 @@ func TestSettings(t *testing.T) {
 			` "file_list_width": 50, "default_scope": "branch",` +
 			` "keybindings": {"next-file": ["x"]}}`,
 	}})
-	s := tm.waitFor("vs main", "4 -     return 1", "4 +     x := 2", "x next/prev file")
+	s := tm.waitFor("vs main", "4 -     return 1", "4 +     x := 2", "x/F next/prev file")
 	for _, l := range lines(s, "return 1") {
 		if !strings.Contains(l, "x := 2") {
 			t.Errorf("line %q, want the old and the new line side by side", l)

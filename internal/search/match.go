@@ -36,6 +36,8 @@ func foldEqual(a, b string) bool {
 	return true
 }
 
+// lowerASCII returns the lower case of the ASCII letter c. It returns
+// other bytes as they are.
 func lowerASCII(c byte) byte {
 	if 'A' <= c && c <= 'Z' {
 		return c + 'a' - 'A'

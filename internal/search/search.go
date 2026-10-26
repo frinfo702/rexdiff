@@ -4,27 +4,17 @@ package search
 
 import (
 	"slices"
-	"time"
 
 	"github.com/sahilm/fuzzy"
 )
 
 // The limits of the results. A "… more" row tells that there are others.
 const (
-	// FileLimit is the largest number of files that the search shows.
-	FileLimit = 50
-	// CodeLimit is the largest number of matching lines that the search
+	// MaxFiles is the largest number of files that the search shows.
+	MaxFiles = 50
+	// MaxCodeLines is the largest number of matching lines that the search
 	// shows.
-	CodeLimit = 200
-)
-
-// CodeBudget is the time of a code search, as in herdr-reviewr. After it,
-// the search shows the lines that it finds, and a "+" tells that there can
-// be others. A search with no line yet goes on until its first line, or
-// until CodeTimeout.
-const (
-	CodeBudget  = 80 * time.Millisecond
-	CodeTimeout = 2 * time.Second
+	MaxCodeLines = 200
 )
 
 // Files returns at most limit of paths that match q, the best match
@@ -55,4 +45,15 @@ func Files(paths, recent []string, q string, limit int) (hits []string, total in
 		hits = append(hits, m.Str)
 	}
 	return hits, len(ms)
+}
+
+// Indices returns the indices of the labels that match q, the best match
+// first. The match is the same fuzzy match as in Files.
+func Indices(q string, labels []string) []int {
+	ms := fuzzy.Find(q, labels)
+	is := make([]int, len(ms))
+	for i, m := range ms {
+		is[i] = m.Index
+	}
+	return is
 }

@@ -121,7 +121,7 @@ func (m *model) list() *fileListTree {
 	case tabChanges:
 		return &m.changeTree
 	case tabFiles:
-		return &m.fileTree
+		return &m.allTree
 	}
 	return nil
 }
@@ -129,8 +129,8 @@ func (m *model) list() *fileListTree {
 // buildChangeTree makes the rows of the Changes tab. The selected file is
 // the file at the cursor, if the cursor is on a file.
 func (m *model) buildChangeTree() {
-	es := make([]tree.Entry, len(m.files))
-	for i, f := range m.files {
+	es := make([]tree.Entry, len(m.changeFiles))
+	for i, f := range m.changeFiles {
 		es[i] = tree.Entry{Path: f.Path, Changed: true}
 	}
 	t := &m.changeTree
@@ -145,8 +145,8 @@ func (m *model) buildChangeTree() {
 // change if a file under it is in the Changes tab. The selected file is
 // the file at the cursor, if the cursor is on a file.
 func (m *model) buildFileTree() {
-	changed := make(map[string]bool, len(m.files))
-	for _, f := range m.files {
+	changed := make(map[string]bool, len(m.changeFiles))
+	for _, f := range m.changeFiles {
 		changed[f.Path] = true
 	}
 	es := make([]tree.Entry, len(m.allFiles))
@@ -154,7 +154,7 @@ func (m *model) buildFileTree() {
 		p, isDir := strings.CutSuffix(e.Path, "/")
 		es[i] = tree.Entry{Path: p, Changed: changed[p], Ignored: e.Ignored, Dir: isDir}
 	}
-	t := &m.fileTree
+	t := &m.allTree
 	t.rebuild(es, false, m.allSel)
 	if i := t.file(); i >= 0 {
 		m.allSel = i
@@ -211,12 +211,12 @@ func (m *model) shownPaths() []string {
 // whether e is an ignored directory that the user expands in the Files tab.
 func (m *model) openIgnored(e vcs.Entry) (string, bool) {
 	dir, isDir := strings.CutSuffix(e.Path, "/")
-	return dir, isDir && e.Ignored && m.fileTree.toggled[dir]
+	return dir, isDir && e.Ignored && m.allTree.toggled[dir]
 }
 
-// onDir reports whether the file list has the focus and its cursor is on
+// atDir reports whether the file list has the focus and its cursor is on
 // a directory.
-func (m *model) onDir() bool {
+func (m *model) atDir() bool {
 	if t := m.list(); t != nil && m.focusList {
 		_, ok := t.dir()
 		return ok

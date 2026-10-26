@@ -137,9 +137,9 @@ func (cs *Comments) Find(id int) *Comment {
 
 // At returns the first comment with anchor a whose range includes line, or
 // nil.
-func (cs *Comments) At(a Anchor, path string, side Side, line int) *Comment {
+func (cs *Comments) At(a Anchor, path string, s Side, line int) *Comment {
 	for _, c := range cs.items {
-		if c.Anchor == a && c.Path == path && c.Side == side &&
+		if c.Anchor == a && c.Path == path && c.Side == s &&
 			line >= c.Start && line <= c.End {
 			return c
 		}
@@ -148,10 +148,10 @@ func (cs *Comments) At(a Anchor, path string, side Side, line int) *Comment {
 }
 
 // EndingAt returns the comments with anchor a whose range ends on line.
-func (cs *Comments) EndingAt(a Anchor, path string, side Side, line int) []*Comment {
+func (cs *Comments) EndingAt(a Anchor, path string, s Side, line int) []*Comment {
 	var ending []*Comment
 	for _, c := range cs.items {
-		if c.Anchor == a && c.Path == path && c.Side == side && c.End == line {
+		if c.Anchor == a && c.Path == path && c.Side == s && c.End == line {
 			ending = append(ending, c)
 		}
 	}

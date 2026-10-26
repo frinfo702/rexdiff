@@ -67,10 +67,10 @@ type PRState string
 
 // The values of State.
 const (
-	StateOpen   PRState = "open"
-	StateDraft  PRState = "draft" // open, but not ready for review
-	StateMerged PRState = "merged"
-	StateClosed PRState = "closed" // closed without a merge
+	PROpen   PRState = "open"
+	PRDraft  PRState = "draft" // open, but not ready for review
+	PRMerged PRState = "merged"
+	PRClosed PRState = "closed" // closed without a merge
 )
 
 // Result is the result of a CI check. It is the same for each forge.
@@ -159,20 +159,24 @@ func cleanPR(pr *PullRequest) {
 	}
 }
 
-// decode runs a forge tool in the root directory and decodes its JSON
-// output into v. env adds to the environment.
-func (r *Repo) decode(
+// runJSON runs a forge tool in the root directory and decodes its JSON
+// output into v. env adds to the environment. The error names the tool
+// and its subcommand, for example "gh pr".
+func (r *Repo) runJSON(
 	ctx context.Context,
 	env []string,
 	v any,
 	name string,
 	args ...string,
 ) error {
-	out, err := command(ctx, r.root, env, nil, name, args...)
-	if err != nil {
-		return err
+	out, err := runProgram(ctx, r.root, env, nil, name, args...)
+	if err == nil {
+		err = json.Unmarshal([]byte(out), v)
 	}
-	return json.Unmarshal([]byte(out), v)
+	if err != nil {
+		return fmt.Errorf("%s %s: %w", name, args[0], err)
+	}
+	return nil
 }
 
 // lastN returns the last n elements of xs, or all of them if there are
@@ -220,7 +224,7 @@ func (r *Repo) gitHub(ctx context.Context, host string) (*PullRequest, error) {
 	const fields = "number,title,state,isDraft,url,body,author," +
 		"headRefName,baseRefName,comments,statusCheckRollup"
 	var v gitHubPR
-	err := r.decode(ctx, env, &v, "gh", "pr", "view", "--json", fields)
+	err := r.runJSON(ctx, env, &v, "gh", "pr", "view", "--json", fields)
 	if err != nil {
 		return nil, err
 	}
@@ -257,13 +261,13 @@ func (r *Repo) gitHub(ctx context.Context, host string) (*PullRequest, error) {
 func gitHubState(s string, draft bool) PRState {
 	switch {
 	case s == "MERGED":
-		return StateMerged
+		return PRMerged
 	case s == "CLOSED":
-		return StateClosed
+		return PRClosed
 	case draft:
-		return StateDraft
+		return PRDraft
 	}
-	return StateOpen
+	return PROpen
 }
 
 // gitLabState returns the state of a GitLab merge request. A locked merge
@@ -271,11 +275,11 @@ func gitHubState(s string, draft bool) PRState {
 func gitLabState(s string) PRState {
 	switch s {
 	case "opened":
-		return StateOpen
+		return PROpen
 	case "merged":
-		return StateMerged
+		return PRMerged
 	}
-	return StateClosed
+	return PRClosed
 }
 
 // azureState returns the state of an Azure DevOps pull request from its
@@ -283,11 +287,11 @@ func gitLabState(s string) PRState {
 func azureState(s string) PRState {
 	switch s {
 	case "active":
-		return StateOpen
+		return PROpen
 	case "completed":
-		return StateMerged
+		return PRMerged
 	}
-	return StateClosed
+	return PRClosed
 }
 
 // gitHubResult returns the result of a GitHub check from its conclusion or
@@ -336,7 +340,7 @@ type gitLabDiscussion struct {
 // gitLab gets the merge request with glab.
 func (r *Repo) gitLab(ctx context.Context) (*PullRequest, error) {
 	var v gitLabMR
-	err := r.decode(ctx, nil, &v, "glab", "mr", "view", "--output", "json")
+	err := r.runJSON(ctx, nil, &v, "glab", "mr", "view", "--output", "json")
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +359,7 @@ func (r *Repo) gitLab(ctx context.Context) (*PullRequest, error) {
 	// request without them.
 	var ds []gitLabDiscussion
 	args := []string{"mr", "note", "list", "--output", "json"}
-	if err := r.decode(ctx, nil, &ds, "glab", args...); err == nil {
+	if err := r.runJSON(ctx, nil, &ds, "glab", args...); err == nil {
 		pr.Comments = gitLabComments(ds)
 	}
 	return pr, nil
@@ -404,7 +408,7 @@ func (r *Repo) azure(ctx context.Context) (*PullRequest, error) {
 		return nil, err
 	}
 	var v []azurePR
-	err = r.decode(ctx, nil, &v, "az", "repos", "pr", "list", "--source-branch", branch,
+	err = r.runJSON(ctx, nil, &v, "az", "repos", "pr", "list", "--source-branch", branch,
 		"--status", "all", "--top", "1", "--output", "json")
 	if err != nil {
 		return nil, err

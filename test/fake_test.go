@@ -18,7 +18,7 @@ import (
 // line of long.txt.
 var repoFixture = testgit.NewFixture(func(tb testing.TB, dir string) {
 	tb.Helper()
-	testgit.NewRepo(tb, dir)
+	testgit.InitRepo(tb, dir)
 	testgit.WriteFile(tb, dir, "a.go", "package a\n\nfunc A() int {\n\treturn 1\n}\n")
 	testgit.WriteFile(tb, dir, "README.md", "# Title\n\nSome text.\n")
 	testgit.WriteFile(tb, dir, "docs/guide.txt", "guide\n")

@@ -178,9 +178,9 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 		// brew updates its taps at most once a day. Thus brew upgrade can
 		// miss a new release. Update the taps first. Then
 		// HOMEBREW_NO_AUTO_UPDATE stops a second update.
-		if _, err = u.command(ctx, env, brew, "update", "--quiet"); err == nil {
+		if _, err = u.runProgram(ctx, env, brew, "update", "--quiet"); err == nil {
 			env = append(env, "HOMEBREW_NO_AUTO_UPDATE=1")
-			_, err = u.command(ctx, env, brew, "upgrade", "--cask", "rexdiff")
+			_, err = u.runProgram(ctx, env, brew, "upgrade", "--cask", "rexdiff")
 		}
 	case methodGo:
 		// GOBIN puts the new binary where the old one is.
@@ -190,7 +190,7 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 		if _, err := exec.LookPath(goTool); err != nil {
 			goTool = tool("go", "/opt/homebrew/bin", "/usr/local/go/bin", "/usr/local/bin")
 		}
-		_, err = u.command(ctx, env, goTool, "install", modulePath+"@"+r.Tag)
+		_, err = u.runProgram(ctx, env, goTool, "install", modulePath+"@"+r.Tag)
 	default:
 		return u.download(ctx, r) // it checks the version before the replace
 	}
@@ -203,7 +203,7 @@ func (u *Updater) Install(ctx context.Context, r Release) error {
 // checkVersion checks that the binary at bin is the version tag, so that a
 // restart does not run a broken or an old binary.
 func (u *Updater) checkVersion(ctx context.Context, bin, tag string) error {
-	out, err := u.command(ctx, nil, bin, "-version")
+	out, err := u.runProgram(ctx, nil, bin, "-version")
 	if err != nil {
 		return fmt.Errorf("check the new rexdiff: %w", err)
 	}
@@ -213,9 +213,9 @@ func (u *Updater) checkVersion(ctx context.Context, bin, tag string) error {
 	return nil
 }
 
-// command runs name with args, with env added to the environment. Its
+// runProgram runs name with args, with env added to the environment. Its
 // error has the end of the output, which tells what went wrong.
-func (u *Updater) command(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
+func (u *Updater) runProgram(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
 	run := u.run
 	if run == nil {
 		run = runCommand
@@ -223,6 +223,9 @@ func (u *Updater) command(ctx context.Context, env []string, name string, args .
 	out, err := run(ctx, env, name, args...)
 	if err == nil {
 		return out, nil
+	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return out, fmt.Errorf("%s is not installed", filepath.Base(name))
 	}
 	if last := lastLine(out); last != "" {
 		return out, fmt.Errorf("%s: %w: %s", filepath.Base(name), err, last)
@@ -247,7 +250,9 @@ func tool(name string, dirs ...string) string {
 // runCommand is the run of an Updater outside tests.
 func runCommand(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Env = append(cmd.Environ(), env...)
+	if env != nil {
+		cmd.Env = append(cmd.Environ(), env...)
+	}
 	cmd.WaitDelay = time.Second // a child of brew can keep the output open
 	return cmd.CombinedOutput()
 }
@@ -330,10 +335,13 @@ func binaryOf(archive []byte) ([]byte, error) {
 		}
 		if h.Typeflag == tar.TypeReg && filepath.Base(h.Name) == "rexdiff" {
 			b, err := io.ReadAll(io.LimitReader(tr, maxBinary+1))
-			if err == nil && len(b) > maxBinary {
-				err = fmt.Errorf("rexdiff is larger than %d bytes", maxBinary)
+			if err != nil {
+				return nil, err
 			}
-			return b, err
+			if len(b) > maxBinary {
+				return nil, fmt.Errorf("rexdiff is larger than %d bytes", maxBinary)
+			}
+			return b, nil
 		}
 	}
 }

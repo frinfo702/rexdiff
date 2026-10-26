@@ -45,6 +45,7 @@ type node struct {
 	listed bool
 }
 
+// newNode returns a directory with no entries.
 func newNode() *node { return &node{dirs: map[string]*node{}, files: map[string]int{}} }
 
 // Build returns the rows of entries. Each directory starts expanded if
@@ -147,10 +148,13 @@ func loneFile(n *node) (name string, i int, ok bool) {
 	return "", 0, false
 }
 
+// fileRow returns the row of entry i at depth, with the name name.
 func fileRow(depth int, name string, i int, entries []Entry) Row {
 	return Row{Depth: depth, Name: name, File: i, Ignored: entries[i].Ignored}
 }
 
+// join returns the path of name in the directory prefix. An empty prefix
+// is the root.
 func join(prefix, name string) string {
 	if prefix == "" {
 		return name

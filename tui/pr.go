@@ -5,6 +5,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -70,7 +71,7 @@ func (m *model) loadPR() tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 		pr, err := repo.PullRequest(ctx, hosts)
-		return prMsg{gen, pr, err}
+		return prMsg{gen: gen, pr: pr, err: err}
 	}
 }
 
@@ -100,11 +101,11 @@ func (m *model) refsChanged() tea.Cmd {
 // prStateStyle returns the style that shows the state of a pull request.
 func prStateStyle(s vcs.PRState) lipgloss.Style {
 	switch s {
-	case vcs.StateOpen:
+	case vcs.PROpen:
 		return addStyle
-	case vcs.StateMerged:
+	case vcs.PRMerged:
 		return headerStyle
-	case vcs.StateClosed:
+	case vcs.PRClosed:
 		return delStyle
 	}
 	return dimStyle
@@ -162,7 +163,7 @@ func (m *model) renderPR() {
 
 // prHeader returns the title line and the state line of pr.
 func prHeader(pr *vcs.PullRequest) []string {
-	title := lipgloss.NewStyle().Bold(true).Render(pr.Title)
+	title := boldStyle.Render(pr.Title)
 	number := dimStyle.Render(fmt.Sprintf("#%d", pr.Number))
 	state := prStateStyle(pr.State).Render("● " + string(pr.State))
 	return []string{
@@ -195,4 +196,38 @@ func checkLines(checks []vcs.Check) []string {
 		lines = append(lines, "    "+delStyle.Render("✗ ")+f)
 	}
 	return lines
+}
+
+// onPR shows the pull request that loadPR reads, unless a later read
+// replaces it. After a read with a trailing request, onPR starts the next
+// read.
+func (m *model) onPR(msg prMsg) tea.Cmd {
+	f := &m.prf
+	if msg.gen != f.gen {
+		return nil
+	}
+	f.inFlight, f.cancel = false, nil
+	var next tea.Cmd
+	if f.trailing {
+		next = m.loadPR()
+	}
+	// As in herdr-reviewr, a failed read keeps the last good pull request.
+	// The end of the pull request is not a failure.
+	if msg.err != nil && m.pr.pr != nil && !errors.Is(msg.err, vcs.ErrNoPullRequest) {
+		m.pr.loading = false
+		m.flash("refresh failed: " + msg.err.Error())
+		m.renderPR()
+		return next
+	}
+	m.pr = prState{pr: msg.pr}
+	if msg.err != nil {
+		m.pr.err = msg.err.Error()
+	}
+	m.renderPR()
+	// prPlace is from before a restart.
+	if p := m.prPlace; p != nil && msg.err == nil && msg.pr != nil {
+		m.prPlace = nil
+		m.prPane.restore(*p)
+	}
+	return next
 }

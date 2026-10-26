@@ -11,7 +11,7 @@ import (
 )
 
 // ErrNoTool tells that PATH has no clipboard tool. The user can fix it.
-var ErrNoTool = errors.New("no clipboard tool found (wl-clipboard, xclip, or xsel)")
+var ErrNoTool = errors.New("no clipboard tool is installed (pbcopy, wl-clipboard, xclip, or xsel)")
 
 // tools are the clipboard tools that read stdin. The first on PATH wins.
 var tools = [][]string{

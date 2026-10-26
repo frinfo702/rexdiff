@@ -77,8 +77,8 @@ type Options struct {
 	// Wrap continues a line that is wider than Width on the next lines,
 	// instead of cutting it. Then Offset does not apply.
 	Wrap bool
-	// Expanded tells if the lines of a fold show. If Expanded is nil, no
-	// fold shows. RenderFile does not use it.
+	// Expanded reports whether the lines of a fold show. If Expanded is
+	// nil, no fold shows. RenderFile does not use it.
 	Expanded func(Fold) bool
 	// Signs marks a changed line with + or -. Without Signs, a bar in the
 	// colour of the line marks it.
@@ -165,10 +165,12 @@ func Render(path, old, new string, o Options) *Diff {
 	return d
 }
 
+// foldOf returns the Fold of the diffview fold f.
 func foldOf(f diffview.Fold) Fold {
 	return Fold{Old: f.Before, New: f.After, Lines: f.Lines}
 }
 
+// kindOf returns the Kind of the diffview row kind k.
 func kindOf(k diffview.RowKind) Kind {
 	switch k {
 	case diffview.RowHunk:

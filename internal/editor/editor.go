@@ -1,6 +1,6 @@
 // Package editor picks the text editor of the user, and makes the sh
-// command that opens a file at a line in it. It also tells if the editor
-// opens a window or draws in the terminal.
+// command that opens a file at a line in it. It also reports whether the
+// editor opens a window or draws in the terminal.
 package editor
 
 import (
@@ -31,7 +31,7 @@ func Resolve(template, visual, env, git, file string, line int) (Command, error)
 	} else {
 		e := cmp.Or(strings.TrimSpace(visual), strings.TrimSpace(env), strings.TrimSpace(git))
 		if e == "" {
-			return Command{}, errors.New("no editor: set `editor` in rexdiff.lua, $EDITOR, or git's core.editor")
+			return Command{}, errors.New(`no editor: set "editor" in rexdiff.lua, $EDITOR, or git's core.editor`)
 		}
 		c = fromEditor(e, file, line)
 	}
@@ -99,9 +99,10 @@ type dialect struct {
 
 // dialects has the known editors, by program name. The table is the same
 // as in herdr-reviewr. The table also lists fresh, open, and xdg-open.
-var dialects = makeDialects()
+var dialects = knownDialects()
 
-func makeDialects() map[string]dialect {
+// knownDialects returns the table of dialects.
+func knownDialects() map[string]dialect {
 	d := map[string]dialect{}
 	add := func(dl dialect, names ...string) {
 		for _, n := range names {

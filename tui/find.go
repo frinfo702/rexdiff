@@ -37,17 +37,17 @@ func (m *model) findable() bool {
 	}
 	p := m.cur()
 	for i := range p.rows {
-		if p.content(i) {
+		if p.hasContent(i) {
 			return true
 		}
 	}
 	return false
 }
 
-// content reports whether row i of p shows text that a find can match.
+// hasContent reports whether row i of p shows text that a find can match.
 // A note has no such text. A row of rendered markdown has no line, so
 // its text is the rendered line.
-func (p *pane) content(i int) bool {
+func (p *pane) hasContent(i int) bool {
 	r := p.rows[i]
 	return r.Old > 0 || r.New > 0 || r.Fold.Lines > 0 || (p.path == "" && i < len(p.lines))
 }
@@ -152,7 +152,7 @@ func (m *model) findHits(q string) []findHit {
 				(r.Old > 0 && search.Match(line(old, r.Old), q)) {
 				hits = append(hits, findHit{i, 0})
 			}
-		case p.content(i):
+		case p.hasContent(i):
 			if search.Match(ansi.Strip(p.lines[i]), q) {
 				hits = append(hits, findHit{i, 0})
 			}

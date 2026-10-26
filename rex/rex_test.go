@@ -28,7 +28,7 @@ func client(t *testing.T, body string) (*rex.Client, string) {
 	t.Setenv("REX_BLOCK", "block:self")
 	t.Setenv("REX_BIN_DIR", dir)
 	c := rex.FromEnv()
-	if c == nil || c.Block != "block:self" {
+	if c == nil || c.Block() != "block:self" {
 		t.Fatalf("FromEnv = %+v, want the block block:self", c)
 	}
 	return c, dir

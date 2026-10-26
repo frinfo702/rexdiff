@@ -43,7 +43,7 @@ func TestUpgradeAtStart(t *testing.T) {
 	noMark := strings.Replace(edited, mark, "", 1)
 	write(t, lua, noMark)
 	tm = start(t, repo, opts{rex: rex, env: env})
-	tm.waitFor("cannot upgrade rexdiff.lua")
+	tm.waitFor("rexdiff.lua upgrade failed")
 	if got := read(t, lua); got != noMark {
 		t.Errorf("rexdiff.lua without the line changes to:\n%s", got)
 	}

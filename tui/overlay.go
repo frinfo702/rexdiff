@@ -1,22 +1,18 @@
 package tui
 
 import (
-	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/sahilm/fuzzy"
 
 	"github.com/rednafi/rexdiff/diff"
 	"github.com/rednafi/rexdiff/internal/search"
 	"github.com/rednafi/rexdiff/internal/termtext"
 	"github.com/rednafi/rexdiff/rex"
-	"github.com/rednafi/rexdiff/vcs"
 )
 
 // overlayKind tells what an overlay is for.
@@ -69,20 +65,6 @@ type overlay struct {
 	rowsFrom, rowsTo int
 }
 
-// searchState has the results of the search. As in herdr-reviewr, the
-// search has two modes. It shows the files that match by name, or the
-// lines of the code that contain the query.
-type searchState struct {
-	code      bool     // the mode that shows the code matches
-	paths     []string // the files that the search can find
-	files     []string // the files that match
-	fileTotal int      // the number of the files that match
-	hits      []vcs.Match
-	hitsMore  bool   // git finds more matches than hits has
-	err       string // the error of the code search
-	preview   *preview
-}
-
 // newOverlay returns an overlay. If its kind has an input, the input has
 // the focus.
 func newOverlay(kind overlayKind, title string) *overlay {
@@ -125,9 +107,7 @@ func (o *overlay) filter() {
 		for i, it := range o.items {
 			labels[i] = it.label + " " + it.detail
 		}
-		for _, mt := range fuzzy.Find(q, labels) {
-			o.shown = append(o.shown, mt.Index)
-		}
+		o.shown = append(o.shown, search.Indices(q, labels)...)
 	}
 	o.cur = min(o.cur, max(len(o.shown)-1, 0))
 }
@@ -169,64 +149,6 @@ func (o *overlay) pickable(i int) bool {
 	return o.kind != overlaySearch || o.items[o.shown[i]].id != ""
 }
 
-// showSearch shows the results of the search in its mode, with the
-// cursor on the first result. As in herdr-reviewr, the code matches show
-// under a header for each file, and a "… more" row tells that the list
-// does not show all the results. An error shows in place of the results.
-func (o *overlay) showSearch() {
-	s := &o.search
-	var items []pickItem
-	switch {
-	case s.err != "":
-	case !s.code:
-		for _, p := range s.files {
-			items = append(items, pickItem{label: p, id: p})
-		}
-		if s.fileTotal > len(s.files) {
-			items = append(items, pickItem{label: "… more"})
-		}
-	default:
-		for i, h := range s.hits {
-			if i == 0 || h.Path != s.hits[i-1].Path {
-				items = append(items, pickItem{label: h.Path, head: true})
-			}
-			items = append(items, pickItem{
-				label: fmt.Sprintf("%5d: %s", h.Line, h.Text),
-				id:    h.Path,
-				line:  h.Line,
-			})
-		}
-		if s.hitsMore {
-			items = append(items, pickItem{label: "… more"})
-		}
-	}
-	o.setItems(items)
-	o.cur = 0
-	if len(o.shown) > 0 && !o.pickable(0) {
-		o.move(1)
-	}
-}
-
-// chips returns the chips of the modes of the search, as in
-// herdr-reviewr: "files N │ code M". A "+" after M tells that git finds
-// more matches. The chip of the mode in use is bright.
-func (o *overlay) chips() string {
-	s := &o.search
-	files, code := "files", "code"
-	if s.err == "" {
-		files = fmt.Sprintf("files %d", s.fileTotal)
-		code = fmt.Sprintf("code %d", len(s.hits))
-		if s.hitsMore {
-			code += "+"
-		}
-	}
-	on := cursorStyle.Underline(true)
-	if s.code {
-		return dimStyle.Render(files+" │ ") + on.Render(code)
-	}
-	return on.Render(files) + dimStyle.Render(" │ "+code)
-}
-
 // open shows ov and gives the keys to it.
 func (m *model) open(ov *overlay) {
 	m.overlay, m.mode = ov, modeOverlay
@@ -236,16 +158,6 @@ func (m *model) open(ov *overlay) {
 func (m *model) closeOverlay() {
 	m.overlay, m.mode = nil, modeNormal
 	m.stopGrep()
-}
-
-// stopGrep stops the code search that runs, if any. Its result then does
-// not show.
-func (m *model) stopGrep() {
-	m.grepGen++
-	if m.grepCancel != nil {
-		m.grepCancel()
-		m.grepCancel = nil
-	}
 }
 
 // openInput opens a prompt of kind with the text value.
@@ -259,254 +171,6 @@ func (m *model) openInput(kind overlayKind, title, value string) {
 func (m *model) openConfirmQuit() {
 	title := plural(m.comments.Len(), "unsent comment") + " will be lost"
 	m.open(newOverlay(overlayQuit, title))
-}
-
-// openSearch opens the search of the files and the code. With no query,
-// it lists the files.
-func (m *model) openSearch() {
-	ov := newOverlay(overlaySearch, "")
-	ov.input.Placeholder = "Search files and code…"
-	for _, e := range m.allFiles {
-		if !e.Ignored {
-			ov.search.paths = append(ov.search.paths, e.Path)
-		}
-	}
-	m.open(ov)
-	m.runSearch()
-}
-
-// runSearch finds the files that match the query of the search, and
-// starts a code search for the query. It stops the code search of the
-// last query. Until the new code search ends, the old code matches show.
-// An empty query finds no code.
-func (m *model) runSearch() tea.Cmd {
-	ov := m.overlay
-	s, q := &ov.search, ov.input.Value()
-	s.files, s.fileTotal = search.Files(s.paths, m.recent, q, search.FileLimit)
-	s.err = ""
-	m.stopGrep()
-	if q == "" {
-		s.hits, s.hitsMore = nil, false
-		ov.showSearch()
-		return nil
-	}
-	ov.showSearch()
-	ctx, cancel := context.WithTimeout(m.ctx, search.CodeTimeout)
-	m.grepCancel = cancel
-	repo, gen := m.repo, m.grepGen
-	return func() tea.Msg {
-		defer cancel()
-		hits, more, err := repo.Grep(ctx, q, search.CodeLimit, search.CodeBudget)
-		return grepMsg{gen, hits, more, err}
-	}
-}
-
-// addRecent puts path first in the list of the files that the search
-// shows for an empty query.
-func (m *model) addRecent(path string) {
-	rest := slices.DeleteFunc(m.recent, func(p string) bool { return p == path })
-	m.recent = append([]string{path}, rest[:min(len(rest), search.FileLimit-1)]...)
-}
-
-// openAgentPicker lets the user pick the agent to send to. The cursor
-// starts on the agent of the last send, else the agent beside the pane.
-func (m *model) openAgentPicker(agents []rex.Agent) {
-	ov := newOverlay(overlayAgents, "send to which agent?")
-	ov.agents = agents
-	var items []pickItem
-	armed := 0
-	for i, a := range agents {
-		detail := a.Status.App + " · " + string(a.Status.State)
-		if a.Status.State == rex.StateBlocked {
-			detail = a.Status.App + " · at a prompt"
-		}
-		if a.Window != "" {
-			detail += " · " + a.Window
-		}
-		tag := ""
-		switch a.Block {
-		case m.lastSent:
-			tag, armed = "last used", i
-		case m.beside:
-			tag = "opened beside"
-			if m.lastSent == "" {
-				armed = i
-			}
-		}
-		items = append(items, pickItem{
-			label:  fmt.Sprintf("%d  %s", i+1, a.Name),
-			detail: detail,
-			tag:    tag,
-			id:     a.Block,
-		})
-	}
-	ov.setItems(items)
-	ov.cur = armed
-	m.open(ov)
-}
-
-// openBasePicker lets the user pick the base of the branch scope. The
-// current base has a tag. As in herdr-reviewr, it does nothing if the base
-// comes from the flag.
-func (m *model) openBasePicker() {
-	if m.baseFlag {
-		return
-	}
-	ov := newOverlay(overlayBase, "base branch for the branch scope (or type any ref)")
-	branches, err := m.repo.Branches(m.ctx)
-	if err != nil {
-		m.flash(err.Error())
-		return
-	}
-	var items []pickItem
-	for _, b := range branches {
-		tag := ""
-		if b == m.base {
-			tag = "current"
-		}
-		items = append(items, pickItem{label: b, id: b, tag: tag})
-	}
-	ov.setItems(items)
-	m.open(ov)
-}
-
-// openCommitPicker lets the user pick a commit or a range of commits for
-// the commits scope, as in herdr-reviewr. It lists the first-parent
-// commits after the fork point of the base, the newest first. On the base
-// itself, or with no fork point, it lists the last commits. The current
-// pick has the cursor and the anchor.
-func (m *model) openCommitPicker() {
-	if m.tab == tabPR {
-		return
-	}
-	since, err := m.repo.MergeBaseCommit(m.ctx, m.base)
-	if head, herr := m.repo.Resolve(m.ctx, "HEAD"); err != nil || herr != nil || since == head {
-		since = ""
-	}
-	commits, err := m.repo.Commits(m.ctx, since)
-	if err != nil {
-		m.flash(err.Error())
-		return
-	}
-	title := fmt.Sprintf("commits · last %d", vcs.LastCommits)
-	if since != "" {
-		title = fmt.Sprintf("commits · %d over %s", len(commits), m.base)
-	}
-	ov := newOverlay(overlayCommits, title)
-	var items []pickItem
-	for _, c := range commits {
-		items = append(items, pickItem{
-			label:  c.Short + "  " + c.Subject,
-			detail: c.Author + ", " + c.When,
-			id:     c.SHA,
-		})
-	}
-	ov.setItems(items)
-	isSHA := func(sha string) func(pickItem) bool {
-		return func(it pickItem) bool { return it.id == sha }
-	}
-	newest := slices.IndexFunc(items, isSHA(m.to))
-	oldest := slices.IndexFunc(items, isSHA(m.from))
-	if m.to != "" && newest >= 0 && oldest >= 0 {
-		ov.cur = newest
-		if oldest > newest {
-			ov.mark = oldest
-		}
-	}
-	m.open(ov)
-}
-
-// updateCommitPicker handles a key in the commit picker, as herdr-reviewr
-// does. The key of Select sets or clears the anchor of a range. Esc clears
-// the anchor, else it closes the picker.
-func (m *model) updateCommitPicker(msg tea.KeyPressMsg) tea.Cmd {
-	ov, k := m.overlay, m.keys
-	switch {
-	case key.Matches(msg, overlayKeys.Close) && ov.mark >= 0:
-		ov.mark = -1
-	case key.Matches(msg, overlayKeys.Close):
-		m.closeOverlay()
-	case key.Matches(msg, overlayKeys.Choose):
-		return m.chooseOverlay()
-	case key.Matches(msg, k.Down):
-		ov.move(1)
-	case key.Matches(msg, k.Up):
-		ov.move(-1)
-	case key.Matches(msg, k.PageDown):
-		ov.move(pickerPage)
-	case key.Matches(msg, k.PageUp):
-		ov.move(-pickerPage)
-	case key.Matches(msg, k.HalfDown):
-		ov.move(pickerHalf)
-	case key.Matches(msg, k.HalfUp):
-		ov.move(-pickerHalf)
-	case key.Matches(msg, k.Select) && ov.cur < len(ov.shown):
-		if ov.mark == ov.shown[ov.cur] {
-			ov.mark = -1
-		} else {
-			ov.mark = ov.shown[ov.cur]
-		}
-	}
-	return nil
-}
-
-// commitHint returns the keys of the commit picker, as the footer of
-// herdr-reviewr shows them.
-func (m *model) commitHint() string {
-	ov, k := m.overlay, m.keys
-	if len(ov.shown) == 0 {
-		return "esc cancel"
-	}
-	open, esc := "open", "cancel"
-	if ov.mark >= 0 {
-		esc = "clear"
-		if n := max(ov.mark, ov.cur) - min(ov.mark, ov.cur) + 1; n > 1 {
-			open = fmt.Sprintf("open %d", n)
-		}
-	}
-	return fmt.Sprintf("enter %s · esc %s · %s %s move · %s select",
-		open, esc, firstKey(k.Down), firstKey(k.Up), firstKey(k.Select))
-}
-
-// firstKey returns the first key of b, as herdr-reviewr names it, or "".
-func firstKey(b key.Binding) string {
-	if ks := b.Keys(); len(ks) > 0 {
-		return herdrKeyName(ks[0])
-	}
-	return ""
-}
-
-// openCommentList lists the comments, to jump to one, edit one, delete
-// one, or send or copy them all.
-func (m *model) openCommentList() {
-	if m.comments.Len() == 0 {
-		m.flash("no comments yet")
-		return
-	}
-	ov := newOverlay(overlayComments, "")
-	m.fillCommentList(ov)
-	m.open(ov)
-}
-
-// fillCommentList sets the comments as the items of ov, and the count in
-// the title, as in herdr-reviewr.
-func (m *model) fillCommentList(ov *overlay) {
-	ov.title = fmt.Sprintf("Comments (%d)", m.comments.Len())
-	var items []pickItem
-	for _, c := range m.comments.All() {
-		tag := ""
-		if m.stale(c) {
-			tag = "(stale)"
-		}
-		text, _, _ := strings.Cut(c.Text, "\n")
-		items = append(items, pickItem{
-			label:   c.Location(),
-			detail:  text,
-			tag:     tag,
-			comment: c.ID,
-		})
-	}
-	ov.setItems(items)
 }
 
 // updateOverlay handles a key while an overlay is open.
@@ -551,7 +215,7 @@ func (m *model) updateOverlay(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateList(msg)
 	}
 	if ov.kind == overlayGoto {
-		if !lineKey(msg) {
+		if !isLineKey(msg) {
 			return nil
 		}
 		// "$" stands alone, and a digit after "$" starts a number.
@@ -586,52 +250,6 @@ func (m *model) updateQuit(msg tea.KeyPressMsg) tea.Cmd {
 		return m.startSend()
 	case key.Matches(msg, k.Copy):
 		m.copyComments()
-	}
-	return nil
-}
-
-// updateCommentList handles a key in the comment list. The keys are those
-// of herdr-reviewr. Enter also jumps to the comment.
-func (m *model) updateCommentList(msg tea.KeyPressMsg) tea.Cmd {
-	ov, k := m.overlay, m.keys
-	it := ov.selected()
-	switch {
-	case key.Matches(msg, k.Comments, k.Cancel):
-		m.closeOverlay()
-	case key.Matches(msg, overlayKeys.Choose):
-		return m.chooseOverlay()
-	case key.Matches(msg, k.Down):
-		ov.down()
-	case key.Matches(msg, k.Up):
-		ov.up()
-	case key.Matches(msg, k.Send):
-		return m.startSend()
-	case key.Matches(msg, k.Copy):
-		m.copyComments()
-	case key.Matches(msg, k.Edit) && it != nil:
-		// As in herdr-reviewr, a comment on another diff takes no edit.
-		c := m.comments.Find(it.comment)
-		if c == nil || !m.revCurrent(c) {
-			return nil
-		}
-		row := ov.cur
-		m.closeOverlay()
-		m.jumpToComment(c)
-		m.focusList = false
-		if !m.showsLine(c) {
-			m.flash("the line of the comment does not show")
-			return nil
-		}
-		m.ensureVisible()
-		return m.editComment(c, row)
-	case key.Matches(msg, k.Delete) && it != nil:
-		m.comments.Remove(it.comment)
-		m.flash("comment deleted")
-		if m.comments.Len() == 0 {
-			m.closeOverlay()
-			return nil
-		}
-		m.fillCommentList(ov)
 	}
 	return nil
 }
@@ -689,7 +307,7 @@ func (m *model) chooseOverlay() tea.Cmd {
 			return nil
 		}
 		if err := m.repo.SaveBase(m.ctx, ref); err != nil {
-			m.flash(err.Error())
+			m.flash("base save failed: " + err.Error())
 			return nil
 		}
 		m.base = ref
@@ -717,44 +335,6 @@ func (m *model) chooseOverlay() tea.Cmd {
 	}
 	m.ensureVisible()
 	return nil
-}
-
-// commitRange returns the oldest and the newest commit that the commit
-// picker picks with item it. That is one commit, or the range from the
-// mark to it. The list shows the newest commit first.
-func (o *overlay) commitRange(it *pickItem) (oldest, newest string) {
-	if o.mark < 0 {
-		return it.id, it.id
-	}
-	a, b := o.mark, o.shown[o.cur]
-	return o.items[max(a, b)].id, o.items[min(a, b)].id
-}
-
-// agent returns the agent of item it of the agent picker. If it is nil,
-// ok is false.
-func (o *overlay) agent(it *pickItem) (a rex.Agent, ok bool) {
-	if it == nil {
-		return rex.Agent{}, false
-	}
-	i := slices.IndexFunc(o.agents, func(a rex.Agent) bool { return a.Block == it.id })
-	if i < 0 {
-		return rex.Agent{}, false
-	}
-	return o.agents[i], true
-}
-
-// baseRef returns the ref that the base picker picks, with the selected
-// item it. A typed ref, for example a tag, wins over the first match. A
-// match that the user moves to wins over the typed text. If the ref is
-// not valid, ok is false.
-func (m *model) baseRef(it *pickItem) (ref string, ok bool) {
-	ref = strings.TrimSpace(m.overlay.input.Value())
-	_, err := m.repo.Resolve(m.ctx, ref)
-	if it != nil && (ref == "" || err != nil || m.overlay.cur > 0) {
-		ref = it.id
-		_, err = m.repo.Resolve(m.ctx, ref)
-	}
-	return ref, ref != "" && err == nil
 }
 
 // overlayBox renders the box of the overlay, and returns its position.
@@ -790,7 +370,7 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 	}
 	box = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("8")).
+		BorderForeground(dimColor).
 		Padding(0, 1).
 		Width(w).
 		Render(strings.Join(lines, "\n"))
@@ -804,23 +384,7 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 func (m *model) quitHint() string {
 	k, n := m.keys, m.comments.Len()
 	return fmt.Sprintf("%s quit (%d pending) · esc cancel · %s send %d · %s copy",
-		k.QuitDiscard.Help().Key, n, k.Send.Help().Key, n, k.Copy.Help().Key)
-}
-
-// listHint returns the keys of the comment list, as the footer of
-// herdr-reviewr shows them. The edit key shows only if the selected
-// comment takes an edit.
-func (m *model) listHint() string {
-	k := m.keys
-	edit := ""
-	if it := m.overlay.selected(); it != nil {
-		if c := m.comments.Find(it.comment); c != nil && m.revCurrent(c) {
-			edit = fmt.Sprintf(" · %s edit", k.Edit.Help().Key)
-		}
-	}
-	return fmt.Sprintf("%s send %d · esc close · %s copy%s · %s delete · enter jump",
-		k.Send.Help().Key, m.comments.Len(), k.Copy.Help().Key, edit,
-		k.Delete.Help().Key)
+		firstKey(k.QuitDiscard), n, firstKey(k.Send), n, firstKey(k.Copy))
 }
 
 // overlayRows renders at most limit rows of the list of the overlay,

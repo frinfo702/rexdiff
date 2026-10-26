@@ -131,7 +131,10 @@ func TestCopy(t *testing.T) {
 // TestMouse checks that a click picks a file, a triple click copies a
 // line, a drag on the code copies the lines, and the wheel scrolls.
 func TestMouse(t *testing.T) {
-	bin := clipboard(t)
+	// The copy takes longer than the time between the clicks of a triple
+	// click. The triple click still copies the line.
+	slow := `sleep 0.5; cat > "${0%/*}/clip"` + "\n"
+	bin := tools(t, map[string]string{"pbcopy": slow, "wl-copy": slow})
 	clip := filepath.Join(bin, "clip")
 	tm := start(t, newRepo(t), opts{path: bin, env: clipEnv, height: 12})
 	tm.click("M long.txt", 1)
@@ -231,7 +234,7 @@ func TestWindowEditor(t *testing.T) {
 func TestNoEditor(t *testing.T) {
 	tm := start(t, newRepo(t), opts{})
 	tm.keys("]", "j", "e")
-	tm.waitFor("no editor: set `editor` in rexdiff.lua, $EDITOR, or git's core.editor")
+	tm.waitFor(`editor failed: no editor: set "editor" in rexdiff.lua, $EDITOR, or git's core.editor`)
 }
 
 // TestCopyHangs checks that a clipboard tool that does not answer fails

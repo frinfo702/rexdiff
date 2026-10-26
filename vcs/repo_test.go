@@ -22,7 +22,7 @@ import (
 // changes, an untracked file, and an ignored file.
 var testRepo = testgit.NewFixture(func(tb testing.TB, dir string) {
 	tb.Helper()
-	testgit.NewRepo(tb, dir)
+	testgit.InitRepo(tb, dir)
 	run := func(args ...string) {
 		tb.Helper()
 		testgit.Git(tb, dir, args...)
@@ -281,7 +281,7 @@ func TestDiffSkipsBinaryAndBigFiles(t *testing.T) {
 func TestFilesInConflict(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	testgit.NewRepo(t, dir)
+	testgit.InitRepo(t, dir)
 	run := func(args ...string) {
 		t.Helper()
 		testgit.Git(t, dir, args...)
@@ -380,7 +380,7 @@ func TestOwns(t *testing.T) {
 	t.Parallel()
 	r, dir := newRepo(t)
 	nested := filepath.Join(dir, "build", "nested")
-	testgit.NewRepo(t, nested)
+	testgit.InitRepo(t, nested)
 	tests := []struct {
 		dir  string
 		want bool
@@ -457,7 +457,7 @@ func TestEditor(t *testing.T) {
 func TestDiffRenameAndSubmodule(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	testgit.NewRepo(t, dir)
+	testgit.InitRepo(t, dir)
 	testgit.WriteFile(t, dir, "old.txt", "one\ntwo\nthree\n")
 	const (
 		a = "1111111111111111111111111111111111111111"
@@ -516,7 +516,7 @@ func TestNewRepo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir := filepath.Join(t.TempDir(), name)
-			testgit.NewRepo(t, dir)
+			testgit.InitRepo(t, dir)
 			testgit.WriteFile(t, dir, "a.txt", "one\n")
 			r, err := vcs.Open(t.Context(), dir)
 			if err != nil {
@@ -624,7 +624,7 @@ func TestCommitsLikeHerdrReviewr(t *testing.T) {
 	}
 
 	empty := t.TempDir()
-	testgit.NewRepo(t, empty)
+	testgit.InitRepo(t, empty)
 	er, err := vcs.Open(ctx, empty)
 	if err != nil {
 		t.Fatal(err)

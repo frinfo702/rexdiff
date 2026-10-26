@@ -11,7 +11,7 @@ type Theme struct {
 	// if the terminal does not report them. Then the diff tints no background.
 	Background, Foreground color.Color
 	// Green and Red are the ANSI colours 2 and 1 of the terminal. Inserted and
-	// deleted lines get a tint toward them. If they are nil, the diff uses
+	// deleted lines get a tint towards them. If they are nil, the diff uses
 	// fixed colours.
 	Green, Red color.Color
 }

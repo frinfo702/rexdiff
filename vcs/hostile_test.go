@@ -164,10 +164,10 @@ func TestSnapshotNestedRepo(t *testing.T) {
 	t.Parallel()
 	r, dir := newRepo(t)
 	commitAll(t, dir)
-	testgit.NewRepo(t, filepath.Join(dir, "empty"))
+	testgit.InitRepo(t, filepath.Join(dir, "empty"))
 	testgit.WriteFile(t, dir, "empty/x", "x\n")
 	testgit.WriteFile(t, dir, "full/y", "y\n")
-	testgit.NewRepo(t, filepath.Join(dir, "full"))
+	testgit.InitRepo(t, filepath.Join(dir, "full"))
 	commitAll(t, filepath.Join(dir, "full"))
 	testgit.WriteFile(t, dir, "z.txt", "z\n")
 

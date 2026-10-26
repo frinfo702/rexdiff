@@ -41,8 +41,11 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		return nil
 	}
 	if y := mouse.Y - bodyY; y > m.bodyHeight() { // the footer, under the rule
-		return m.install()
+		return m.startUpdate()
 	}
+	// The window of the next click starts after the work of this one, for
+	// example a copy. A slow copy then does not break a triple click.
+	defer func() { m.click.at = time.Now() }()
 	if m.inList(mouse.X, mouse.Y) {
 		if y := mouse.Y - m.listY(); y >= 1 {
 			r := m.listStart(m.listRows()) + y - 1
@@ -82,7 +85,7 @@ func (m *model) clickMain(mouse tea.Mouse) tea.Cmd {
 	}
 	m.focusList = false
 	p.cur, p.anchor = p.head(rowAt[y]), -1
-	if m.onFold() {
+	if m.atFold() {
 		m.expandFold(p.rows[p.cur].Fold)
 		return nil
 	}
@@ -96,8 +99,8 @@ func (m *model) clickMain(mouse tea.Mouse) tea.Cmd {
 	return nil
 }
 
-// inList tells if the screen cell at column x and line y is on the file
-// list.
+// inList reports whether the screen cell at column x and line y is on
+// the file list.
 func (m *model) inList(x, y int) bool {
 	lw, ly := m.listWidth(), m.listY()
 	return lw > 0 && x >= m.listX() && x < m.listX()+lw && y >= ly && y < ly+m.listRows()
@@ -147,7 +150,8 @@ type clickChain struct {
 }
 
 // countClick adds a press to the chain and returns the count. A press on
-// another cell, or after [clickWindow], starts a new chain.
+// another cell, or after [clickWindow], starts a new chain. The time of
+// the chain is the end of the last press.
 func (m *model) countClick(mouse tea.Mouse) int {
 	c, now := m.click, time.Now()
 	n := 1
@@ -231,9 +235,9 @@ func (m *model) copyChars(text string) {
 	}
 }
 
-// onRelease ends a drag. A drag on the line numbers opens the comment
+// onMouseUp ends a drag. A drag on the line numbers opens the comment
 // box. A drag on the code copies the lines.
-func (m *model) onRelease() tea.Cmd {
+func (m *model) onMouseUp() tea.Cmd {
 	d := m.drag
 	m.drag.active = false
 	p := m.cur()
