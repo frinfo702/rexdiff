@@ -310,6 +310,10 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 		return []string{"", "  " + dimStyle.Render(note)}, []int{-1, -1}
 	}
 	lo, hi := m.highlighted()
+	var selSGR string
+	if p.text != nil {
+		selSGR = m.textSelectSGR()
+	}
 	add := func(l string, row int) {
 		lines, rowAt = append(lines, l), append(rowAt, row)
 	}
@@ -326,7 +330,11 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 		// A wrapped line shows its marks on its first row, and its
 		// comments below its last row.
 		t := m.target(i, diff.SideNew)
-		add(m.rowMark(i, t, lo, hi)+p.lines[i], i)
+		line := p.lines[i]
+		if selSGR != "" {
+			line = p.markSelection(i, selSGR)
+		}
+		add(m.rowMark(i, t, lo, hi)+line, i)
 		if t != nil && p.end(i) == i {
 			addBelow(m.commentsBelow(t))
 		}

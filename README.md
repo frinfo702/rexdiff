@@ -39,6 +39,8 @@ them, run `rexdiff uninstall`.
   command palette. Press it again to close rexdiff.
 - Comment: move to a line and press `c`. For a range, press `v` or drag over
   the line numbers.
+- Copy: drag over the code to select it. Release copies the selection. `esc`
+  clears it. It works in each tab.
 - Send: press `s`. rexdiff pastes the comments into the agent's input. It does
   not press Enter.
 - Update: when rexdiff shows a new version at the bottom, press `U`. Your

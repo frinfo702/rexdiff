@@ -23,6 +23,10 @@ const (
 // updateNormal handles a key when no box is open.
 func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 	k := m.keys
+	// Any key leaves the text selection.
+	if p := m.cur(); p.text != nil {
+		p.text = nil
+	}
 	if m.find.active() {
 		switch {
 		case key.Matches(msg, k.FindNext):
