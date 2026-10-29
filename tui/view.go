@@ -537,6 +537,7 @@ func (m *model) footerLine() string {
 		tab:     m.tab,
 		split:   m.splitShown(),
 		visual:  m.cur().anchor >= 0,
+		text:    m.cur().text != nil,
 		finding: m.find.active(),
 	}
 	if m.help.ShowAll {

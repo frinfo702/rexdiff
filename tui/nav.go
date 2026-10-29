@@ -23,8 +23,10 @@ const (
 // updateNormal handles a key when no box is open.
 func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 	k := m.keys
-	// Any key leaves the text selection.
-	if p := m.cur(); p.text != nil {
+	// A key other than y and esc leaves the text selection. They copy it
+	// again or clear it, as a terminal does.
+	if p := m.cur(); p.text != nil &&
+		!key.Matches(msg, k.Copy) && !key.Matches(msg, k.Cancel) {
 		p.text = nil
 	}
 	if m.find.active() {
@@ -52,6 +54,7 @@ func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	case key.Matches(msg, k.Cancel):
 		m.cur().anchor = -1
+		m.cur().text = nil
 		m.help.ShowAll = false
 	case key.Matches(msg, k.Keys):
 		m.help.ShowAll = !m.help.ShowAll

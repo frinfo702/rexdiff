@@ -2,7 +2,8 @@ package tui
 
 // This file selects text in the main pane. A drag over the code selects
 // the cells under the pointer and copies them when the button is released.
-// The selection stays until a key or another click clears it.
+// The selection stays after the button is released, so that y can copy it
+// again and esc can clear it.
 
 import (
 	"strings"

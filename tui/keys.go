@@ -88,7 +88,7 @@ func defaultKeys() keyMap {
 		PrevComment: bind([]string{"N"}, "N", "prev comment"),
 		Comments:    bind([]string{"l"}, "l", "list comments"),
 		Send:        bind([]string{"s", "S"}, "s", "send to agent"),
-		Copy:        bind([]string{"y", "Y"}, "y", "copy comments"),
+		Copy:        bind([]string{"y", "Y"}, "y", "copy text or comments"),
 
 		Search:      bind([]string{"/"}, "/", "search files & code"),
 		Find:        bind([]string{"ctrl+f"}, "ctrl+f", "find in file"),
@@ -230,6 +230,7 @@ type helpKeys struct {
 	tab     tab
 	split   bool
 	visual  bool
+	text    bool
 	finding bool
 }
 
@@ -246,6 +247,11 @@ func (h helpKeys) ShortHelp() []key.Binding {
 		return []key.Binding{
 			hint(k.FindNext, "n/N", "next/prev match"),
 			hint(k.Cancel, "esc", "stop finding"),
+		}
+	case h.text:
+		return []key.Binding{
+			hint(k.Copy, "y", "copy selection"),
+			hint(k.Cancel, "esc", "clear"),
 		}
 	case h.visual:
 		return []key.Binding{

@@ -39,8 +39,8 @@ them, run `rexdiff uninstall`.
   command palette. Press it again to close rexdiff.
 - Comment: move to a line and press `c`. For a range, press `v` or drag over
   the line numbers.
-- Copy: drag over the code to select it. Release copies the selection. `esc`
-  clears it. It works in each tab.
+- Copy: drag over the code to select it. Release copies the selection, and
+  `y` copies it again. `esc` clears it. It works in each tab.
 - Send: press `s`. rexdiff pastes the comments into the agent's input. It does
   not press Enter.
 - Update: when rexdiff shows a new version at the bottom, press `U`. Your
@@ -56,7 +56,7 @@ are gone, rexdiff marks the comment as stale.
 | `f` `F` | next or previous file |
 | `c` | comment |
 | `s` | send the comments to the agent |
-| `y` | copy the comments |
+| `y` | copy the selected text, or the comments |
 | `\|` | side by side or top to bottom |
 | `1` … `5` | overview, guide, diff, all files, or pull request |
 | `r` | in the guide: write it again |

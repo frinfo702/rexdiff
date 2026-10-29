@@ -63,11 +63,19 @@ func TestDragSelectsText(t *testing.T) {
 	if m.status != "copied 6 chars" {
 		t.Errorf("status %q, want the count of chars", m.status)
 	}
+	if !strings.Contains(view(m), "copy selection") {
+		t.Errorf("the footer does not show the selection keys:\n%s", view(m))
+	}
 	if !strings.Contains(m.View().Content, m.textSelectSGR()) {
 		t.Error("the selected cells have no selection colour")
 	}
 
-	// esc clears the selection.
+	// y copies the selection again, and esc clears it.
+	next, cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	m = *next.(*model)
+	if got := clipboardText(t, cmd); got != "x := 2" {
+		t.Errorf("y copied %q, want %q", got, "x := 2")
+	}
 	m = press(t, m, "esc")
 	if m.changes.text != nil {
 		t.Error("esc did not clear the selection")
@@ -109,19 +117,19 @@ func TestDragSelectsAcrossLines(t *testing.T) {
 	}
 }
 
-// TestSelectionKeys checks that a key clears the selection, and that y
-// still copies comments and not the selected text.
+// TestSelectionKeys checks that a movement key clears the selection, and
+// that y copies comments when nothing is selected.
 func TestSelectionKeys(t *testing.T) {
 	m, _ := newTestModel(t)
 	x, y, _ := paneCell(t, m, "x := 2")
 	m, _ = dragText(t, m, x, y, x+1, y)
+	if m = press(t, m, "j"); m.changes.text != nil {
+		t.Error("j did not clear the selection")
+	}
 	next, cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	m = *next.(*model)
-	if m.changes.text != nil {
-		t.Error("y did not clear the selection")
-	}
 	if cmd != nil || !strings.Contains(m.status, "no comments yet") {
-		t.Errorf("y: status %q, command %v; want no comments", m.status, cmd)
+		t.Errorf("y with no selection: status %q, command %v", m.status, cmd)
 	}
 }
 
