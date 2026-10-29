@@ -37,14 +37,18 @@ func (m *model) listWidth() int {
 	return min(m.listW, max(m.w/3, minListWidth))
 }
 
-// mainWidth is the width of the main pane, with its gutter.
-func (m *model) mainWidth() int {
+// mainSpace is the width that the main pane gets on the screen.
+func (m *model) mainSpace() int {
 	w := m.w
 	if lw := m.listWidth(); lw > 0 {
 		w -= lw + sepWidth
 	}
-	return max(w, 24)
+	return w
 }
+
+// mainWidth is the width of the main pane, with its gutter. It keeps a
+// minimum width even if the screen is narrower.
+func (m *model) mainWidth() int { return max(m.mainSpace(), 24) }
 
 // codeWidth is the width of the main pane, without its gutter.
 func (m *model) codeWidth() int { return m.mainWidth() - gutter }
@@ -85,13 +89,17 @@ func (m *model) rerender() {
 	}
 }
 
-// minSplitWidth is the narrowest main pane, in columns, that shows a diff
-// side by side. A narrower pane shows the diff top to bottom, even if the
-// layout is split, because each side would cut most lines.
-const minSplitWidth = 110
+// minSplitShare is the smallest share of the screen, in percent, that the
+// main pane takes before a diff shows side by side. A smaller share shows the
+// diff top to bottom, even if the layout is split, because each side would cut
+// most lines.
+const minSplitShare = 60
 
-// splitShown tells if the diff shows side by side now.
-func (m *model) splitShown() bool { return m.split && m.codeWidth() >= minSplitWidth }
+// splitShown tells if the diff shows side by side now. The main pane must
+// take most of the screen, or each side would cut most lines.
+func (m *model) splitShown() bool {
+	return m.split && m.w > 0 && m.mainSpace()*100 >= m.w*minSplitShare
+}
 
 // diffOptions returns the options to render a diff with sideways scroll
 // xoff.

@@ -177,19 +177,22 @@ func TestScopes(t *testing.T) {
 func TestComment(t *testing.T) {
 	m, _ := newTestModel(t)
 
-	// The pane is too narrow for the split layout, so the diff shows top to
-	// bottom. The unified layout uses three rows for the change.
+	// The unified layout uses three rows for the change.
+	m = press(t, m, "|")
 	if m.splitShown() {
-		t.Fatal("a pane 120 columns wide shows the diff side by side")
+		t.Fatal("| did not turn off the split layout")
 	}
 	m = press(t, m, "]", "v", "j", "j", "c")
 	if m.mode != modeComment {
 		t.Fatal("c did not open the comment box")
 	}
 	m = press(t, m, "h", "i", "enter")
-	// A wide pane shows the split layout, which uses two rows for the same
-	// change.
+	// The split layout uses two rows for the same change.
 	m = step(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
+	m = press(t, m, "|")
+	if !m.splitShown() {
+		t.Fatal("| did not turn on the split layout")
+	}
 	m = press(t, m, "home", "]", "v", "j", "c", "o", "k", "enter")
 
 	cs := m.comments.All()
@@ -216,6 +219,19 @@ func TestComment(t *testing.T) {
 	// Quit asks first, because the comments are not sent.
 	if m = press(t, m, "q"); m.overlay == nil || m.overlay.kind != overlayQuit {
 		t.Error("q with unsent comments did not ask to confirm")
+	}
+}
+
+// TestSplitThreshold checks that the diff shows side by side when the main
+// pane takes about 60% of the screen.
+func TestSplitThreshold(t *testing.T) {
+	m, _ := newTestModel(t)
+	if !m.splitShown() {
+		t.Fatal("a 120-column screen does not show the diff side by side")
+	}
+	m = step(t, m, tea.WindowSizeMsg{Width: 40, Height: 40})
+	if m.splitShown() {
+		t.Error("a 40-column screen shows the diff side by side")
 	}
 }
 
@@ -613,13 +629,15 @@ func TestPalette(t *testing.T) {
 }
 
 // wrapModel shows a change that makes line 4 of a.go too long for the
-// screen, which is 80 columns wide. Wrap is off.
+// screen, which is 80 columns wide. Wrap is off, and the diff is unified so
+// that the wrapped rows are easy to count.
 func wrapModel(t *testing.T) (m model, dir, long string) {
 	t.Helper()
 	m, dir = newTestModel(t)
 	long = "\treturn " + strings.Repeat("x + ", 40) + "1"
 	write(t, dir, "a.go", "package a\n\nfunc A() int {\n"+long+"\n}\n")
 	m.reload()
+	m.split = false
 	m = step(t, m, tea.WindowSizeMsg{Width: 80, Height: 40})
 	return m, dir, long
 }

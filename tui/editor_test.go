@@ -69,9 +69,15 @@ func fakeRex(t *testing.T, m *model, dir string) string {
 // returns the command of the key.
 func pressE(t *testing.T, m model) (model, tea.Cmd) {
 	t.Helper()
-	m = press(t, m, "j", "j", "j", "j", "j", "j") // below the file header
-	next, cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
-	return *next.(*model), cmd
+	for range len(m.changes.rows) {
+		if m.changes.rows[m.changes.cur].New == 4 {
+			next, cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+			return *next.(*model), cmd
+		}
+		m = press(t, m, "j")
+	}
+	t.Fatal("no row for line 4 of a.go")
+	return m, nil
 }
 
 // TestTerminalEditorInRex checks that a terminal editor opens in a new Rex
