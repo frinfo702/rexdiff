@@ -74,23 +74,25 @@ const (
 // the source lines that they show.
 type pane struct {
 	lines  []string
-	rows   []diff.Row // rows[i] is the source line that lines[i] shows
-	diff   *diff.Diff // the render, for mouse hits; nil for markdown and the PR
-	path   string     // the file of the rows; "" if the pane takes no comments
-	cur    int        // the row of the cursor
-	top    int        // the first row on the screen
-	anchor int        // the start of the visual selection, or -1
-	xoff   int        // the sideways scroll, in columns
-	note   string     // shown instead of the lines, if there are no lines
+	rows   []diff.Row     // rows[i] is the source line that lines[i] shows
+	diff   *diff.Diff     // the render, for mouse hits; nil for markdown and the PR
+	path   string         // the file of the rows; "" if the pane takes no comments
+	cur    int            // the row of the cursor
+	top    int            // the first row on the screen
+	anchor int            // the start of the visual selection, or -1
+	text   *textSelection // the text selected with the mouse, or nil
+	xoff   int            // the sideways scroll, in columns
+	note   string         // shown instead of the lines, if there are no lines
 	// free is true after the wheel moves the view. Then the cursor can
 	// be off the screen until the next key or click.
 	free bool
 }
 
 // set shows lines that show rows. It keeps the cursor, the top, and the
-// selection in the new lines.
+// comment selection in the new lines. A text selection does not survive a
+// new render, because its cells can move.
 func (p *pane) set(lines []string, rows []diff.Row) {
-	p.lines, p.rows, p.diff = lines, rows, nil
+	p.lines, p.rows, p.diff, p.text = lines, rows, nil, nil
 	p.cur = min(p.cur, max(len(lines)-1, 0))
 	p.top = min(p.top, max(len(lines)-1, 0))
 	if p.anchor >= len(rows) { // the file is shorter than before
@@ -119,7 +121,7 @@ func (p *pane) end(i int) int {
 
 // toStart moves the cursor and the view to the first row. It clears the
 // selection and the sideways scroll.
-func (p *pane) toStart() { p.cur, p.top, p.anchor, p.xoff = 0, 0, -1, 0 }
+func (p *pane) toStart() { p.cur, p.top, p.anchor, p.text, p.xoff = 0, 0, -1, nil, 0 }
 
 // setDiff shows the lines of d.
 func (p *pane) setDiff(d *diff.Diff) {
@@ -167,6 +169,7 @@ type dragState struct {
 	active bool      // the button is down
 	moved  bool      // the cursor moved off the start row
 	gutter bool      // the drag started on the line numbers
+	text   bool      // the drag selects text
 	start  int       // the row where the drag started
 	pref   diff.Side // the side of the line numbers or the code at the start
 }
@@ -580,7 +583,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	case tea.MouseMotionMsg:
 		m.onDrag(msg.Mouse())
 	case tea.MouseReleaseMsg:
-		return m.onRelease()
+		return m.onRelease(msg.Mouse())
 	case tea.MouseWheelMsg:
 		m.onWheel(msg.Mouse())
 	case tea.PasteMsg:

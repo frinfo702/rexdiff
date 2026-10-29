@@ -82,9 +82,10 @@ type Diff struct {
 	Rows  []Row
 
 	split    bool
-	oldNum   int // width of the old line-number column
-	newNum   int // width of the new line-number column
-	newNumAt int // column where the new line numbers start
+	oldNum   int    // width of the old line-number column
+	newNum   int    // width of the new line-number column
+	newNumAt int    // column where the new line numbers start
+	codeAt   [2]int // column where the code of each side starts
 }
 
 // Render compares the old and the new content of the file at path. The path
@@ -121,6 +122,7 @@ func Render(path, old, new string, o Options) *Diff {
 		d.Lines = strings.Split(out, "\n")
 	}
 	d.oldNum, d.newNum, d.newNumAt = g.BeforeNum, g.AfterNum, g.AfterNumStart
+	d.codeAt = [2]int{g.BeforeCode, g.AfterCode}
 	return d
 }
 
@@ -136,6 +138,17 @@ func kindOf(k diffview.RowKind) Kind {
 		return KindChange
 	}
 	return KindEqual // diffview.RowEqual
+}
+
+// CodeRange returns the columns [lo, hi) of the code of side s on a line.
+// hi is 0 if the code runs to the end of the line. In the unified layout,
+// both sides have the same columns.
+func (d *Diff) CodeRange(s Side) (lo, hi int) {
+	lo = d.codeAt[s]
+	if d.split && s == SideOld {
+		hi = d.newNumAt
+	}
+	return lo, hi
 }
 
 // SideAt tells which side column x of a line belongs to. Column 0 is the

@@ -217,8 +217,12 @@ func (m *model) startSend() tea.Cmd {
 	return m.listAgents(agentsMsg{send: true})
 }
 
-// copyComments copies the review to the clipboard.
+// copyComments copies the selected text, or the review if the pane has no
+// text selection.
 func (m *model) copyComments() tea.Cmd {
+	if m.cur().text != nil {
+		return m.copyTextSelection()
+	}
 	if m.comments.Len() == 0 {
 		m.flash("no comments yet")
 		return nil

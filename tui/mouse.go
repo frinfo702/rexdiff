@@ -1,17 +1,12 @@
 package tui
 
 // The mouse works as in herdr-reviewr. Click or drag on the line numbers to
-// comment on a line or a range. Drag on the code to copy it. Click a file
-// or a tab to open it.
+// comment on a line or a range. Drag on the code to select and copy text.
+// Click a file or a tab to open it.
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
-
-	"github.com/frinfo702/rexdiff/diff"
 )
 
 // onClick handles a press of a mouse button.
@@ -26,6 +21,7 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		// A click does nothing while the comment box is open.
 		return nil
 	}
+	m.cur().text = nil
 	if mouse.Y == 0 {
 		_, spans := m.header()
 		for _, s := range spans {
@@ -57,12 +53,18 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	p := m.cur()
 	m.focusList = false
 	p.cur, p.anchor = p.head(rowAt[y]), -1
-	side, onNumber := p.side(mouse.X - m.mainX() - gutter)
+	x := mouse.X - m.mainX() - gutter
+	side, onNumber := p.side(x)
 	m.drag = dragState{
 		active: true,
 		start:  p.cur,
 		gutter: onNumber,
+		text:   !onNumber,
 		pref:   side,
+	}
+	if !onNumber {
+		pt := p.selectAt(rowAt[y], x)
+		p.text = &textSelection{start: pt, end: pt, side: side}
 	}
 	return nil
 }
@@ -98,6 +100,10 @@ func (m *model) onDrag(mouse tea.Mouse) {
 	if !m.drag.active || mouse.Button != tea.MouseLeft {
 		return
 	}
+	if m.drag.text {
+		m.dragText(mouse)
+		return
+	}
 	p := m.cur()
 	h := m.bodyHeight()
 	y := mouse.Y - bodyY
@@ -121,57 +127,74 @@ func (m *model) onDrag(mouse tea.Mouse) {
 	m.drag.moved = p.cur != m.drag.start
 }
 
+// dragText moves the end of the text selection to the pointer. A pointer
+// above or below the body scrolls the pane.
+func (m *model) dragText(mouse tea.Mouse) {
+	p := m.cur()
+	if p.text == nil || len(p.lines) == 0 {
+		return
+	}
+	h := m.bodyHeight()
+	y := mouse.Y - bodyY
+	x := mouse.X - m.mainX() - gutter
+	var row int
+	switch {
+	case y < 0:
+		p.top = max(p.top-1, 0)
+		row = p.top
+	case y >= h:
+		p.top = min(p.top+1, max(len(p.lines)-h, 0))
+		row = min(p.top+h-1, len(p.lines)-1)
+	default:
+		_, rowAt := m.mainLines(h)
+		row = -1
+		for yy := min(y, len(rowAt)-1); yy >= 0; yy-- {
+			if rowAt[yy] >= 0 {
+				row = rowAt[yy]
+				break
+			}
+		}
+		if row < 0 {
+			return
+		}
+	}
+	p.text.end = p.selectAt(row, x)
+	p.cur = p.head(row)
+	m.drag.moved = p.text.end != p.text.start
+}
+
 // onRelease ends a drag. A drag on the line numbers opens the comment
-// box. A drag on the code copies the lines.
-func (m *model) onRelease() tea.Cmd {
+// box. A drag on the code copies the selected text.
+func (m *model) onRelease(mouse tea.Mouse) tea.Cmd {
+	// Use the release cell only inside the body. A terminal can report the
+	// release elsewhere, and that must not move the end of the selection.
+	body := mouse.Y >= bodyY && mouse.Y < bodyY+m.bodyHeight()
+	if m.drag.text && body {
+		m.dragText(mouse)
+	}
 	d := m.drag
 	m.drag.active = false
 	p := m.cur()
-	// A reload during the drag can make the pane shorter than the start.
-	if !d.active || d.start >= len(p.rows) {
+	if !d.active {
 		return nil
 	}
 	switch {
+	case d.text:
+		if !d.moved {
+			p.text = nil
+			return nil
+		}
+		return m.copyTextSelection()
+	// A reload during the drag can make the pane shorter than the start.
+	case d.start >= len(p.rows):
+		return nil
 	case d.gutter: // a line or a range on the line numbers: comment
 		if d.moved {
 			p.anchor = d.start
 		}
 		return m.startComment(d.pref)
-	case d.moved: // a range on the code: copy it
-		lo, hi := p.span(d.start, p.cur)
-		out := m.sourceLines(lo, hi, d.pref)
-		m.flash("copied " + plural(len(out), "line"))
-		return tea.SetClipboard(strings.Join(out, "\n"))
 	}
 	return nil
-}
-
-// sourceLines returns the source lines of rows lo to hi of the current
-// pane. It uses side pref if they change it. A row with no source line
-// gives its text on the screen.
-func (m *model) sourceLines(lo, hi int, pref diff.Side) []string {
-	p := m.cur()
-	var out []string
-	var src [2][]string // the lines of each side, read once
-	for i := lo; i <= hi; i++ {
-		if p.cont(i) {
-			continue
-		}
-		t := m.target(i, pref)
-		if t == nil {
-			if i < len(p.lines) {
-				out = append(out, strings.TrimRight(ansi.Strip(p.lines[i]), " "))
-			}
-			continue
-		}
-		if src[t.side] == nil {
-			src[t.side] = diff.Lines(m.contentFor(p.path, t.side))
-		}
-		if lines := src[t.side]; t.line-1 < len(lines) {
-			out = append(out, lines[t.line-1])
-		}
-	}
-	return out
 }
 
 // wheelStep is the number of rows that one step of the wheel scrolls.

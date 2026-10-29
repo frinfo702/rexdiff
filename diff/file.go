@@ -30,7 +30,7 @@ func RenderFile(path, src string, o Options) *Diff {
 	digits := len(fmt.Sprint(len(hl)))
 	numWidth := digits + 2 // a space on each side of the number
 	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(lineNumberColor))
-	d := &Diff{newNum: numWidth}
+	d := &Diff{newNum: numWidth, codeAt: [2]int{numWidth + 1, numWidth + 1}}
 	code := o.Width - numWidth - 1 // the width that the number and a space leave
 	blank := strings.Repeat(" ", numWidth+1)
 	for i, l := range hl {
