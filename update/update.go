@@ -258,7 +258,7 @@ func lastLine(out []byte) string {
 // checksums of r, and puts its binary in place of the file that u.bin
 // links to.
 func (u *Updater) download(ctx context.Context, r Release) error {
-	name := fmt.Sprintf("rexdiff-%s-%s-%s.tar.gz", r.Tag, runtime.GOOS, runtime.GOARCH)
+	name := fmt.Sprintf("rexdiff-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	archiveURL, sumsURL := assetURL(r, name), assetURL(r, "sha256sums.txt")
 	if archiveURL == "" || sumsURL == "" {
 		return fmt.Errorf("release %s has no %s or sha256sums.txt", r.Tag, name)

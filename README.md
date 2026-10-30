@@ -18,6 +18,16 @@ brew trust frinfo702/rexdiff
 brew install --cask rexdiff
 ```
 
+With curl:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/frinfo702/rexdiff/main/install.sh | sh
+```
+
+The script downloads the release for this Mac, checks its checksum, and puts
+the binary in `~/.local/bin`, or in `REXDIFF_BIN_DIR`. It also says how to add
+the directory to `PATH` if it is not there.
+
 With Go:
 
 ```sh

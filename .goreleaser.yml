@@ -13,9 +13,13 @@ builds:
     goos: [darwin]
     goarch: [arm64, amd64]
 
+# The name has no version, so that the link of the latest release works in
+# the curl command of the README:
+# https://github.com/frinfo702/rexdiff/releases/latest/download/rexdiff-darwin-arm64.tar.gz
+# update/update.go builds the same name.
 archives:
   - formats: [tar.gz]
-    name_template: "{{ .ProjectName }}-v{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
 
 checksum:
   name_template: sha256sums.txt

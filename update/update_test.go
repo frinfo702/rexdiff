@@ -216,7 +216,7 @@ func archive(t *testing.T, content string) []byte {
 // TestDownload checks the download of a release: the checksum, the binary
 // in the archive, and the replacement of the target file of a link.
 func TestDownload(t *testing.T) {
-	name := fmt.Sprintf("rexdiff-v0.2.0-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	name := fmt.Sprintf("rexdiff-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	good := archive(t, "new binary")
 	sum := sha256.Sum256(good)
 	files := map[string][]byte{
