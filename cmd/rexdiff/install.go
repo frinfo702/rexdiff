@@ -274,6 +274,12 @@ func install(
 			"in the settings in %s)", fs.Arg(0), luaPath())
 	}
 
+	// The action runs in Rex, and install reloads its configuration. Without
+	// the rex command, there is nothing to configure.
+	if !rex.Available() {
+		return errors.New("rex is not installed: install Rex, or put the rex command in PATH")
+	}
+
 	// Make the new content first. Then a bad rexdiff.lua stops the install
 	// before it changes a file.
 	lua := luaPath()

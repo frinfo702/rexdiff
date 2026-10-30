@@ -10,7 +10,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w -X main.version={{ .Version }}
-    goos: [darwin]
+    goos: [darwin, linux]
     goarch: [arm64, amd64]
 
 # The name has no version, so that the link of the latest release works in

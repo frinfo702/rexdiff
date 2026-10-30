@@ -56,16 +56,38 @@ func binFromEnv() string {
 	if _, err := exec.LookPath("rex"); err == nil {
 		return ""
 	}
+	bin, _ := appBin()
+	return bin
+}
+
+// appBin returns the path of the rex command of the Rex server app on
+// macOS.
+func appBin() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
-		return ""
+		return "", err
 	}
 	bin := filepath.Join(dir, "com.superlogical.rex", "RexServer", "Versions",
 		"Current", "Rex Server.app", "Contents", "MacOS", "rex")
 	if _, err := os.Stat(bin); err != nil {
-		return ""
+		return "", err
 	}
-	return bin
+	return bin, nil
+}
+
+// Available reports whether the rex command exists: REX_BIN_DIR/rex, rex
+// in PATH, or the rex of the Rex server app. On Linux, rex comes from
+// REX_BIN_DIR or PATH.
+func Available() bool {
+	if dir := os.Getenv("REX_BIN_DIR"); dir != "" {
+		_, err := exec.LookPath(filepath.Join(dir, "rex"))
+		return err == nil
+	}
+	if _, err := exec.LookPath("rex"); err == nil {
+		return true
+	}
+	_, err := appBin()
+	return err == nil
 }
 
 // command returns the command "rex args...".
