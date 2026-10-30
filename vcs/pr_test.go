@@ -196,16 +196,18 @@ func TestPullRequestErrors(t *testing.T) {
 	}
 }
 
-// fakePath sets PATH to dir and the system directories, and links git into
-// dir. Then PATH has the fake forge tools and no real ones.
+// fakePath sets PATH to dir, which has git and cat, so that PATH has the
+// fake forge tools and no real ones.
 func fakePath(t *testing.T, dir string) {
 	t.Helper()
-	p, err := exec.LookPath("git")
-	if err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"cat", "git"} {
+		p, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(p, filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.Symlink(p, filepath.Join(dir, "git")); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+":/bin:/usr/bin")
+	t.Setenv("PATH", dir)
 }

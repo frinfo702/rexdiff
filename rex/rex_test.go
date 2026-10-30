@@ -215,6 +215,40 @@ func TestFromEnv(t *testing.T) {
 	}
 }
 
+// TestAvailable checks that Available finds rex in PATH and in REX_BIN_DIR,
+// and that it is false without rex.
+func TestAvailable(t *testing.T) {
+	// No rex in PATH and no Rex app in HOME.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("REX_BIN_DIR", "")
+	t.Setenv("PATH", t.TempDir())
+	if rex.Available() {
+		t.Error("Available without rex = true")
+	}
+
+	// rex in PATH, as go install leaves it.
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "rex"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	if !rex.Available() {
+		t.Error("Available with rex in PATH = false")
+	}
+
+	// rex in REX_BIN_DIR, which Rex sets in its terminals.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "rex"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("REX_BIN_DIR", dir)
+	if !rex.Available() {
+		t.Error("Available with rex in REX_BIN_DIR = false")
+	}
+}
+
 // TestReloadConfigOutsideRex checks that ReloadConfig runs the rex of the
 // Rex server app outside a Rex terminal. There, for example under brew,
 // REX_BIN_DIR is not set and rex is not in PATH.
@@ -235,6 +269,9 @@ func TestReloadConfigOutsideRex(t *testing.T) {
 	script := "#!/bin/sh\necho \"reloaded: $*\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "rex"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	if !rex.Available() {
+		t.Error("Available with the rex of the app = false")
 	}
 	out, err := rex.ReloadConfig(t.Context())
 	if err != nil || out != "reloaded: config reload\n" {

@@ -9,9 +9,20 @@ permissions:
   contents: read
 
 jobs:
-  # Rex runs only on macOS, so rexdiff is tested there.
+  # Rex runs only on macOS, so the Rex integration is tested there. The
+  # viewer also runs on Linux, without Rex.
   test:
     runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+
+  test-linux:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

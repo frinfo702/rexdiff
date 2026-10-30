@@ -1,6 +1,7 @@
 <img src="assets/logo.png" alt="rexdiff" width="360" align="right">
 
 A diff viewer for coding agents in [Rex]. Think [herdr-reviewr], but for Rex.
+It runs on macOS and Linux.
 
 
 It opens next to the agent and shows the changes. You comment on lines and send
@@ -24,9 +25,9 @@ With curl:
 curl -fsSL https://raw.githubusercontent.com/frinfo702/rexdiff/main/install.sh | sh
 ```
 
-The script downloads the release for this Mac, checks its checksum, and puts
-the binary in `~/.local/bin`, or in `REXDIFF_BIN_DIR`. It also says how to add
-the directory to `PATH` if it is not there.
+The script downloads the release for this system, checks its checksum, and
+puts the binary in `~/.local/bin`, or in `REXDIFF_BIN_DIR`. It also says how
+to add the directory to `PATH` if it is not there.
 
 With Go:
 
@@ -41,7 +42,8 @@ rexdiff install
 ```
 
 This adds the "Toggle rexdiff" action and binds it to Shift+Cmd+R. To remove
-them, run `rexdiff uninstall`.
+them, run `rexdiff uninstall`. The install command needs the `rex` command;
+it says so when Rex is not installed. The viewer itself runs without Rex.
 
 ## Use
 
@@ -128,7 +130,8 @@ After a change:
 
 ## Requirements
 
-- Rex
+- Rex for the action in Rex. Rex runs on macOS; the viewer also runs on its
+  own, on macOS and Linux.
 - git
 - `gh`, `glab`, or `az` for the pull request tab. You must be logged in.
 

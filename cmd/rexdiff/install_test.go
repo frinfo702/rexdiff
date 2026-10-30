@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,23 @@ func fakeRexDir(t *testing.T, log string) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// TestInstallWithoutRex checks that install stops before it writes a file
+// when rex is not installed.
+func TestInstallWithoutRex(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("REX_CONFIG", "")
+	t.Setenv("REX_BIN_DIR", "")
+	t.Setenv("PATH", t.TempDir())
+	err := install(t.Context(), "/opt/rexdiff", nil, io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "rex is not installed") {
+		t.Errorf("install without rex = %v, want the rex error", err)
+	}
+	if _, err := os.Stat(filepath.Dir(luaPath())); !os.IsNotExist(err) {
+		t.Errorf("install without rex made %s", filepath.Dir(luaPath()))
+	}
 }
 
 // TestUpgrade checks that upgrade replaces the code of rexdiff.lua if it
