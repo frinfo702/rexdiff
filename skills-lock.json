@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "monk": {
+      "source": "frinfo702/skills",
+      "sourceType": "github",
+      "skillPath": "skills/monk/SKILL.md",
+      "computedHash": "260af1cbd64218f2e5b0c2d419c0fd1d0024fa7fac0cafba837ea9d7f3467a77"
+    }
+  }
+}

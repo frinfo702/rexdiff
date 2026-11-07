@@ -1,0 +1,39 @@
+name: release
+
+# Publish a release on GitHub, for example with "gh release create v0.1.0".
+# This workflow then adds the binaries to it and updates the cask.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  # CI runs only on branches, so a release runs the tests again.
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

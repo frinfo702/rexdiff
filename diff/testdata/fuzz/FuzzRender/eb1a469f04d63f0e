@@ -1,0 +1,8 @@
+go test fuzz v1
+byte('\x05')
+string("\xea\xf5\xf5\xff\xff\xff\xff")
+string("纼")
+byte('\n')
+byte('\u0081')
+byte('\x00')
+bool(false)

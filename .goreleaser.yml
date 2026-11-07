@@ -1,0 +1,62 @@
+version: 2
+
+project_name: rexdiff
+
+builds:
+  - main: ./cmd/rexdiff
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos: [darwin, linux]
+    goarch: [arm64, amd64]
+
+# The name has no version, so that the link of the latest release works in
+# the curl command of the README:
+# https://github.com/frinfo702/rexdiff/releases/latest/download/rexdiff-darwin-arm64.tar.gz
+# update/update.go builds the same name.
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: sha256sums.txt
+
+changelog:
+  use: github
+
+# The release workflow runs when someone publishes a release on GitHub.
+# GoReleaser adds the files to that release. It does not make a new one,
+# and it keeps the notes.
+release:
+  mode: keep-existing
+
+# Each release writes Casks/rexdiff.rb to this repo. The release workflow
+# gives GITHUB_TOKEN the write access for it.
+homebrew_casks:
+  - repository:
+      owner: frinfo702
+      name: rexdiff
+      branch: main
+    directory: Casks
+    homepage: https://github.com/frinfo702/rexdiff
+    description: Review the changes of a coding agent in Rex
+    commit_author:
+      name: Kenichiro Goto
+      email: kenichiro3114@gmail.com
+    commit_msg_template: "Casks: rexdiff {{ .Tag }}"
+    # Brew runs cask steps in a sandbox, with a fake HOME. So the cask
+    # cannot add the Rex action. The caveat tells the user to do it.
+    caveats: |
+      Add the rexdiff action to Rex:
+        rexdiff install
+      Before brew uninstall rexdiff, remove it:
+        rexdiff uninstall
+    # The binary is not notarized. Without this, Gatekeeper blocks the
+    # first run.
+    hooks:
+      post:
+        install_steps: |
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/rexdiff"]

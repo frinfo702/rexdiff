@@ -1,0 +1,127 @@
+// Package tui is the terminal program of rexdiff. It shows the changes in a
+// repository and takes review comments on the lines. It sends the comments
+// to a coding agent in Rex.
+package tui
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"slices"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/frinfo702/rexdiff/rex"
+	"github.com/frinfo702/rexdiff/vcs"
+)
+
+// appName is the name that rexdiff reports to Rex, and the label of its
+// block.
+const appName = "rexdiff"
+
+// Options configure Run.
+type Options struct {
+	Repo *vcs.Repo // the repository to review, not nil
+	// Rex is the Rex session of the process, or nil outside Rex. Without
+	// Rex, the user cannot send the review. The user can only copy it.
+	Rex *rex.Client
+	// Config is the settings as JSON, from the top of rexdiff.lua. An
+	// empty text means the default settings.
+	Config string
+	// Layout and Scope override the settings if they are not empty. Set
+	// them from the command-line flags.
+	Layout Layout
+	Scope  Scope
+	// Agent is the block ID or the label of the agent that the program
+	// opens beside, or "". The agent picker selects it first.
+	Agent string
+	// Wrap continues long lines on the next lines, instead of cutting
+	// them. The key w changes it.
+	Wrap bool
+	// Base is the base of the branch scope. An empty value means the
+	// default branch of the repository.
+	Base string
+	Log  *slog.Logger // nil means no log
+	// Notice, if not empty, is a problem that the footer shows until the
+	// program quits.
+	Notice string
+	// Updater installs a newer release, or is nil if rexdiff cannot update
+	// itself. If it is not nil, the program asks for the latest release.
+	Updater Updater
+	// Resume is the file of the state that Run returned before an update,
+	// or "". Run reads it and removes it.
+	Resume string
+}
+
+// check returns an error for options that Run cannot use.
+func (o Options) check() error {
+	switch {
+	case o.Repo == nil:
+		return errors.New("no repository")
+	case o.Layout != "" && !slices.Contains(layouts, o.Layout):
+		return invalid("layout", "one of "+strings.Join(names(layouts...), ", "), string(o.Layout))
+	case o.Scope != "" && !slices.Contains(configScopes, o.Scope):
+		return invalid("scope", "one of "+strings.Join(names(configScopes...), ", "), string(o.Scope))
+	}
+	return nil
+}
+
+// CheckConfig returns the error of the settings text, a JSON object, or
+// nil if rexdiff accepts it.
+func CheckConfig(text string) error {
+	_, err := parseConfig(text)
+	return err
+}
+
+// Run shows the review program in the terminal. It returns when the user
+// quits or when ctx is done. Run returns an error before it starts if the
+// settings are not valid. It also returns an error if Repo is nil, or if
+// it does not know the Layout or the Scope. After an update, Run returns
+// the file of the saved state. The caller then runs the new rexdiff with
+// Options.Resume set to that file.
+func Run(ctx context.Context, o Options) (resume string, err error) {
+	if err := o.check(); err != nil {
+		return "", err
+	}
+	cfg, err := parseConfig(o.Config)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	m := newModel(ctx, o, cfg)
+	var saved *savedState
+	if o.Resume != "" {
+		if saved, err = loadState(o.Resume); err != nil {
+			m.flash("cannot read the comments from before the update: " + err.Error())
+		} else {
+			m.restoreSettings(saved)
+		}
+	}
+	m.reload()
+	if saved != nil {
+		m.restorePlaces(saved)
+	}
+	if o.Rex != nil && o.Rex.Block != "" {
+		if err := o.Rex.SetLabel(ctx, o.Rex.Block, appName); err != nil {
+			m.log.Debug("set label", "err", err)
+		}
+	}
+	program := tea.NewProgram(&m, tea.WithContext(ctx))
+	if o.Rex != nil {
+		go o.Rex.Watch(ctx, func(e rex.Event) { program.Send(eventMsg(e)) })
+	}
+	final, err := program.Run()
+	if fm, ok := final.(*model); ok && err == nil {
+		if fm.restartState != "" {
+			// Keep the last screen until the new rexdiff draws, so that
+			// the restart does not show the shell of the pane.
+			fmt.Print("\x1b[?1049h\x1b[?25l\x1b[H" + fm.View().Content)
+		}
+		return fm.restartState, nil
+	}
+	return "", err
+}
