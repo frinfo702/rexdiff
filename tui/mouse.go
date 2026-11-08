@@ -5,8 +5,12 @@ package tui
 // Click a file or a tab to open it.
 
 import (
+	"time"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/frinfo702/rexdiff/diff"
 )
 
 // onClick handles a press of a mouse button.
@@ -20,6 +24,9 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	if m.mode == modeComment {
 		// A click does nothing while the comment box is open.
 		return nil
+	}
+	if m.mode == modeFind {
+		m.mode = modeNormal // keep the find, as enter does
 	}
 	m.cur().text = nil
 	if mouse.Y == 0 {
@@ -52,6 +59,11 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	}
 	p := m.cur()
 	m.focusList = false
+	if p.hunkHeader(rowAt[y]) { // "↕ 12 unchanged lines": show them
+		p.cur = rowAt[y]
+		m.addContext(contextStep)
+		return nil
+	}
 	p.cur, p.anchor = p.head(rowAt[y]), -1
 	x := mouse.X - m.mainX() - gutter
 	side, onNumber := p.side(x)
@@ -65,8 +77,24 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	if !onNumber {
 		pt := p.selectAt(rowAt[y], x)
 		p.text = &textSelection{start: pt, end: pt, side: side}
+		last := m.click
+		m.click = lastClick{time.Now(), mouse.X, mouse.Y}
+		if m.click.at.Sub(last.at) < doubleClick && last.x == mouse.X && last.y == mouse.Y {
+			m.drag = dragState{} // the release must not move the end
+			p.text = p.wordAt(pt, side)
+			return m.copyTextSelection()
+		}
 	}
 	return nil
+}
+
+// doubleClick is the longest time between the two clicks of a double click.
+const doubleClick = 400 * time.Millisecond
+
+// hunkHeader tells if row i is the line above a hunk of a diff. Row 0 is
+// the file header.
+func (p *pane) hunkHeader(i int) bool {
+	return p.diff != nil && i > 0 && i < len(p.rows) && p.rows[i].Kind == diff.KindHunk
 }
 
 // listIndexAt returns the file on line y of the file list, h lines tall,

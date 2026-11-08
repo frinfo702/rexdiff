@@ -13,6 +13,7 @@ type keyMap struct {
 	// Move.
 	Down, Up, PageDown, PageUp, HalfDown, HalfUp, Top, Bottom  key.Binding
 	NextHunk, PrevHunk, NextFile, PrevFile, Focus, Left, Right key.Binding
+	MoreContext, LessContext                                   key.Binding
 
 	// Scopes and tabs.
 	ScopeUncommitted, ScopeBranch, ScopeTurn, ScopeCommits key.Binding
@@ -68,6 +69,9 @@ func defaultKeys() keyMap {
 		Left:     bind([]string{"left"}, "←/→", "scroll sideways"),
 		Right:    bind([]string{"right"}, "→", "scroll right"),
 
+		MoreContext: bind([]string{"+", "="}, "+/-", "more/less context"),
+		LessContext: bind([]string{"-"}, "-", "less context"),
+
 		ScopeUncommitted: bind([]string{"u"}, "u", "uncommitted"),
 		ScopeBranch:      bind([]string{"b"}, "b", "branch"),
 		ScopeTurn:        bind([]string{"t"}, "t", "last turn"),
@@ -90,8 +94,8 @@ func defaultKeys() keyMap {
 		Send:        bind([]string{"s", "S"}, "s", "send to agent"),
 		Copy:        bind([]string{"y", "Y"}, "y", "copy text or comments"),
 
-		Search:      bind([]string{"/"}, "/", "search files & code"),
-		Find:        bind([]string{"ctrl+f"}, "ctrl+f", "find in file"),
+		Search:      bind([]string{"ctrl+p"}, "ctrl+p", "search all files & code"),
+		Find:        bind([]string{"/", "ctrl+f"}, "/", "find in file (in list: names)"),
 		GotoLine:    bind([]string{":"}, ":", "go to line"),
 		Rendered:    bind([]string{"m"}, "m", "rendered markdown"),
 		Split:       bind([]string{"|"}, "|", "side by side"),
@@ -169,6 +173,8 @@ func (k *keyMap) bindings(c keybindings) []binding {
 		{"expand", c.Expand, &k.Right},
 		{"next-hunk", c.NextHunk, &k.NextHunk},
 		{"prev-hunk", c.PrevHunk, &k.PrevHunk},
+		{"more-context", c.MoreContext, &k.MoreContext},
+		{"less-context", c.LessContext, &k.LessContext},
 		{"next-file", c.NextFile, &k.NextFile},
 		{"prev-file", c.PrevFile, &k.PrevFile},
 		{"focus", c.Focus, &k.Focus},
@@ -243,6 +249,8 @@ func (h helpKeys) ShortHelp() []key.Binding {
 	switch {
 	case h.mode == modeComment:
 		return []key.Binding{k.Save, k.Newline, k.Cancel}
+	case h.mode == modeFind:
+		return []key.Binding{hint(k.Save, "enter", "keep"), hint(k.Cancel, "esc", "go back")}
 	case h.finding:
 		return []key.Binding{
 			hint(k.FindNext, "n/N", "next/prev match"),
@@ -275,7 +283,7 @@ func (h helpKeys) ShortHelp() []key.Binding {
 func (h helpKeys) FullHelp() [][]key.Binding {
 	k := h.k
 	move := []key.Binding{
-		k.Down, k.HalfDown, k.NextHunk, k.NextFile, k.Focus, k.Left, k.GotoLine,
+		k.Down, k.HalfDown, k.NextHunk, k.MoreContext, k.NextFile, k.Focus, k.Left, k.GotoLine,
 	}
 	scopes := []key.Binding{
 		k.TabOverview, k.ScopeUncommitted, k.ScopeBranch, k.ScopeTurn, k.ScopeCommits,

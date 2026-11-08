@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"testing"
 
@@ -168,5 +169,37 @@ func TestMarkSelection(t *testing.T) {
 	want := "ab" + sgr + "cde" + ansi.ResetStyle + "fgh"
 	if got != want {
 		t.Errorf("marked line %q, want %q", got, want)
+	}
+}
+
+// TestUnderSGR checks that the tint of the cursor line shows on the cells
+// with no background of their own, and shades the cells that have one.
+func TestUnderSGR(t *testing.T) {
+	const tint = "\x1b[48;5;1m"
+	green := "\x1b[38;2;48;0;0;48;2;0;9;0m" // a foreground of 48 is not a background
+	white := func(color.Color) color.Color { return color.White }
+	got := underSGR("a"+green+"b\x1b[mc\x1b[38;2;48;1;1md", tint, white)
+	shaded := "\x1b[48;2;255;255;255m" // the green background, shaded
+	want := tint + "a" + green + shaded + "b\x1b[m" + tint + "c\x1b[38;2;48;1;1m" + tint + "d"
+	if got != want {
+		t.Errorf("underSGR:\n got %q\nwant %q", got, want)
+	}
+	if setsBackground("38;2;48;0;0", false) {
+		t.Error("a foreground with a 48 in it counts as a background")
+	}
+}
+
+// TestPaintSpans checks that the spans get the mark, that a style in the
+// text does not turn a span off, and that the line keeps its own style
+// after a span.
+func TestPaintSpans(t *testing.T) {
+	const mark, red = "\x1b[7m", "\x1b[31m"
+	got := paintSpans(red+"ab"+"\x1b[1m"+"cdé\x1b[m", [][2]int{{1, 3}, {4, 5}}, mark)
+	want := red + "a" + mark + "b" + "\x1b[1m" + mark + "c" + "\x1b[m" + red + "\x1b[1m" + "d" + mark + "é" + "\x1b[m" + mark + "\x1b[m"
+	if got != want {
+		t.Errorf("paintSpans:\n got %q\nwant %q", got, want)
+	}
+	if got := paintMatches("Go go", "Go go", "go"); strings.Count(got, findSGR) != 2 {
+		t.Errorf("paintMatches marks %d matches of go in %q, want 2", strings.Count(got, findSGR), got)
 	}
 }

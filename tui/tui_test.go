@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image/color"
 	"os"
 	"os/exec"
@@ -87,6 +88,8 @@ func press(t *testing.T, m model, keys ...string) model {
 		"esc":   tea.KeyEscape,
 		"home":  tea.KeyHome,
 		"end":   tea.KeyEnd,
+		"tab":   tea.KeyTab,
+		"bksp":  tea.KeyBackspace,
 	}
 	for _, k := range keys {
 		code, ok := named[k]
@@ -222,8 +225,8 @@ func TestComment(t *testing.T) {
 	}
 }
 
-// TestSplitThreshold checks that the diff shows side by side when the main
-// pane takes about 60% of the screen.
+// TestSplitThreshold checks that the diff shows side by side only when the
+// main pane is wide enough, in the Diff and in the Guide tab.
 func TestSplitThreshold(t *testing.T) {
 	m, _ := newTestModel(t)
 	if !m.splitShown() {
@@ -232,6 +235,14 @@ func TestSplitThreshold(t *testing.T) {
 	m = step(t, m, tea.WindowSizeMsg{Width: 40, Height: 40})
 	if m.splitShown() {
 		t.Error("a 40-column screen shows the diff side by side")
+	}
+	// The guide column is wider than the file list.
+	m.tab, m.guide.sections = tabGuide, []guideSection{{Title: "x", Files: []string{"a.go"}}}
+	for w, want := range map[int]bool{120: false, 200: true} {
+		m = step(t, m, tea.WindowSizeMsg{Width: w, Height: 40})
+		if m.splitShown() != want {
+			t.Errorf("guide at %d columns: side by side %v, want %v", w, !want, want)
+		}
 	}
 }
 
@@ -960,5 +971,160 @@ func TestParseGuide(t *testing.T) {
 	}
 	if _, err := parseGuide("I can't do that"); err == nil {
 		t.Error("parseGuide of no JSON: no error")
+	}
+}
+
+// TestHideList checks that z hides the file list and gives j and k back to
+// the code, and that tab on a hidden list shows it again.
+func TestHideList(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = press(t, m, "tab", "z")
+	if m.listWidth() != 0 || m.focusList {
+		t.Fatalf("z: list width %d, focus %v", m.listWidth(), m.focusList)
+	}
+	m = press(t, m, "tab")
+	if m.listWidth() == 0 || !m.focusList {
+		t.Fatalf("tab: list width %d, focus %v", m.listWidth(), m.focusList)
+	}
+}
+
+// TestMoreContext checks that + shows more unchanged lines around a
+// change, that - shows fewer, and that a click on a hunk header shows more.
+func TestMoreContext(t *testing.T) {
+	m, dir := newTestModel(t)
+	var src strings.Builder
+	for i := range 40 {
+		fmt.Fprintf(&src, "// line %d\n", i+1)
+	}
+	write(t, dir, "a.go", src.String())
+	git(t, dir, "commit", "-qam", "long")
+	write(t, dir, "a.go", strings.Replace(src.String(), "line 30\n", "changed\n", 1))
+	m.reload()
+	shown := func(line int) bool { return m.changes.rowOf(diff.SideNew, line) >= 0 }
+	if shown(20) {
+		t.Fatal("line 20 shows before + is pressed")
+	}
+	if m = press(t, m, "+"); !shown(20) {
+		t.Error("+ did not show line 20")
+	}
+	if m = press(t, m, "-"); shown(20) {
+		t.Error("- did not hide line 20")
+	}
+	h := slices.IndexFunc(m.changes.rows[1:], func(r diff.Row) bool { return r.Kind == diff.KindHunk }) + 1
+	_, rowAt := m.mainLines(m.bodyHeight())
+	m = click(t, m, m.mainX()+gutter+4, bodyY+slices.Index(rowAt, h))
+	if !shown(20) {
+		t.Error("a click on the hunk header did not show line 20")
+	}
+}
+
+// TestCursorLine checks that the line at the cursor gets a tint, and that
+// the cursor_line setting turns it off.
+func TestCursorLine(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = step(t, m, tea.BackgroundColorMsg{Color: color.Black})
+	m = press(t, m, "]")
+	sgr := m.cursorLineSGR()
+	if sgr == "" || !strings.Contains(m.View().Content, sgr) {
+		t.Fatal("the cursor line has no tint")
+	}
+	m.cfg.CursorLine = false
+	if m.cursorLineSGR() != "" {
+		t.Error("cursor_line = false still tints the cursor line")
+	}
+}
+
+// TestFind checks that / finds in the diff as the user types, with the file
+// list still on the screen, and that in the file list it finds by name.
+func TestFind(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = press(t, m, "/", "x", " ", ":")
+	p := &m.changes
+	if m.mode != modeFind || !strings.Contains(ansi.Strip(p.lines[p.cur]), "x := 2") {
+		t.Fatalf("/x : did not move to the match: mode %v, line %q", m.mode, ansi.Strip(p.lines[p.cur]))
+	}
+	if v := view(m); !strings.Contains(v, "Changes (1)") || !strings.Contains(v, "/ x :") {
+		t.Errorf("the find hides the list or has no bar:\n%s", v)
+	}
+	if m = press(t, m, "enter"); m.mode != modeNormal || !m.find.active() {
+		t.Errorf("enter: mode %v, find active %v", m.mode, m.find.active())
+	}
+	from := p.cur
+	m = press(t, m, "esc", "home", "/", "q", "q", "q", "esc")
+	if p.cur != 0 || m.find.active() {
+		t.Errorf("esc after no match: cursor %d (was at %d before home), find %v", p.cur, from, m.find.active())
+	}
+
+	// In the list, the find selects a file by its name.
+	m = press(t, m, "4", "tab", "/", "b", ".")
+	if got := m.allFiles[m.allSel].Path; got != "b.go" {
+		t.Errorf("/b. in the list selected %q, want b.go", got)
+	}
+	if !strings.Contains(view(m), "a.go") {
+		t.Error("the find in the list hides the files that do not match")
+	}
+}
+
+// TestDoubleClickWord checks that a double click on the code selects and
+// copies the word under the pointer.
+func TestDoubleClickWord(t *testing.T) {
+	m, _ := newTestModel(t)
+	p := &m.changes
+	i := slices.IndexFunc(p.lines, func(l string) bool { return strings.Contains(ansi.Strip(l), "return x") })
+	plain := ansi.Strip(p.lines[i])
+	x := m.mainX() + gutter + ansi.StringWidth(plain[:strings.Index(plain, "return x")]) + 2
+	y := screenY(t, m, i)
+	m = click(t, m, x, y)
+	m = click(t, m, x, y)
+	if got := m.changes.selectedText(); got != "return" {
+		t.Errorf("double click selected %q, want \"return\"", got)
+	}
+	if m.status != "copied 6 chars" {
+		t.Errorf("status %q, want the copy", m.status)
+	}
+}
+
+// TestFindPastScreen checks that the find sees the part of a line that the
+// screen cuts off.
+func TestFindPastScreen(t *testing.T) {
+	m, dir := newTestModel(t)
+	write(t, dir, "a.go", "package a\n\n// "+strings.Repeat("x", 300)+" needle\n")
+	m.reload()
+	if m = press(t, m, "/", "n", "e", "e", "d", "l", "e"); !m.find.active() {
+		t.Error("the find does not see a match past the edge of the screen")
+	}
+}
+
+// TestFindNarrow checks that a longer query looks only at the hits so far,
+// and that a shorter one looks at all the lines again.
+func TestFindNarrow(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = press(t, m, "/", "r", "e")
+	all := len(m.find.hits)
+	if m = press(t, m, "z"); m.find.active() {
+		t.Fatalf("/rez matches %v", m.find.hits)
+	}
+	if m = press(t, m, "bksp"); len(m.find.hits) != all || all == 0 {
+		t.Errorf("backspace to /re: %d hits, want %d", len(m.find.hits), all)
+	}
+}
+
+// TestFindListCut checks that a file that matches by its directory shows
+// that it matches, even when the list cuts the directory off.
+func TestFindListCut(t *testing.T) {
+	m, dir := newTestModel(t)
+	if err := os.MkdirAll(filepath.Join(dir, "tui"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "tui/a_long_name_of_a_file.go", "package tui\n")
+	m.reload()
+	m = press(t, m, "tab", "/", "t", "u", "i", "enter")
+	lines := m.listLines(m.bodyHeight())
+	i := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(ansi.Strip(l), "…/a_long_name_of_a_file.go") })
+	if i < 0 {
+		t.Fatalf("the list does not cut the directory:\n%s", view(m))
+	}
+	if !strings.Contains(lines[i], findSGR+"…") {
+		t.Errorf("the row of a match does not paint its \"…\": %q", lines[i])
 	}
 }

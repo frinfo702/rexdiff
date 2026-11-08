@@ -67,6 +67,9 @@ type Options struct {
 	// Signs marks a changed line with + or -. Without Signs, a bar in the
 	// colour of the line marks it.
 	Signs bool
+	// Context is the number of unchanged lines around each change. Zero
+	// means 3. [RenderFile] ignores it.
+	Context int
 	// Theme sets the colours.
 	Theme Theme
 }
@@ -98,6 +101,7 @@ func Render(path, old, new string, o Options) *Diff {
 		Wrap:     o.Wrap,
 		Signs:    o.Signs,
 		TabWidth: tabWidth,
+		Context:  o.Context,
 		Style:    o.Theme.style(),
 	})
 	d := &Diff{split: o.Split}

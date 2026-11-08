@@ -36,6 +36,7 @@ type Options struct {
 	Wrap     bool // continue a long line on the next lines; Offset does not apply
 	Signs    bool // mark a changed line with + or -, not with a bar
 	TabWidth int  // the number of spaces that replace a tab; 0 means 8
+	Context  int  // the unchanged lines around a change; 0 means 3
 	Style    Style
 }
 
@@ -101,7 +102,7 @@ type renderer struct {
 func Render(path, before, after string, o Options) ([]string, []Row, Geometry) {
 	before = strings.ReplaceAll(before, "\r\n", "\n")
 	after = strings.ReplaceAll(after, "\r\n", "\n")
-	hunks := diffHunks(before, after, cmp.Or(o.TabWidth, 8))
+	hunks := diffHunks(before, after, cmp.Or(o.TabWidth, 8), cmp.Or(o.Context, udiff.DefaultContextLines))
 	r := &renderer{o: o, hl: newHighlighter(path, cmp.Or(before, after))}
 	r.measure(hunks)
 	for _, h := range hunks {
@@ -121,8 +122,8 @@ func Render(path, before, after string, o Options) ([]string, []Row, Geometry) {
 
 // diffHunks computes the hunks of the diff, with the tabs of the lines
 // replaced after the diff, so that a change from a tab to spaces shows.
-func diffHunks(before, after string, tabWidth int) []hunk {
-	u, err := udiff.ToUnifiedDiff("", "", before, udiff.Lines(before, after), udiff.DefaultContextLines)
+func diffHunks(before, after string, tabWidth, context int) []hunk {
+	u, err := udiff.ToUnifiedDiff("", "", before, udiff.Lines(before, after), context)
 	if err != nil {
 		return nil
 	}

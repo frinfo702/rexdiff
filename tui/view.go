@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"path"
 	"slices"
 	"strings"
@@ -220,12 +221,33 @@ func (m *model) listLines(h int) []string {
 	sel := m.listSel()
 	for i := m.listStart(h); i < n && len(out) < h; i++ {
 		r := row(i)
+		if m.find.list && m.find.query != "" {
+			r = m.paintListMatch(i, r)
+		}
 		if i == sel {
 			r = m.selectedRow(r, w)
 		}
 		out = append(out, r)
 	}
 	return out
+}
+
+// paintListMatch paints the matches of the find in row r of file i of the
+// list. The find matches the whole path, but the row can cut off the
+// directory. Then the "…" of a file that matches is painted, to show that
+// the match is in the part that the row cuts off.
+func (m *model) paintListMatch(i int, r string) string {
+	plain := ansi.Strip(r)
+	if painted := paintMatches(r, plain, m.find.query); painted != r {
+		return painted
+	}
+	_, hit := slices.BinarySearch(m.find.hits, i)
+	k := strings.Index(plain, "…")
+	if !hit || k < 0 {
+		return r
+	}
+	col := ansi.StringWidth(plain[:k])
+	return paintSpans(r, [][2]int{{col, col + 1}}, findSGR)
 }
 
 // changeStat returns the counts of the lines that f adds and deletes, as
@@ -314,6 +336,7 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 	if p.text != nil {
 		selSGR = m.textSelectSGR()
 	}
+	curSGR := m.cursorLineSGR()
 	add := func(l string, row int) {
 		lines, rowAt = append(lines, l), append(rowAt, row)
 	}
@@ -334,6 +357,12 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 		if selSGR != "" {
 			line = p.markSelection(i, selSGR)
 		}
+		if m.find.query != "" && !m.find.list {
+			line = paintMatches(line, p.searchText(i), m.find.query)
+		}
+		if curSGR != "" && p.head(i) == p.cur {
+			line = m.cursorLine(line, curSGR)
+		}
 		add(m.rowMark(i, t, lo, hi)+line, i)
 		if t != nil && p.end(i) == i {
 			addBelow(m.commentsBelow(t))
@@ -343,6 +372,33 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 		}
 	}
 	return lines, rowAt
+}
+
+// cursorLineSGR returns the sequence that tints the line at the cursor, or
+// "" if the line gets no tint: the setting is off, the tab has no cursor,
+// or the terminal does not tell its background.
+func (m *model) cursorLineSGR() string {
+	if !m.cfg.CursorLine || m.tab.document() || m.bg == nil {
+		return ""
+	}
+	return ansi.NewStyle().BackgroundColor(m.shade(m.bg)).String()
+}
+
+// shade returns c a little lighter on a dark terminal, and a little darker
+// on a light one: the tint of the cursor line.
+func (m *model) shade(c color.Color) color.Color {
+	if !m.dark {
+		return lipgloss.Darken(c, 0.06)
+	}
+	return lipgloss.Lighten(c, 0.08)
+}
+
+// cursorLine tints line, a line at the cursor, with sgr to the width of
+// the code. The cells that have a background of their own, such as an
+// added line, get their background shaded, so that they keep their hue.
+func (m *model) cursorLine(line, sgr string) string {
+	pad := strings.Repeat(" ", max(m.codeWidth()-ansi.StringWidth(line), 0))
+	return underSGR(line, sgr, m.shade) + sgr + pad + ansi.ResetStyle
 }
 
 // emptyNote returns the text that shows instead of an empty pane, or "".
@@ -378,6 +434,7 @@ func (m *model) highlighted() (lo, hi int) {
 func (m *model) rowMark(i int, t *targetLine, lo, hi int) string {
 	p := m.cur()
 	_, hit := slices.BinarySearch(m.find.hits, i) // the hits are in order
+	hit = hit && !m.find.list
 	switch {
 	case i == p.cur && !m.tab.document():
 		return cursorStyle.Render("▶ ")
@@ -519,6 +576,8 @@ func (m *model) footerLine() string {
 	m.help.SetWidth(m.w)
 	var badge string
 	switch {
+	case m.mode == modeFind:
+		badge = m.findBar.View() + "  " + findStyle.Render(m.findCount())
 	case m.status != "":
 		badge = cursorStyle.Render(m.status)
 	case m.release != nil:

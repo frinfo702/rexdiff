@@ -89,27 +89,32 @@ func (m *model) rerender() {
 	}
 }
 
-// minSplitShare is the smallest share of the screen, in percent, that the
-// main pane takes before a diff shows side by side. A smaller share shows the
-// diff top to bottom, even if the layout is split, because each side would cut
-// most lines.
-const minSplitShare = 60
+// minSplitWidth is the narrowest main pane, in columns, that shows a diff
+// side by side. A narrower pane shows the diff top to bottom, even if the
+// layout is split, because each side would cut most lines. The width counts
+// in each tab, so the Guide tab, whose column is wider than the file list,
+// switches too.
+const minSplitWidth = 80
 
-// splitShown tells if the diff shows side by side now. The main pane must
-// take most of the screen, or each side would cut most lines.
+// splitShown tells if the diff shows side by side now.
 func (m *model) splitShown() bool {
-	return m.split && m.w > 0 && m.mainSpace()*100 >= m.w*minSplitShare
+	return m.split && m.mainSpace() >= minSplitWidth
 }
 
-// diffOptions returns the options to render a diff with sideways scroll
-// xoff.
-func (m *model) diffOptions(xoff int) diff.Options {
+// contextLines is the number of unchanged lines around a change that a
+// diff shows before the user asks for more.
+const contextLines = 3
+
+// diffOptions returns the options to render a diff in p, with its sideways
+// scroll and its context.
+func (m *model) diffOptions(p *pane) diff.Options {
 	return diff.Options{
-		Width:  m.codeWidth(),
-		Offset: xoff,
-		Wrap:   m.wrap,
-		Split:  m.splitShown(),
-		Signs:  m.cfg.DiffSigns,
+		Width:   m.codeWidth(),
+		Offset:  p.xoff,
+		Context: contextLines + p.more,
+		Wrap:    m.wrap,
+		Split:   m.splitShown(),
+		Signs:   m.cfg.DiffSigns,
 		Theme: diff.Theme{
 			Background: m.bg,
 			Foreground: m.fg,
@@ -152,7 +157,8 @@ func (m *model) renderChanged(p *pane, f *changed) {
 	case m.rendered && isMarkdown(f.Path) && f.Status != vcs.StatusDeleted:
 		m.setMarkdown(p, f.New)
 	default:
-		p.setDiff(diff.Render(f.Path, f.Old, f.New, m.diffOptions(p.xoff)))
+		p.setDiff(diff.Render(f.Path, f.Old, f.New, m.diffOptions(p)))
+		p.src = &[2][]string{diff.Lines(f.Old), diff.Lines(f.New)}
 	}
 	p.addHeader(m.fileHeader(f))
 }
@@ -240,7 +246,8 @@ func (m *model) refreshViewer() {
 	case m.rendered && isMarkdown(path):
 		m.setMarkdown(p, content)
 	default:
-		p.setDiff(diff.RenderFile(path, content, m.diffOptions(p.xoff)))
+		p.setDiff(diff.RenderFile(path, content, m.diffOptions(p)))
+		p.src = &[2][]string{nil, diff.Lines(content)}
 	}
 }
 

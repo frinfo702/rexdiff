@@ -6,7 +6,11 @@ package tui
 // again and esc can clear it.
 
 import (
+	"image/color"
+	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -47,6 +51,39 @@ func (p *pane) selectAt(i, x int) textPoint {
 	i = min(max(i, 0), len(p.lines)-1)
 	w := ansi.StringWidth(p.lines[i])
 	return textPoint{row: i, col: min(max(x, 0), max(w-1, 0))}
+}
+
+// wordAt returns the selection of the word at pt: the letters, the digits,
+// and the underscores around it. A cell that is not in a word selects only
+// its character.
+func (p *pane) wordAt(pt textPoint, side diff.Side) *textSelection {
+	type cell struct {
+		col, w int
+		word   bool
+	}
+	var cells []cell
+	col := 0
+	for _, r := range ansi.Strip(p.lines[pt.row]) {
+		w := max(ansi.StringWidth(string(r)), 1)
+		cells = append(cells, cell{col, w, unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'})
+		col += w
+	}
+	k := slices.IndexFunc(cells, func(c cell) bool { return pt.col < c.col+c.w })
+	if k < 0 {
+		return &textSelection{start: pt, end: pt, side: side}
+	}
+	lo, hi := k, k
+	for cells[k].word && lo > 0 && cells[lo-1].word {
+		lo--
+	}
+	for cells[k].word && hi+1 < len(cells) && cells[hi+1].word {
+		hi++
+	}
+	return &textSelection{
+		start: textPoint{pt.row, cells[lo].col},
+		end:   textPoint{pt.row, cells[hi].col + cells[hi].w - 1},
+		side:  side,
+	}
 }
 
 // selectedText returns the text that p.text selects. It leaves out the
@@ -119,21 +156,16 @@ func (p *pane) markSelection(i int, sgr string) string {
 		return line
 	}
 	start, end := p.selectionCols(i, lo, hi)
-	if start >= end {
-		return line
-	}
-	out := ansi.Cut(line, 0, start) + carrySGR(ansi.Cut(line, start, end), sgr) + ansi.ResetStyle
-	if end < ansi.StringWidth(line) {
-		out += ansi.Cut(line, end, ansi.StringWidth(line))
-	}
-	return out
+	return paintSpans(line, [][2]int{{start, end}}, sgr)
 }
 
-// carrySGR repeats sgr after each escape sequence of s. A reset in the
-// text then cannot turn the selection off.
-func carrySGR(s, sgr string) string {
+// underSGR puts sgr under the cells of s that have no background of their
+// own, so that sgr shows only where s shows the terminal background. A cell
+// with a background in RGB of its own gets it through shade.
+func underSGR(s, sgr string, shade func(color.Color) color.Color) string {
 	var b strings.Builder
 	b.WriteString(sgr)
+	own := false // the text sets its own background now
 	var state byte
 	for len(s) > 0 {
 		seq, width, n, next := ansi.DecodeSequence(s, state, nil)
@@ -142,12 +174,79 @@ func carrySGR(s, sgr string) string {
 			break
 		}
 		b.WriteString(seq)
-		if width == 0 {
-			b.WriteString(sgr)
+		if width == 0 && strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			params := seq[2 : len(seq)-1]
+			own = setsBackground(params, own)
+			if c, ok := rgbBackground(params); own && ok {
+				b.WriteString(ansi.NewStyle().BackgroundColor(shade(c)).String())
+			} else if !own {
+				b.WriteString(sgr)
+			}
 		}
 		s, state = s[n:], next
 	}
 	return b.String()
+}
+
+// setsBackground tells if the text has a background of its own after the
+// SGR parameters params. own tells if it had one before.
+func setsBackground(params string, own bool) bool {
+	if params == "" {
+		return false // a reset
+	}
+	ps := strings.Split(params, ";")
+	for i := 0; i < len(ps); i++ {
+		p := ps[i]
+		if base, _, ok := strings.Cut(p, ":"); ok { // 48:2::r:g:b
+			own = own || base == "48"
+			continue
+		}
+		switch n, _ := strconv.Atoi(p); {
+		case n == 0 || n == 49:
+			own = false
+		case n >= 40 && n <= 47 || n >= 100 && n <= 107:
+			own = true
+		case n == 38 || n == 48 || n == 58: // 5;i or 2;r;g;b follow
+			if n == 48 {
+				own = true
+			}
+			if i+1 < len(ps) && ps[i+1] == "5" {
+				i += 2
+			} else if i+1 < len(ps) && ps[i+1] == "2" {
+				i += 4
+			}
+		}
+	}
+	return own
+}
+
+// rgbBackground returns the RGB background that the SGR parameters params
+// set, if they set one.
+func rgbBackground(params string) (c color.RGBA, ok bool) {
+	ps := strings.Split(params, ";")
+	for i := 0; i < len(ps); i++ {
+		switch ps[i] {
+		case "38", "58": // a colour of the text or the underline
+			if i+1 < len(ps) && ps[i+1] == "5" {
+				i += 2
+			} else if i+1 < len(ps) && ps[i+1] == "2" {
+				i += 4
+			}
+		case "48":
+			if i+4 < len(ps) && ps[i+1] == "2" {
+				var v [3]uint8
+				for k := range v {
+					n, err := strconv.Atoi(ps[i+2+k])
+					if err != nil || n < 0 || n > 255 {
+						return color.RGBA{}, false
+					}
+					v[k] = uint8(n)
+				}
+				c, ok = color.RGBA{v[0], v[1], v[2], 255}, true
+			}
+		}
+	}
+	return c, ok
 }
 
 // textSelectSGR returns the sequence that marks a selection. It tints the

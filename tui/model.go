@@ -10,6 +10,7 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
@@ -68,6 +69,7 @@ const (
 	modeNormal mode = iota
 	modeComment
 	modeOverlay
+	modeFind // the find bar in the footer takes the keys
 )
 
 // pane is one view that scrolls and takes comments: the rendered lines and
@@ -82,7 +84,13 @@ type pane struct {
 	anchor int            // the start of the visual selection, or -1
 	text   *textSelection // the text selected with the mouse, or nil
 	xoff   int            // the sideways scroll, in columns
+	more   int            // the unchanged lines around a change, beyond the default
 	note   string         // shown instead of the lines, if there are no lines
+	// src has the old and the new source lines that the rows number, or
+	// nil if the rows show no source lines. lower has them in lower case,
+	// for a find; it is made at the first find.
+	src, lower *[2][]string
+	gen        int // counts the renders, so that a find knows if its hits are old
 	// free is true after the wheel moves the view. Then the cursor can
 	// be off the screen until the next key or click.
 	free bool
@@ -92,7 +100,8 @@ type pane struct {
 // comment selection in the new lines. A text selection does not survive a
 // new render, because its cells can move.
 func (p *pane) set(lines []string, rows []diff.Row) {
-	p.lines, p.rows, p.diff, p.text = lines, rows, nil, nil
+	p.lines, p.rows, p.diff, p.text, p.src, p.lower = lines, rows, nil, nil, nil, nil
+	p.gen++
 	p.cur = min(p.cur, max(len(lines)-1, 0))
 	p.top = min(p.top, max(len(lines)-1, 0))
 	if p.anchor >= len(rows) { // the file is shorter than before
@@ -120,8 +129,8 @@ func (p *pane) end(i int) int {
 }
 
 // toStart moves the cursor and the view to the first row. It clears the
-// selection and the sideways scroll.
-func (p *pane) toStart() { p.cur, p.top, p.anchor, p.text, p.xoff = 0, 0, -1, nil, 0 }
+// selection, the sideways scroll, and the added context.
+func (p *pane) toStart() { p.cur, p.top, p.anchor, p.text, p.xoff, p.more = 0, 0, -1, nil, 0, 0 }
 
 // setDiff shows the lines of d.
 func (p *pane) setDiff(d *diff.Diff) {
@@ -154,11 +163,15 @@ type turnState struct {
 	at      time.Time // the start of the turn
 }
 
-// findState is the result of a find in the current pane.
+// findState is the result of a find in the current pane, or in the file
+// list if list is true.
 type findState struct {
 	query string
-	hits  []int // the first rows of the lines that match, in order
+	hits  []int // the first rows of the lines, or the files, that match, in order
 	i     int   // the hit at the cursor
+	list  bool
+	from  int // the row or the file where the find started; esc goes back to it
+	gen   int // the render of the pane, or the length of the list, of the hits
 }
 
 // active tells if the find has hits, so that n and N step through them.
@@ -172,6 +185,13 @@ type dragState struct {
 	text   bool      // the drag selects text
 	start  int       // the row where the drag started
 	pref   diff.Side // the side of the line numbers or the code at the start
+}
+
+// lastClick is the last press of the left button on the code, to notice a
+// double click.
+type lastClick struct {
+	at   time.Time
+	x, y int
 }
 
 // draft is the comment that the user writes: a new one, or an edit of the
@@ -258,7 +278,9 @@ type model struct {
 	mode     mode
 	overlay  *overlay
 	find     findState
+	findBar  textinput.Model
 	drag     dragState
+	click    lastClick
 	help     help.Model
 
 	status     string
@@ -308,6 +330,8 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	}
 	m.changes.anchor, m.viewer.anchor, m.prPane.anchor = -1, -1, -1
 	m.overPane.anchor, m.guidePane.anchor = -1, -1
+	m.findBar = textinput.New()
+	m.findBar.Prompt = "/ "
 	m.cfg = cfg
 	m.keys = defaultKeys()
 	m.keys.applyConfig(cfg.Keybindings)
@@ -603,6 +627,8 @@ func (m *model) onKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateComment(msg)
 	case modeOverlay:
 		return m.updateOverlay(msg)
+	case modeFind:
+		return m.updateFind(msg)
 	}
 	return m.updateNormal(msg)
 }
@@ -634,6 +660,9 @@ func (m *model) onPaste(text string) tea.Cmd {
 	switch {
 	case m.mode == modeComment:
 		m.editor.InsertString(text)
+	case m.mode == modeFind:
+		m.findBar.SetValue(m.findBar.Value() + text)
+		m.runFind(m.findBar.Value())
 	case m.mode == modeOverlay && m.overlay != nil && m.overlay.hasInput():
 		m.overlay.input.SetValue(m.overlay.input.Value() + text)
 		return m.inputChanged()

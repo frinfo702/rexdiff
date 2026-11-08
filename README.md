@@ -51,7 +51,7 @@ it says so when Rex is not installed. The viewer itself runs without Rex.
   command palette. Press it again to close rexdiff.
 - Comment: move to a line and press `c`. For a range, press `v` or drag over
   the line numbers.
-- Copy: drag over the code to select it. Release copies the selection, and
+- Copy: drag over the code to select it, or double-click a word. Release copies the selection, and
   `y` copies it again. `esc` clears it. It works in each tab.
 - Send: press `s`. rexdiff pastes the comments into the agent's input. It does
   not press Enter.
@@ -65,7 +65,10 @@ are gone, rexdiff marks the comment as stale.
 | --- | --- |
 | `u` `b` `t` | uncommitted, branch, or last-turn changes |
 | `]` `[` | next or previous change |
+| `+` `-` | more or fewer unchanged lines around each change (or click `↕`) |
 | `f` `F` | next or previous file |
+| `/` | find in the file, or by name when the file list has the focus (`n` `N` step) |
+| `ctrl+p` | search all files and code |
 | `c` | comment |
 | `s` | send the comments to the agent |
 | `y` | copy the selected text, or the comments |
@@ -110,6 +113,7 @@ Other settings:
 - `guide_agent`: the command that writes the guide. It reads the prompt on its
   standard input, for example `"claude -p --model sonnet"`
 - `diff_signs`: `true` marks changed lines with `+` and `-`, in place of a coloured bar
+- `cursor_line`: `false` turns off the tint of the line at the cursor
 - `review_prefix`
 - `url_opener`
 - `focus_agent_after_send`

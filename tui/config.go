@@ -79,6 +79,8 @@ type config struct {
 	GuideAgent string `json:"guide_agent"`
 	// DiffSigns marks a changed line with + or -, in place of a bar.
 	DiffSigns bool `json:"diff_signs"`
+	// CursorLine tints the background of the line at the cursor.
+	CursorLine bool `json:"cursor_line"`
 	// FocusAgent tells if the focus moves to the agent after a send. Nil
 	// means true.
 	FocusAgent *bool `json:"focus_agent_after_send"`
@@ -104,9 +106,12 @@ type keybindings struct {
 	Expand   []string `json:"expand"`
 	NextHunk []string `json:"next-hunk"`
 	PrevHunk []string `json:"prev-hunk"`
-	NextFile []string `json:"next-file"`
-	PrevFile []string `json:"prev-file"`
-	Focus    []string `json:"focus"`
+	// MoreContext and LessContext are not actions of herdr-reviewr.
+	MoreContext []string `json:"more-context"`
+	LessContext []string `json:"less-context"`
+	NextFile    []string `json:"next-file"`
+	PrevFile    []string `json:"prev-file"`
+	Focus       []string `json:"focus"`
 
 	// Scopes and tabs.
 	ScopeUncommitted []string `json:"scope-uncommitted"`
@@ -162,6 +167,7 @@ func defaultConfig() config {
 		MarkdownView:  markdownViewSource,
 		FileList:      positionRight,
 		FileListWidth: 32,
+		CursorLine:    true,
 	}
 }
 
