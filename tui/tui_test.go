@@ -1032,3 +1032,34 @@ func TestCursorLine(t *testing.T) {
 		t.Error("cursor_line = false still tints the cursor line")
 	}
 }
+
+// TestFind checks that / finds in the diff as the user types, with the file
+// list still on the screen, and that in the file list it finds by name.
+func TestFind(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = press(t, m, "/", "x", " ", ":")
+	p := &m.changes
+	if m.mode != modeFind || !strings.Contains(ansi.Strip(p.lines[p.cur]), "x := 2") {
+		t.Fatalf("/x : did not move to the match: mode %v, line %q", m.mode, ansi.Strip(p.lines[p.cur]))
+	}
+	if v := view(m); !strings.Contains(v, "Changes (1)") || !strings.Contains(v, "/ x :") {
+		t.Errorf("the find hides the list or has no bar:\n%s", v)
+	}
+	if m = press(t, m, "enter"); m.mode != modeNormal || !m.find.active() {
+		t.Errorf("enter: mode %v, find active %v", m.mode, m.find.active())
+	}
+	from := p.cur
+	m = press(t, m, "esc", "home", "/", "q", "q", "q", "esc")
+	if p.cur != 0 || m.find.active() {
+		t.Errorf("esc after no match: cursor %d (was at %d before home), find %v", p.cur, from, m.find.active())
+	}
+
+	// In the list, the find selects a file by its name.
+	m = press(t, m, "4", "tab", "/", "b", ".")
+	if got := m.allFiles[m.allSel].Path; got != "b.go" {
+		t.Errorf("/b. in the list selected %q, want b.go", got)
+	}
+	if !strings.Contains(view(m), "a.go") {
+		t.Error("the find in the list hides the files that do not match")
+	}
+}

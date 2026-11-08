@@ -8,7 +8,6 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/frinfo702/rexdiff/diff"
 	"github.com/frinfo702/rexdiff/vcs"
@@ -226,7 +225,7 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.loadFiles()
 		m.openSearch()
 	case key.Matches(msg, k.Find):
-		m.openInput(overlayFind, "find in file", m.find.query)
+		m.startFind()
 	case key.Matches(msg, k.GotoLine):
 		m.openInput(overlayGoto, "go to line (:0 first, :$ last)", "")
 	case key.Matches(msg, k.Rendered):
@@ -381,7 +380,10 @@ func (m *model) pickFile(i int) {
 		m.guidePane.toStart()
 		m.renderGuide()
 	}
-	m.find, m.drag = findState{}, dragState{}
+	if !m.find.list { // a find in the list moves through the list
+		m.find = findState{}
+	}
+	m.drag = dragState{}
 }
 
 // stepChange moves the cursor to the next (d = 1) or the previous (d = -1)
@@ -475,48 +477,6 @@ func cursorToLine(p *pane, s diff.Side, line int) {
 // rowOf returns the first row of p that shows line on side s, or -1.
 func (p *pane) rowOf(s diff.Side, line int) int {
 	return slices.IndexFunc(p.rows, func(r diff.Row) bool { return r.Line(s) == line })
-}
-
-// stepFind moves the cursor to the next (d = 1) or the previous (d = -1)
-// hit of the find. It wraps around.
-func (m *model) stepFind(d int) {
-	f, p := &m.find, m.cur()
-	// A reload can make the pane shorter than the rows that matched.
-	f.hits = slices.DeleteFunc(f.hits, func(h int) bool { return h >= len(p.lines) })
-	if len(f.hits) == 0 {
-		m.find = findState{}
-		return
-	}
-	f.i = (min(f.i, len(f.hits)-1) + d + len(f.hits)) % len(f.hits)
-	p.cur = f.hits[f.i]
-}
-
-// runFind finds q in the lines of the current pane, without case. It moves
-// the cursor to the first hit at or below it.
-func (m *model) runFind(q string) {
-	p := m.cur()
-	m.find = findState{query: q}
-	if q == "" {
-		return
-	}
-	lq := strings.ToLower(q)
-	for i, l := range p.lines {
-		if !strings.Contains(strings.ToLower(ansi.Strip(l)), lq) {
-			continue
-		}
-		// The rows of a wrapped line make one hit.
-		hits := m.find.hits
-		if h := p.head(i); len(hits) == 0 || hits[len(hits)-1] != h {
-			m.find.hits = append(hits, h)
-		}
-	}
-	if !m.find.active() {
-		m.flash("no match for " + q)
-		return
-	}
-	atCursor := func(h int) bool { return h >= p.cur }
-	m.find.i = max(slices.IndexFunc(m.find.hits, atCursor), 0)
-	p.cur = m.find.hits[m.find.i]
 }
 
 // gotoLine moves the cursor to the line number in s: "0" is the first

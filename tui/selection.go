@@ -120,14 +120,7 @@ func (p *pane) markSelection(i int, sgr string) string {
 		return line
 	}
 	start, end := p.selectionCols(i, lo, hi)
-	if start >= end {
-		return line
-	}
-	out := ansi.Cut(line, 0, start) + carrySGR(ansi.Cut(line, start, end), sgr) + ansi.ResetStyle
-	if end < ansi.StringWidth(line) {
-		out += ansi.Cut(line, end, ansi.StringWidth(line))
-	}
-	return out
+	return paintCells(line, start, end, sgr)
 }
 
 // carrySGR repeats sgr after each escape sequence of s. A reset in the

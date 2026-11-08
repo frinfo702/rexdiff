@@ -220,6 +220,9 @@ func (m *model) listLines(h int) []string {
 	sel := m.listSel()
 	for i := m.listStart(h); i < n && len(out) < h; i++ {
 		r := row(i)
+		if m.find.list && m.find.query != "" {
+			r = paintMatches(r, ansi.Strip(r), m.find.query)
+		}
 		if i == sel {
 			r = m.selectedRow(r, w)
 		}
@@ -335,6 +338,9 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 		if selSGR != "" {
 			line = p.markSelection(i, selSGR)
 		}
+		if m.find.query != "" && !m.find.list {
+			line = paintMatches(line, p.searchText(i), m.find.query)
+		}
 		if curSGR != "" && p.head(i) == p.cur {
 			line = m.cursorLine(line, curSGR)
 		}
@@ -404,6 +410,7 @@ func (m *model) highlighted() (lo, hi int) {
 func (m *model) rowMark(i int, t *targetLine, lo, hi int) string {
 	p := m.cur()
 	_, hit := slices.BinarySearch(m.find.hits, i) // the hits are in order
+	hit = hit && !m.find.list
 	switch {
 	case i == p.cur && !m.tab.document():
 		return cursorStyle.Render("▶ ")
@@ -545,6 +552,8 @@ func (m *model) footerLine() string {
 	m.help.SetWidth(m.w)
 	var badge string
 	switch {
+	case m.mode == modeFind:
+		badge = m.findBar.View() + "  " + findStyle.Render(m.findCount())
 	case m.status != "":
 		badge = cursorStyle.Render(m.status)
 	case m.release != nil:

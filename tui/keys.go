@@ -94,8 +94,8 @@ func defaultKeys() keyMap {
 		Send:        bind([]string{"s", "S"}, "s", "send to agent"),
 		Copy:        bind([]string{"y", "Y"}, "y", "copy text or comments"),
 
-		Search:      bind([]string{"/"}, "/", "search files & code"),
-		Find:        bind([]string{"ctrl+f"}, "ctrl+f", "find in file"),
+		Search:      bind([]string{"ctrl+p"}, "ctrl+p", "search all files & code"),
+		Find:        bind([]string{"/", "ctrl+f"}, "/", "find in file (in list: names)"),
 		GotoLine:    bind([]string{":"}, ":", "go to line"),
 		Rendered:    bind([]string{"m"}, "m", "rendered markdown"),
 		Split:       bind([]string{"|"}, "|", "side by side"),
@@ -249,6 +249,8 @@ func (h helpKeys) ShortHelp() []key.Binding {
 	switch {
 	case h.mode == modeComment:
 		return []key.Binding{k.Save, k.Newline, k.Cancel}
+	case h.mode == modeFind:
+		return []key.Binding{hint(k.Save, "enter", "keep"), hint(k.Cancel, "esc", "go back")}
 	case h.finding:
 		return []key.Binding{
 			hint(k.FindNext, "n/N", "next/prev match"),

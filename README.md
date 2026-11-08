@@ -67,6 +67,8 @@ are gone, rexdiff marks the comment as stale.
 | `]` `[` | next or previous change |
 | `+` `-` | more or fewer unchanged lines around each change (or click `↕`) |
 | `f` `F` | next or previous file |
+| `/` | find in the file, or by name when the file list has the focus (`n` `N` step) |
+| `ctrl+p` | search all files and code |
 | `c` | comment |
 | `s` | send the comments to the agent |
 | `y` | copy the selected text, or the comments |

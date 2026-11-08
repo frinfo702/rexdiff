@@ -10,6 +10,7 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
@@ -68,6 +69,7 @@ const (
 	modeNormal mode = iota
 	modeComment
 	modeOverlay
+	modeFind // the find bar in the footer takes the keys
 )
 
 // pane is one view that scrolls and takes comments: the rendered lines and
@@ -155,11 +157,14 @@ type turnState struct {
 	at      time.Time // the start of the turn
 }
 
-// findState is the result of a find in the current pane.
+// findState is the result of a find in the current pane, or in the file
+// list if list is true.
 type findState struct {
 	query string
-	hits  []int // the first rows of the lines that match, in order
+	hits  []int // the first rows of the lines, or the files, that match, in order
 	i     int   // the hit at the cursor
+	list  bool
+	from  int // the row or the file where the find started; esc goes back to it
 }
 
 // active tells if the find has hits, so that n and N step through them.
@@ -259,6 +264,7 @@ type model struct {
 	mode     mode
 	overlay  *overlay
 	find     findState
+	findBar  textinput.Model
 	drag     dragState
 	help     help.Model
 
@@ -309,6 +315,8 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	}
 	m.changes.anchor, m.viewer.anchor, m.prPane.anchor = -1, -1, -1
 	m.overPane.anchor, m.guidePane.anchor = -1, -1
+	m.findBar = textinput.New()
+	m.findBar.Prompt = "/ "
 	m.cfg = cfg
 	m.keys = defaultKeys()
 	m.keys.applyConfig(cfg.Keybindings)
@@ -604,6 +612,8 @@ func (m *model) onKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateComment(msg)
 	case modeOverlay:
 		return m.updateOverlay(msg)
+	case modeFind:
+		return m.updateFind(msg)
 	}
 	return m.updateNormal(msg)
 }
@@ -635,6 +645,9 @@ func (m *model) onPaste(text string) tea.Cmd {
 	switch {
 	case m.mode == modeComment:
 		m.editor.InsertString(text)
+	case m.mode == modeFind:
+		m.findBar.SetValue(m.findBar.Value() + text)
+		m.runFind(m.findBar.Value())
 	case m.mode == modeOverlay && m.overlay != nil && m.overlay.hasInput():
 		m.overlay.input.SetValue(m.overlay.input.Value() + text)
 		return m.inputChanged()

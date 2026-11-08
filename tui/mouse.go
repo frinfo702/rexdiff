@@ -23,6 +23,9 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		// A click does nothing while the comment box is open.
 		return nil
 	}
+	if m.mode == modeFind {
+		m.mode = modeNormal // keep the find, as enter does
+	}
 	m.cur().text = nil
 	if mouse.Y == 0 {
 		_, spans := m.header()
