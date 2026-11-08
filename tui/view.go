@@ -314,6 +314,7 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 	if p.text != nil {
 		selSGR = m.textSelectSGR()
 	}
+	curSGR := m.cursorLineSGR()
 	add := func(l string, row int) {
 		lines, rowAt = append(lines, l), append(rowAt, row)
 	}
@@ -334,6 +335,9 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 		if selSGR != "" {
 			line = p.markSelection(i, selSGR)
 		}
+		if curSGR != "" && p.head(i) == p.cur {
+			line = m.cursorLine(line, curSGR)
+		}
 		add(m.rowMark(i, t, lo, hi)+line, i)
 		if t != nil && p.end(i) == i {
 			addBelow(m.commentsBelow(t))
@@ -343,6 +347,28 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 		}
 	}
 	return lines, rowAt
+}
+
+// cursorLineSGR returns the sequence that tints the line at the cursor, or
+// "" if the line gets no tint: the setting is off, the tab has no cursor,
+// or the terminal does not tell its background.
+func (m *model) cursorLineSGR() string {
+	if !m.cfg.CursorLine || m.tab.document() || m.bg == nil {
+		return ""
+	}
+	tint := lipgloss.Lighten(m.bg, 0.08)
+	if !m.dark {
+		tint = lipgloss.Darken(m.bg, 0.06)
+	}
+	return ansi.NewStyle().BackgroundColor(tint).String()
+}
+
+// cursorLine tints line, a line at the cursor, with sgr to the width of
+// the code. The cells that have a background of their own, such as an
+// added line or a selection, keep it.
+func (m *model) cursorLine(line, sgr string) string {
+	pad := strings.Repeat(" ", max(m.codeWidth()-ansi.StringWidth(line), 0))
+	return underSGR(line, sgr) + sgr + pad + ansi.ResetStyle
 }
 
 // emptyNote returns the text that shows instead of an empty pane, or "".

@@ -1016,3 +1016,19 @@ func TestMoreContext(t *testing.T) {
 		t.Error("a click on the hunk header did not show line 20")
 	}
 }
+
+// TestCursorLine checks that the line at the cursor gets a tint, and that
+// the cursor_line setting turns it off.
+func TestCursorLine(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = step(t, m, tea.BackgroundColorMsg{Color: color.Black})
+	m = press(t, m, "]")
+	sgr := m.cursorLineSGR()
+	if sgr == "" || !strings.Contains(m.View().Content, sgr) {
+		t.Fatal("the cursor line has no tint")
+	}
+	m.cfg.CursorLine = false
+	if m.cursorLineSGR() != "" {
+		t.Error("cursor_line = false still tints the cursor line")
+	}
+}

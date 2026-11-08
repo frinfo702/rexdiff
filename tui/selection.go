@@ -6,6 +6,7 @@ package tui
 // again and esc can clear it.
 
 import (
+	"strconv"
 	"strings"
 
 	"charm.land/bubbletea/v2"
@@ -148,6 +149,63 @@ func carrySGR(s, sgr string) string {
 		s, state = s[n:], next
 	}
 	return b.String()
+}
+
+// underSGR puts sgr under the cells of s that have no background of their
+// own, so that sgr shows only where s shows the terminal background.
+func underSGR(s, sgr string) string {
+	var b strings.Builder
+	b.WriteString(sgr)
+	own := false // the text sets its own background now
+	var state byte
+	for len(s) > 0 {
+		seq, width, n, next := ansi.DecodeSequence(s, state, nil)
+		if n <= 0 {
+			b.WriteString(s)
+			break
+		}
+		b.WriteString(seq)
+		if width == 0 && strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			own = setsBackground(seq[2:len(seq)-1], own)
+			if !own {
+				b.WriteString(sgr)
+			}
+		}
+		s, state = s[n:], next
+	}
+	return b.String()
+}
+
+// setsBackground tells if the text has a background of its own after the
+// SGR parameters params. own tells if it had one before.
+func setsBackground(params string, own bool) bool {
+	if params == "" {
+		return false // a reset
+	}
+	ps := strings.Split(params, ";")
+	for i := 0; i < len(ps); i++ {
+		p := ps[i]
+		if base, _, ok := strings.Cut(p, ":"); ok { // 48:2::r:g:b
+			own = own || base == "48"
+			continue
+		}
+		switch n, _ := strconv.Atoi(p); {
+		case n == 0 || n == 49:
+			own = false
+		case n >= 40 && n <= 47 || n >= 100 && n <= 107:
+			own = true
+		case n == 38 || n == 48 || n == 58: // 5;i or 2;r;g;b follow
+			if n == 48 {
+				own = true
+			}
+			if i+1 < len(ps) && ps[i+1] == "5" {
+				i += 2
+			} else if i+1 < len(ps) && ps[i+1] == "2" {
+				i += 4
+			}
+		}
+	}
+	return own
 }
 
 // textSelectSGR returns the sequence that marks a selection. It tints the

@@ -111,6 +111,7 @@ Other settings:
 - `guide_agent`: the command that writes the guide. It reads the prompt on its
   standard input, for example `"claude -p --model sonnet"`
 - `diff_signs`: `true` marks changed lines with `+` and `-`, in place of a coloured bar
+- `cursor_line`: `false` turns off the tint of the line at the cursor
 - `review_prefix`
 - `url_opener`
 - `focus_agent_after_send`

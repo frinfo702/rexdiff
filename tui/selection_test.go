@@ -170,3 +170,18 @@ func TestMarkSelection(t *testing.T) {
 		t.Errorf("marked line %q, want %q", got, want)
 	}
 }
+
+// TestUnderSGR checks that the tint of the cursor line shows only on the
+// cells that have no background of their own.
+func TestUnderSGR(t *testing.T) {
+	const tint = "\x1b[48;5;1m"
+	green := "\x1b[38;2;48;0;0;48;2;0;9;0m" // a foreground of 48 is not a background
+	got := underSGR("a"+green+"b\x1b[mc\x1b[38;2;48;1;1md", tint)
+	want := tint + "a" + green + "b\x1b[m" + tint + "c\x1b[38;2;48;1;1m" + tint + "d"
+	if got != want {
+		t.Errorf("underSGR:\n got %q\nwant %q", got, want)
+	}
+	if setsBackground("38;2;48;0;0", false) {
+		t.Error("a foreground with a 48 in it counts as a background")
+	}
+}

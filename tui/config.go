@@ -79,6 +79,8 @@ type config struct {
 	GuideAgent string `json:"guide_agent"`
 	// DiffSigns marks a changed line with + or -, in place of a bar.
 	DiffSigns bool `json:"diff_signs"`
+	// CursorLine tints the background of the line at the cursor.
+	CursorLine bool `json:"cursor_line"`
 	// FocusAgent tells if the focus moves to the agent after a send. Nil
 	// means true.
 	FocusAgent *bool `json:"focus_agent_after_send"`
@@ -165,6 +167,7 @@ func defaultConfig() config {
 		MarkdownView:  markdownViewSource,
 		FileList:      positionRight,
 		FileListWidth: 32,
+		CursorLine:    true,
 	}
 }
 
