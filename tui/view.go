@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"path"
 	"slices"
 	"strings"
@@ -362,19 +363,24 @@ func (m *model) cursorLineSGR() string {
 	if !m.cfg.CursorLine || m.tab.document() || m.bg == nil {
 		return ""
 	}
-	tint := lipgloss.Lighten(m.bg, 0.08)
+	return ansi.NewStyle().BackgroundColor(m.shade(m.bg)).String()
+}
+
+// shade returns c a little lighter on a dark terminal, and a little darker
+// on a light one: the tint of the cursor line.
+func (m *model) shade(c color.Color) color.Color {
 	if !m.dark {
-		tint = lipgloss.Darken(m.bg, 0.06)
+		return lipgloss.Darken(c, 0.06)
 	}
-	return ansi.NewStyle().BackgroundColor(tint).String()
+	return lipgloss.Lighten(c, 0.08)
 }
 
 // cursorLine tints line, a line at the cursor, with sgr to the width of
 // the code. The cells that have a background of their own, such as an
-// added line or a selection, keep it.
+// added line, get their background shaded, so that they keep their hue.
 func (m *model) cursorLine(line, sgr string) string {
 	pad := strings.Repeat(" ", max(m.codeWidth()-ansi.StringWidth(line), 0))
-	return underSGR(line, sgr) + sgr + pad + ansi.ResetStyle
+	return underSGR(line, sgr, m.shade) + sgr + pad + ansi.ResetStyle
 }
 
 // emptyNote returns the text that shows instead of an empty pane, or "".

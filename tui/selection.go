@@ -6,6 +6,7 @@ package tui
 // again and esc can clear it.
 
 import (
+	"image/color"
 	"slices"
 	"strconv"
 	"strings"
@@ -180,8 +181,9 @@ func carrySGR(s, sgr string) string {
 }
 
 // underSGR puts sgr under the cells of s that have no background of their
-// own, so that sgr shows only where s shows the terminal background.
-func underSGR(s, sgr string) string {
+// own, so that sgr shows only where s shows the terminal background. A cell
+// with a background in RGB of its own gets it through shade.
+func underSGR(s, sgr string, shade func(color.Color) color.Color) string {
 	var b strings.Builder
 	b.WriteString(sgr)
 	own := false // the text sets its own background now
@@ -194,8 +196,11 @@ func underSGR(s, sgr string) string {
 		}
 		b.WriteString(seq)
 		if width == 0 && strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
-			own = setsBackground(seq[2:len(seq)-1], own)
-			if !own {
+			params := seq[2 : len(seq)-1]
+			own = setsBackground(params, own)
+			if c, ok := rgbBackground(params); own && ok {
+				b.WriteString(ansi.NewStyle().BackgroundColor(shade(c)).String())
+			} else if !own {
 				b.WriteString(sgr)
 			}
 		}
@@ -234,6 +239,35 @@ func setsBackground(params string, own bool) bool {
 		}
 	}
 	return own
+}
+
+// rgbBackground returns the RGB background that the SGR parameters params
+// set, if they set one.
+func rgbBackground(params string) (c color.RGBA, ok bool) {
+	ps := strings.Split(params, ";")
+	for i := 0; i < len(ps); i++ {
+		switch ps[i] {
+		case "38", "58": // a colour of the text or the underline
+			if i+1 < len(ps) && ps[i+1] == "5" {
+				i += 2
+			} else if i+1 < len(ps) && ps[i+1] == "2" {
+				i += 4
+			}
+		case "48":
+			if i+4 < len(ps) && ps[i+1] == "2" {
+				var v [3]uint8
+				for k := range v {
+					n, err := strconv.Atoi(ps[i+2+k])
+					if err != nil || n < 0 || n > 255 {
+						return color.RGBA{}, false
+					}
+					v[k] = uint8(n)
+				}
+				c, ok = color.RGBA{v[0], v[1], v[2], 255}, true
+			}
+		}
+	}
+	return c, ok
 }
 
 // textSelectSGR returns the sequence that marks a selection. It tints the
