@@ -221,29 +221,72 @@ func blankCells(s string, lo, hi int) string {
 // line, with the same cells, where the find looks for q.
 func paintMatches(line, text, q string) string {
 	lt, lq := strings.ToLower(text), strings.ToLower(q)
-	for at := 0; ; {
-		i := strings.Index(lt[at:], lq)
-		if i < 0 || lq == "" {
-			return line
-		}
-		i += at
-		start := ansi.StringWidth(lt[:i])
-		line = paintCells(line, start, start+ansi.StringWidth(lq), findSGR)
-		at = i + len(lq)
-	}
-}
-
-// paintCells returns line with the cells [start, end) on sgr. The cells
-// after them keep their own style only from their next escape sequence.
-func paintCells(line string, start, end int, sgr string) string {
-	w := ansi.StringWidth(line)
-	end = min(end, w)
-	if start >= end {
+	if lq == "" {
 		return line
 	}
-	out := ansi.Cut(line, 0, start) + carrySGR(ansi.Cut(line, start, end), sgr) + ansi.ResetStyle
-	if end < w {
-		out += ansi.Cut(line, end, w)
+	var spans [][2]int
+	col := 0 // the cell where lt[at:] starts
+	for at := 0; ; {
+		i := strings.Index(lt[at:], lq)
+		if i < 0 {
+			break
+		}
+		col += ansi.StringWidth(lt[at : at+i])
+		w := ansi.StringWidth(lq)
+		spans = append(spans, [2]int{col, col + w})
+		col += w
+		at += i + len(lq)
 	}
-	return out
+	return paintSpans(line, spans, findSGR)
+}
+
+// paintSpans returns line with the cells of each span [start, end) on sgr,
+// in one pass. spans are in order and do not overlap. After a span, the
+// line goes on in its own style.
+func paintSpans(line string, spans [][2]int, sgr string) string {
+	if len(spans) == 0 {
+		return line
+	}
+	var b, style strings.Builder // style: the SGR of the line since its last reset
+	col, k, in := 0, 0, false
+	var state byte
+	for len(line) > 0 {
+		seq, width, n, next := ansi.DecodeSequence(line, state, nil)
+		if n <= 0 {
+			b.WriteString(line)
+			break
+		}
+		line, state = line[n:], next
+		if seq[0] == ansi.ESC {
+			b.WriteString(seq)
+			if strings.HasSuffix(seq, "m") && strings.HasPrefix(seq, "\x1b[") {
+				if seq == "\x1b[m" || seq == "\x1b[0m" {
+					style.Reset()
+				} else {
+					style.WriteString(seq)
+				}
+				if in { // the text must not turn the span off
+					b.WriteString(sgr)
+				}
+			}
+			continue
+		}
+		for k < len(spans) && spans[k][1] <= col {
+			k++
+		}
+		want := k < len(spans) && col >= spans[k][0]
+		switch {
+		case want && !in:
+			b.WriteString(sgr)
+		case !want && in:
+			b.WriteString(ansi.ResetStyle + style.String())
+		}
+		in = want
+		b.WriteString(seq)
+		col += width
+	}
+	if in {
+		b.WriteString(ansi.ResetStyle)
+	}
+	return b.String()
 }

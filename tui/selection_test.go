@@ -188,3 +188,18 @@ func TestUnderSGR(t *testing.T) {
 		t.Error("a foreground with a 48 in it counts as a background")
 	}
 }
+
+// TestPaintSpans checks that the spans get the mark, that a style in the
+// text does not turn a span off, and that the line keeps its own style
+// after a span.
+func TestPaintSpans(t *testing.T) {
+	const mark, red = "\x1b[7m", "\x1b[31m"
+	got := paintSpans(red+"ab"+"\x1b[1m"+"cdé\x1b[m", [][2]int{{1, 3}, {4, 5}}, mark)
+	want := red + "a" + mark + "b" + "\x1b[1m" + mark + "c" + "\x1b[m" + red + "\x1b[1m" + "d" + mark + "é" + "\x1b[m" + mark + "\x1b[m"
+	if got != want {
+		t.Errorf("paintSpans:\n got %q\nwant %q", got, want)
+	}
+	if got := paintMatches("Go go", "Go go", "go"); strings.Count(got, findSGR) != 2 {
+		t.Errorf("paintMatches marks %d matches of go in %q, want 2", strings.Count(got, findSGR), got)
+	}
+}

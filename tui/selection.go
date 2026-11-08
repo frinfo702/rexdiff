@@ -156,28 +156,7 @@ func (p *pane) markSelection(i int, sgr string) string {
 		return line
 	}
 	start, end := p.selectionCols(i, lo, hi)
-	return paintCells(line, start, end, sgr)
-}
-
-// carrySGR repeats sgr after each escape sequence of s. A reset in the
-// text then cannot turn the selection off.
-func carrySGR(s, sgr string) string {
-	var b strings.Builder
-	b.WriteString(sgr)
-	var state byte
-	for len(s) > 0 {
-		seq, width, n, next := ansi.DecodeSequence(s, state, nil)
-		if n <= 0 {
-			b.WriteString(s)
-			break
-		}
-		b.WriteString(seq)
-		if width == 0 {
-			b.WriteString(sgr)
-		}
-		s, state = s[n:], next
-	}
-	return b.String()
+	return paintSpans(line, [][2]int{{start, end}}, sgr)
 }
 
 // underSGR puts sgr under the cells of s that have no background of their
