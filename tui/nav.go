@@ -16,8 +16,9 @@ import (
 
 // Steps of the keys that move or resize, in columns.
 const (
-	scrollStep    = 8 // the sideways scroll
-	listWidthStep = 4 // the width of the file list
+	scrollStep    = 8  // the sideways scroll
+	listWidthStep = 4  // the width of the file list
+	contextStep   = 10 // the unchanged lines that + adds around a change
 )
 
 // updateNormal handles a key when no box is open.
@@ -151,6 +152,10 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		p.cur = 0
 	case key.Matches(msg, k.Bottom):
 		p.cur = last
+	case key.Matches(msg, k.MoreContext):
+		m.addContext(contextStep)
+	case key.Matches(msg, k.LessContext):
+		m.addContext(-contextStep)
 	case key.Matches(msg, k.NextHunk):
 		m.stepChange(1)
 	case key.Matches(msg, k.PrevHunk):
@@ -255,6 +260,17 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	return nil, true
+}
+
+// addContext shows n more unchanged lines around each change of the diff,
+// or fewer if n is negative. The cursor stays on its line.
+func (m *model) addContext(n int) {
+	p := m.cur()
+	if m.tab != tabChanges && m.tab != tabGuide {
+		return
+	}
+	p.more = max(p.more+n, 0)
+	m.rerender()
 }
 
 // openPR opens the pull request in the browser.

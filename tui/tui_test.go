@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image/color"
 	"os"
 	"os/exec"
@@ -983,5 +984,35 @@ func TestHideList(t *testing.T) {
 	m = press(t, m, "tab")
 	if m.listWidth() == 0 || !m.focusList {
 		t.Fatalf("tab: list width %d, focus %v", m.listWidth(), m.focusList)
+	}
+}
+
+// TestMoreContext checks that + shows more unchanged lines around a
+// change, that - shows fewer, and that a click on a hunk header shows more.
+func TestMoreContext(t *testing.T) {
+	m, dir := newTestModel(t)
+	var src strings.Builder
+	for i := range 40 {
+		fmt.Fprintf(&src, "// line %d\n", i+1)
+	}
+	write(t, dir, "a.go", src.String())
+	git(t, dir, "commit", "-qam", "long")
+	write(t, dir, "a.go", strings.Replace(src.String(), "line 30\n", "changed\n", 1))
+	m.reload()
+	shown := func(line int) bool { return m.changes.rowOf(diff.SideNew, line) >= 0 }
+	if shown(20) {
+		t.Fatal("line 20 shows before + is pressed")
+	}
+	if m = press(t, m, "+"); !shown(20) {
+		t.Error("+ did not show line 20")
+	}
+	if m = press(t, m, "-"); shown(20) {
+		t.Error("- did not hide line 20")
+	}
+	h := slices.IndexFunc(m.changes.rows[1:], func(r diff.Row) bool { return r.Kind == diff.KindHunk }) + 1
+	_, rowAt := m.mainLines(m.bodyHeight())
+	m = click(t, m, m.mainX()+gutter+4, bodyY+slices.Index(rowAt, h))
+	if !shown(20) {
+		t.Error("a click on the hunk header did not show line 20")
 	}
 }

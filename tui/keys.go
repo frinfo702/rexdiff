@@ -13,6 +13,7 @@ type keyMap struct {
 	// Move.
 	Down, Up, PageDown, PageUp, HalfDown, HalfUp, Top, Bottom  key.Binding
 	NextHunk, PrevHunk, NextFile, PrevFile, Focus, Left, Right key.Binding
+	MoreContext, LessContext                                   key.Binding
 
 	// Scopes and tabs.
 	ScopeUncommitted, ScopeBranch, ScopeTurn, ScopeCommits key.Binding
@@ -67,6 +68,9 @@ func defaultKeys() keyMap {
 		Focus:    bind([]string{"tab"}, "tab", "switch pane"),
 		Left:     bind([]string{"left"}, "←/→", "scroll sideways"),
 		Right:    bind([]string{"right"}, "→", "scroll right"),
+
+		MoreContext: bind([]string{"+", "="}, "+/-", "more/less context"),
+		LessContext: bind([]string{"-"}, "-", "less context"),
 
 		ScopeUncommitted: bind([]string{"u"}, "u", "uncommitted"),
 		ScopeBranch:      bind([]string{"b"}, "b", "branch"),
@@ -169,6 +173,8 @@ func (k *keyMap) bindings(c keybindings) []binding {
 		{"expand", c.Expand, &k.Right},
 		{"next-hunk", c.NextHunk, &k.NextHunk},
 		{"prev-hunk", c.PrevHunk, &k.PrevHunk},
+		{"more-context", c.MoreContext, &k.MoreContext},
+		{"less-context", c.LessContext, &k.LessContext},
 		{"next-file", c.NextFile, &k.NextFile},
 		{"prev-file", c.PrevFile, &k.PrevFile},
 		{"focus", c.Focus, &k.Focus},
@@ -275,7 +281,7 @@ func (h helpKeys) ShortHelp() []key.Binding {
 func (h helpKeys) FullHelp() [][]key.Binding {
 	k := h.k
 	move := []key.Binding{
-		k.Down, k.HalfDown, k.NextHunk, k.NextFile, k.Focus, k.Left, k.GotoLine,
+		k.Down, k.HalfDown, k.NextHunk, k.MoreContext, k.NextFile, k.Focus, k.Left, k.GotoLine,
 	}
 	scopes := []key.Binding{
 		k.TabOverview, k.ScopeUncommitted, k.ScopeBranch, k.ScopeTurn, k.ScopeCommits,

@@ -104,9 +104,12 @@ type keybindings struct {
 	Expand   []string `json:"expand"`
 	NextHunk []string `json:"next-hunk"`
 	PrevHunk []string `json:"prev-hunk"`
-	NextFile []string `json:"next-file"`
-	PrevFile []string `json:"prev-file"`
-	Focus    []string `json:"focus"`
+	// MoreContext and LessContext are not actions of herdr-reviewr.
+	MoreContext []string `json:"more-context"`
+	LessContext []string `json:"less-context"`
+	NextFile    []string `json:"next-file"`
+	PrevFile    []string `json:"prev-file"`
+	Focus       []string `json:"focus"`
 
 	// Scopes and tabs.
 	ScopeUncommitted []string `json:"scope-uncommitted"`

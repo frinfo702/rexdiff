@@ -7,6 +7,8 @@ package tui
 import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/frinfo702/rexdiff/diff"
 )
 
 // onClick handles a press of a mouse button.
@@ -52,6 +54,11 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 	}
 	p := m.cur()
 	m.focusList = false
+	if p.hunkHeader(rowAt[y]) { // "↕ 12 unchanged lines": show them
+		p.cur = rowAt[y]
+		m.addContext(contextStep)
+		return nil
+	}
 	p.cur, p.anchor = p.head(rowAt[y]), -1
 	x := mouse.X - m.mainX() - gutter
 	side, onNumber := p.side(x)
@@ -67,6 +74,12 @@ func (m *model) onClick(mouse tea.Mouse) tea.Cmd {
 		p.text = &textSelection{start: pt, end: pt, side: side}
 	}
 	return nil
+}
+
+// hunkHeader tells if row i is the line above a hunk of a diff. Row 0 is
+// the file header.
+func (p *pane) hunkHeader(i int) bool {
+	return p.diff != nil && i > 0 && i < len(p.rows) && p.rows[i].Kind == diff.KindHunk
 }
 
 // listIndexAt returns the file on line y of the file list, h lines tall,

@@ -82,6 +82,7 @@ type pane struct {
 	anchor int            // the start of the visual selection, or -1
 	text   *textSelection // the text selected with the mouse, or nil
 	xoff   int            // the sideways scroll, in columns
+	more   int            // the unchanged lines around a change, beyond the default
 	note   string         // shown instead of the lines, if there are no lines
 	// free is true after the wheel moves the view. Then the cursor can
 	// be off the screen until the next key or click.
@@ -120,8 +121,8 @@ func (p *pane) end(i int) int {
 }
 
 // toStart moves the cursor and the view to the first row. It clears the
-// selection and the sideways scroll.
-func (p *pane) toStart() { p.cur, p.top, p.anchor, p.text, p.xoff = 0, 0, -1, nil, 0 }
+// selection, the sideways scroll, and the added context.
+func (p *pane) toStart() { p.cur, p.top, p.anchor, p.text, p.xoff, p.more = 0, 0, -1, nil, 0, 0 }
 
 // setDiff shows the lines of d.
 func (p *pane) setDiff(d *diff.Diff) {

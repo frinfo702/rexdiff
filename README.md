@@ -65,6 +65,7 @@ are gone, rexdiff marks the comment as stale.
 | --- | --- |
 | `u` `b` `t` | uncommitted, branch, or last-turn changes |
 | `]` `[` | next or previous change |
+| `+` `-` | more or fewer unchanged lines around each change (or click `↕`) |
 | `f` `F` | next or previous file |
 | `c` | comment |
 | `s` | send the comments to the agent |
