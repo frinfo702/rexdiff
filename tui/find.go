@@ -88,12 +88,9 @@ func (m *model) runFind(q string) {
 	} else {
 		p := m.cur()
 		for i := range p.lines {
-			if !strings.Contains(strings.ToLower(p.searchText(i)), lq) {
-				continue
-			}
-			// The rows of a wrapped line make one hit.
-			if h := p.head(i); len(f.hits) == 0 || f.hits[len(f.hits)-1] != h {
-				f.hits = append(f.hits, h)
+			// The rows of a wrapped line make one hit, on its first row.
+			if !p.cont(i) && p.matches(i, lq) {
+				f.hits = append(f.hits, i)
 			}
 		}
 	}
@@ -157,6 +154,31 @@ func (m *model) listPath(i int) string {
 		return m.guideFiles()[i].path
 	}
 	return m.files[i].Path
+}
+
+// matches tells if the line that row i shows has lq, a query in lower
+// case. A row of a diff matches by its source lines, so that the find sees
+// the parts of a line that the screen cuts off. A row of rendered text
+// matches by its text.
+func (p *pane) matches(i int, lq string) bool {
+	if p.src == nil {
+		return strings.Contains(strings.ToLower(p.searchText(i)), lq)
+	}
+	if p.lower == nil {
+		p.lower = new([2][]string)
+		for s, lines := range p.src {
+			for _, l := range lines {
+				p.lower[s] = append(p.lower[s], strings.ToLower(l))
+			}
+		}
+	}
+	r := p.rows[i]
+	for s, n := range [2]int{r.Old, r.New} {
+		if n > 0 && n <= len(p.lower[s]) && strings.Contains(p.lower[s][n-1], lq) {
+			return true
+		}
+	}
+	return false
 }
 
 // searchText returns line i of p as plain text, with the line numbers of a

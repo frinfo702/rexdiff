@@ -1082,3 +1082,14 @@ func TestDoubleClickWord(t *testing.T) {
 		t.Errorf("status %q, want the copy", m.status)
 	}
 }
+
+// TestFindPastScreen checks that the find sees the part of a line that the
+// screen cuts off.
+func TestFindPastScreen(t *testing.T) {
+	m, dir := newTestModel(t)
+	write(t, dir, "a.go", "package a\n\n// "+strings.Repeat("x", 300)+" needle\n")
+	m.reload()
+	if m = press(t, m, "/", "n", "e", "e", "d", "l", "e"); !m.find.active() {
+		t.Error("the find does not see a match past the edge of the screen")
+	}
+}

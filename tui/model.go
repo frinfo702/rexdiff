@@ -86,6 +86,10 @@ type pane struct {
 	xoff   int            // the sideways scroll, in columns
 	more   int            // the unchanged lines around a change, beyond the default
 	note   string         // shown instead of the lines, if there are no lines
+	// src has the old and the new source lines that the rows number, or
+	// nil if the rows show no source lines. lower has them in lower case,
+	// for a find; it is made at the first find.
+	src, lower *[2][]string
 	// free is true after the wheel moves the view. Then the cursor can
 	// be off the screen until the next key or click.
 	free bool
@@ -95,7 +99,7 @@ type pane struct {
 // comment selection in the new lines. A text selection does not survive a
 // new render, because its cells can move.
 func (p *pane) set(lines []string, rows []diff.Row) {
-	p.lines, p.rows, p.diff, p.text = lines, rows, nil, nil
+	p.lines, p.rows, p.diff, p.text, p.src, p.lower = lines, rows, nil, nil, nil, nil
 	p.cur = min(p.cur, max(len(lines)-1, 0))
 	p.top = min(p.top, max(len(lines)-1, 0))
 	if p.anchor >= len(rows) { // the file is shorter than before

@@ -158,6 +158,7 @@ func (m *model) renderChanged(p *pane, f *changed) {
 		m.setMarkdown(p, f.New)
 	default:
 		p.setDiff(diff.Render(f.Path, f.Old, f.New, m.diffOptions(p)))
+		p.src = &[2][]string{diff.Lines(f.Old), diff.Lines(f.New)}
 	}
 	p.addHeader(m.fileHeader(f))
 }
@@ -246,6 +247,7 @@ func (m *model) refreshViewer() {
 		m.setMarkdown(p, content)
 	default:
 		p.setDiff(diff.RenderFile(path, content, m.diffOptions(p)))
+		p.src = &[2][]string{nil, diff.Lines(content)}
 	}
 }
 
