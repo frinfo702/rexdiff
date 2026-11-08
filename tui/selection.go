@@ -6,8 +6,10 @@ package tui
 // again and esc can clear it.
 
 import (
+	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -48,6 +50,39 @@ func (p *pane) selectAt(i, x int) textPoint {
 	i = min(max(i, 0), len(p.lines)-1)
 	w := ansi.StringWidth(p.lines[i])
 	return textPoint{row: i, col: min(max(x, 0), max(w-1, 0))}
+}
+
+// wordAt returns the selection of the word at pt: the letters, the digits,
+// and the underscores around it. A cell that is not in a word selects only
+// its character.
+func (p *pane) wordAt(pt textPoint, side diff.Side) *textSelection {
+	type cell struct {
+		col, w int
+		word   bool
+	}
+	var cells []cell
+	col := 0
+	for _, r := range ansi.Strip(p.lines[pt.row]) {
+		w := max(ansi.StringWidth(string(r)), 1)
+		cells = append(cells, cell{col, w, unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'})
+		col += w
+	}
+	k := slices.IndexFunc(cells, func(c cell) bool { return pt.col < c.col+c.w })
+	if k < 0 {
+		return &textSelection{start: pt, end: pt, side: side}
+	}
+	lo, hi := k, k
+	for cells[k].word && lo > 0 && cells[lo-1].word {
+		lo--
+	}
+	for cells[k].word && hi+1 < len(cells) && cells[hi+1].word {
+		hi++
+	}
+	return &textSelection{
+		start: textPoint{pt.row, cells[lo].col},
+		end:   textPoint{pt.row, cells[hi].col + cells[hi].w - 1},
+		side:  side,
+	}
 }
 
 // selectedText returns the text that p.text selects. It leaves out the

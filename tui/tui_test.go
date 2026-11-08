@@ -1063,3 +1063,22 @@ func TestFind(t *testing.T) {
 		t.Error("the find in the list hides the files that do not match")
 	}
 }
+
+// TestDoubleClickWord checks that a double click on the code selects and
+// copies the word under the pointer.
+func TestDoubleClickWord(t *testing.T) {
+	m, _ := newTestModel(t)
+	p := &m.changes
+	i := slices.IndexFunc(p.lines, func(l string) bool { return strings.Contains(ansi.Strip(l), "return x") })
+	plain := ansi.Strip(p.lines[i])
+	x := m.mainX() + gutter + ansi.StringWidth(plain[:strings.Index(plain, "return x")]) + 2
+	y := screenY(t, m, i)
+	m = click(t, m, x, y)
+	m = click(t, m, x, y)
+	if got := m.changes.selectedText(); got != "return" {
+		t.Errorf("double click selected %q, want \"return\"", got)
+	}
+	if m.status != "copied 6 chars" {
+		t.Errorf("status %q, want the copy", m.status)
+	}
+}

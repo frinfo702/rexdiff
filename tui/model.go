@@ -180,6 +180,13 @@ type dragState struct {
 	pref   diff.Side // the side of the line numbers or the code at the start
 }
 
+// lastClick is the last press of the left button on the code, to notice a
+// double click.
+type lastClick struct {
+	at   time.Time
+	x, y int
+}
+
 // draft is the comment that the user writes: a new one, or an edit of the
 // comment with ID editID.
 type draft struct {
@@ -266,6 +273,7 @@ type model struct {
 	find     findState
 	findBar  textinput.Model
 	drag     dragState
+	click    lastClick
 	help     help.Model
 
 	status     string

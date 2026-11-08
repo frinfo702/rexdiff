@@ -51,7 +51,7 @@ it says so when Rex is not installed. The viewer itself runs without Rex.
   command palette. Press it again to close rexdiff.
 - Comment: move to a line and press `c`. For a range, press `v` or drag over
   the line numbers.
-- Copy: drag over the code to select it. Release copies the selection, and
+- Copy: drag over the code to select it, or double-click a word. Release copies the selection, and
   `y` copies it again. `esc` clears it. It works in each tab.
 - Send: press `s`. rexdiff pastes the comments into the agent's input. It does
   not press Enter.
