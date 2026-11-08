@@ -222,7 +222,7 @@ func (m *model) listLines(h int) []string {
 	for i := m.listStart(h); i < n && len(out) < h; i++ {
 		r := row(i)
 		if m.find.list && m.find.query != "" {
-			r = paintMatches(r, ansi.Strip(r), m.find.query)
+			r = m.paintListMatch(i, r)
 		}
 		if i == sel {
 			r = m.selectedRow(r, w)
@@ -230,6 +230,24 @@ func (m *model) listLines(h int) []string {
 		out = append(out, r)
 	}
 	return out
+}
+
+// paintListMatch paints the matches of the find in row r of file i of the
+// list. The find matches the whole path, but the row can cut off the
+// directory. Then the "…" of a file that matches is painted, to show that
+// the match is in the part that the row cuts off.
+func (m *model) paintListMatch(i int, r string) string {
+	plain := ansi.Strip(r)
+	if painted := paintMatches(r, plain, m.find.query); painted != r {
+		return painted
+	}
+	_, hit := slices.BinarySearch(m.find.hits, i)
+	k := strings.Index(plain, "…")
+	if !hit || k < 0 {
+		return r
+	}
+	col := ansi.StringWidth(plain[:k])
+	return paintSpans(r, [][2]int{{col, col + 1}}, findSGR)
 }
 
 // changeStat returns the counts of the lines that f adds and deletes, as

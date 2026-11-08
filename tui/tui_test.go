@@ -1108,3 +1108,23 @@ func TestFindNarrow(t *testing.T) {
 		t.Errorf("backspace to /re: %d hits, want %d", len(m.find.hits), all)
 	}
 }
+
+// TestFindListCut checks that a file that matches by its directory shows
+// that it matches, even when the list cuts the directory off.
+func TestFindListCut(t *testing.T) {
+	m, dir := newTestModel(t)
+	if err := os.MkdirAll(filepath.Join(dir, "tui"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "tui/a_long_name_of_a_file.go", "package tui\n")
+	m.reload()
+	m = press(t, m, "tab", "/", "t", "u", "i", "enter")
+	lines := m.listLines(m.bodyHeight())
+	i := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(ansi.Strip(l), "…/a_long_name_of_a_file.go") })
+	if i < 0 {
+		t.Fatalf("the list does not cut the directory:\n%s", view(m))
+	}
+	if !strings.Contains(lines[i], findSGR+"…") {
+		t.Errorf("the row of a match does not paint its \"…\": %q", lines[i])
+	}
+}
