@@ -87,6 +87,7 @@ func press(t *testing.T, m model, keys ...string) model {
 		"esc":   tea.KeyEscape,
 		"home":  tea.KeyHome,
 		"end":   tea.KeyEnd,
+		"tab":   tea.KeyTab,
 	}
 	for _, k := range keys {
 		code, ok := named[k]
@@ -960,5 +961,19 @@ func TestParseGuide(t *testing.T) {
 	}
 	if _, err := parseGuide("I can't do that"); err == nil {
 		t.Error("parseGuide of no JSON: no error")
+	}
+}
+
+// TestHideList checks that z hides the file list and gives j and k back to
+// the code, and that tab on a hidden list shows it again.
+func TestHideList(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = press(t, m, "tab", "z")
+	if m.listWidth() != 0 || m.focusList {
+		t.Fatalf("z: list width %d, focus %v", m.listWidth(), m.focusList)
+	}
+	m = press(t, m, "tab")
+	if m.listWidth() == 0 || !m.focusList {
+		t.Fatalf("tab: list width %d, focus %v", m.listWidth(), m.focusList)
 	}
 }

@@ -127,6 +127,10 @@ func (m *model) moveKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, k.Focus):
 		m.focusList = !m.focusList
+		if m.focusList && m.listHidden { // focus on a hidden list shows it
+			m.listHidden = false
+			m.rerender()
+		}
 	case key.Matches(msg, k.Down) && inList:
 		m.pickFile(m.listSel() + 1)
 	case key.Matches(msg, k.Down):
@@ -233,6 +237,7 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.listLeft = !m.listLeft
 	case key.Matches(msg, k.NavHide):
 		m.listHidden = !m.listHidden
+		m.focusList = m.focusList && !m.listHidden // j and k go back to the code
 		m.rerender()
 	case key.Matches(msg, k.NavGrow):
 		m.listW = min(m.listW+listWidthStep, m.w/2)
