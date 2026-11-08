@@ -90,6 +90,7 @@ type pane struct {
 	// nil if the rows show no source lines. lower has them in lower case,
 	// for a find; it is made at the first find.
 	src, lower *[2][]string
+	gen        int // counts the renders, so that a find knows if its hits are old
 	// free is true after the wheel moves the view. Then the cursor can
 	// be off the screen until the next key or click.
 	free bool
@@ -100,6 +101,7 @@ type pane struct {
 // new render, because its cells can move.
 func (p *pane) set(lines []string, rows []diff.Row) {
 	p.lines, p.rows, p.diff, p.text, p.src, p.lower = lines, rows, nil, nil, nil, nil
+	p.gen++
 	p.cur = min(p.cur, max(len(lines)-1, 0))
 	p.top = min(p.top, max(len(lines)-1, 0))
 	if p.anchor >= len(rows) { // the file is shorter than before
@@ -169,6 +171,7 @@ type findState struct {
 	i     int   // the hit at the cursor
 	list  bool
 	from  int // the row or the file where the find started; esc goes back to it
+	gen   int // the render of the pane, or the length of the list, of the hits
 }
 
 // active tells if the find has hits, so that n and N step through them.

@@ -89,6 +89,7 @@ func press(t *testing.T, m model, keys ...string) model {
 		"home":  tea.KeyHome,
 		"end":   tea.KeyEnd,
 		"tab":   tea.KeyTab,
+		"bksp":  tea.KeyBackspace,
 	}
 	for _, k := range keys {
 		code, ok := named[k]
@@ -1091,5 +1092,19 @@ func TestFindPastScreen(t *testing.T) {
 	m.reload()
 	if m = press(t, m, "/", "n", "e", "e", "d", "l", "e"); !m.find.active() {
 		t.Error("the find does not see a match past the edge of the screen")
+	}
+}
+
+// TestFindNarrow checks that a longer query looks only at the hits so far,
+// and that a shorter one looks at all the lines again.
+func TestFindNarrow(t *testing.T) {
+	m, _ := newTestModel(t)
+	m = press(t, m, "/", "r", "e")
+	all := len(m.find.hits)
+	if m = press(t, m, "z"); m.find.active() {
+		t.Fatalf("/rez matches %v", m.find.hits)
+	}
+	if m = press(t, m, "bksp"); len(m.find.hits) != all || all == 0 {
+		t.Errorf("backspace to /re: %d hits, want %d", len(m.find.hits), all)
 	}
 }

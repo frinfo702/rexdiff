@@ -73,23 +73,32 @@ func (m *model) updateFind(msg tea.KeyPressMsg) tea.Cmd {
 // the start, or back to the start if nothing matches.
 func (m *model) runFind(q string) {
 	f := &m.find
-	f.query, f.hits, f.i = q, nil, 0
+	lq, prev := strings.ToLower(q), strings.ToLower(f.query)
+	p, gen := m.cur(), m.cur().gen
+	if f.list {
+		gen = m.listLen()
+	}
+	// A longer query matches only where the shorter one did, so a query
+	// that the user types on looks only at the hits so far.
+	narrow := prev != "" && strings.HasPrefix(lq, prev) && f.gen == gen
+	old := f.hits
+	f.query, f.hits, f.i, f.gen = q, nil, 0, gen
 	if q == "" {
 		m.moveToFind(f.from)
 		return
 	}
-	lq := strings.ToLower(q)
-	if f.list {
-		for i := range m.listLen() {
-			if strings.Contains(strings.ToLower(m.listPath(i)), lq) {
-				f.hits = append(f.hits, i)
-			}
-		}
+	match := func(i int) bool { return strings.Contains(strings.ToLower(m.listPath(i)), lq) }
+	n := m.listLen()
+	if !f.list {
+		// The rows of a wrapped line make one hit, on its first row.
+		match = func(i int) bool { return !p.cont(i) && p.matches(i, lq) }
+		n = len(p.lines)
+	}
+	if narrow {
+		f.hits = slices.DeleteFunc(old, func(i int) bool { return !match(i) })
 	} else {
-		p := m.cur()
-		for i := range p.lines {
-			// The rows of a wrapped line make one hit, on its first row.
-			if !p.cont(i) && p.matches(i, lq) {
+		for i := range n {
+			if match(i) {
 				f.hits = append(f.hits, i)
 			}
 		}
