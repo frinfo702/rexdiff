@@ -89,16 +89,16 @@ func (m *model) rerender() {
 	}
 }
 
-// minSplitShare is the smallest share of the screen, in percent, that the
-// main pane takes before a diff shows side by side. A smaller share shows the
-// diff top to bottom, even if the layout is split, because each side would cut
-// most lines.
-const minSplitShare = 60
+// minSplitWidth is the narrowest main pane, in columns, that shows a diff
+// side by side. A narrower pane shows the diff top to bottom, even if the
+// layout is split, because each side would cut most lines. The width counts
+// in each tab, so the Guide tab, whose column is wider than the file list,
+// switches too.
+const minSplitWidth = 80
 
-// splitShown tells if the diff shows side by side now. The main pane must
-// take most of the screen, or each side would cut most lines.
+// splitShown tells if the diff shows side by side now.
 func (m *model) splitShown() bool {
-	return m.split && m.w > 0 && m.mainSpace()*100 >= m.w*minSplitShare
+	return m.split && m.mainSpace() >= minSplitWidth
 }
 
 // diffOptions returns the options to render a diff with sideways scroll

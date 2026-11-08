@@ -223,8 +223,8 @@ func TestComment(t *testing.T) {
 	}
 }
 
-// TestSplitThreshold checks that the diff shows side by side when the main
-// pane takes about 60% of the screen.
+// TestSplitThreshold checks that the diff shows side by side only when the
+// main pane is wide enough, in the Diff and in the Guide tab.
 func TestSplitThreshold(t *testing.T) {
 	m, _ := newTestModel(t)
 	if !m.splitShown() {
@@ -233,6 +233,14 @@ func TestSplitThreshold(t *testing.T) {
 	m = step(t, m, tea.WindowSizeMsg{Width: 40, Height: 40})
 	if m.splitShown() {
 		t.Error("a 40-column screen shows the diff side by side")
+	}
+	// The guide column is wider than the file list.
+	m.tab, m.guide.sections = tabGuide, []guideSection{{Title: "x", Files: []string{"a.go"}}}
+	for w, want := range map[int]bool{120: false, 200: true} {
+		m = step(t, m, tea.WindowSizeMsg{Width: w, Height: 40})
+		if m.splitShown() != want {
+			t.Errorf("guide at %d columns: side by side %v, want %v", w, !want, want)
+		}
 	}
 }
 
