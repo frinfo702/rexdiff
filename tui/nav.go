@@ -33,9 +33,11 @@ func (m *model) updateNormal(msg tea.KeyPressMsg) tea.Cmd {
 		switch {
 		case key.Matches(msg, k.FindNext):
 			m.stepFind(1)
+			m.ensureVisible()
 			return nil
 		case key.Matches(msg, k.FindPrev):
 			m.stepFind(-1)
+			m.ensureVisible()
 			return nil
 		case key.Matches(msg, k.Cancel):
 			m.find = findState{}

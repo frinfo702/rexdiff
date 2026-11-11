@@ -1149,3 +1149,28 @@ func TestFindStepAfterRender(t *testing.T) {
 		t.Errorf("n from the top moved to %q, want the first match", got)
 	}
 }
+
+// TestFindStepScrolls checks that n and N scroll to a match that is off the
+// screen at once, and do not wait for the next tick.
+func TestFindStepScrolls(t *testing.T) {
+	m, dir := newTestModel(t)
+	var src strings.Builder
+	for i := range 500 {
+		if i%100 == 99 {
+			src.WriteString("\tneedle()\n")
+		} else {
+			src.WriteString("\tx()\n")
+		}
+	}
+	write(t, dir, "big.go", "package a\nfunc f() {\n"+src.String()+"}\n")
+	m.reload()
+	m.pickFile(1)
+	m = press(t, m, "/", "n", "e", "e", "d", "l", "e", "enter")
+	for _, k := range []string{"n", "n", "N"} {
+		m = press(t, m, k)
+		p := m.cur()
+		if p.cur < p.top || p.cur >= p.top+m.bodyHeight() {
+			t.Fatalf("after %s, the cursor is on row %d, off the screen that starts at row %d", k, p.cur, p.top)
+		}
+	}
+}
