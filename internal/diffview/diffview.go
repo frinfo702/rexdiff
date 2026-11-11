@@ -130,9 +130,14 @@ func diffHunks(before, after string, tabWidth, context int) []hunk {
 	tab := strings.Repeat(" ", tabWidth)
 	firsts := make([]int, len(u.Hunks))
 	hunks := make([]hunk, len(u.Hunks))
-	prevEnd := 0 // the last old line of the hunk above
+	prevEnd, prevNew := 0, 0 // the last old and new lines of the hunk above
 	for i, uh := range u.Hunks {
-		firsts[i] = uh.ToLine - 1
+		// The lines between two hunks are the same on the two sides, so the
+		// new side starts as far below the hunk above as the old side.
+		// The ToLine of udiff is too small after a hunk that has unchanged
+		// lines between two changes, because udiff does not count them.
+		old, new := uh.FromLine, prevNew+uh.FromLine-prevEnd
+		firsts[i] = new - 1
 		h := &hunks[i]
 		switch n := uh.FromLine - 1 - prevEnd; {
 		case n <= 0:
@@ -142,7 +147,6 @@ func diffHunks(before, after string, tabWidth, context int) []hunk {
 		default:
 			h.header = fmt.Sprintf("  ↕ %d unchanged lines ", n)
 		}
-		old, new := uh.FromLine, uh.ToLine
 		for _, ul := range uh.Lines {
 			l := line{kind: ul.Kind, text: strings.ReplaceAll(strings.TrimSuffix(ul.Content, "\n"), "\t", tab)}
 			if ul.Kind != udiff.Insert {
@@ -155,7 +159,7 @@ func diffHunks(before, after string, tabWidth, context int) []hunk {
 			}
 			h.lines = append(h.lines, l)
 		}
-		prevEnd = old - 1
+		prevEnd, prevNew = old-1, new-1
 	}
 	scopes := scopesOf(strings.Split(after, "\n"), firsts)
 	for i := range hunks {

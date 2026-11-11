@@ -74,7 +74,7 @@ func (m *model) updateFind(msg tea.KeyPressMsg) tea.Cmd {
 func (m *model) runFind(q string) {
 	f := &m.find
 	lq, prev := strings.ToLower(q), strings.ToLower(f.query)
-	p, gen := m.cur(), m.cur().gen
+	gen := m.cur().gen
 	if f.list {
 		gen = m.listLen()
 	}
@@ -87,21 +87,10 @@ func (m *model) runFind(q string) {
 		m.moveToFind(f.from)
 		return
 	}
-	match := func(i int) bool { return strings.Contains(strings.ToLower(m.listPath(i)), lq) }
-	n := m.listLen()
-	if !f.list {
-		// The rows of a wrapped line make one hit, on its first row.
-		match = func(i int) bool { return !p.cont(i) && p.matches(i, lq) }
-		n = len(p.lines)
-	}
 	if narrow {
-		f.hits = slices.DeleteFunc(old, func(i int) bool { return !match(i) })
+		f.hits = slices.DeleteFunc(old, func(i int) bool { return !m.findMatch(i, lq) })
 	} else {
-		for i := range n {
-			if match(i) {
-				f.hits = append(f.hits, i)
-			}
-		}
+		f.hits = m.findHits(lq)
 	}
 	if !f.active() {
 		m.moveToFind(f.from)
@@ -111,21 +100,56 @@ func (m *model) runFind(q string) {
 	m.moveToFind(f.hits[f.i])
 }
 
-// stepFind moves to the next (d = 1) or the previous (d = -1) match of the
-// find. It wraps around.
-func (m *model) stepFind(d int) {
-	f := &m.find
-	// A reload can make the pane or the list shorter than the matches.
+// findMatch tells if row i of the pane, or file i of the list, has lq, a
+// query in lower case. The rows of a wrapped line make one hit, on its
+// first row.
+func (m *model) findMatch(i int, lq string) bool {
+	if m.find.list {
+		return strings.Contains(strings.ToLower(m.listPath(i)), lq)
+	}
+	p := m.cur()
+	return !p.cont(i) && p.matches(i, lq)
+}
+
+// findHits returns the rows of the pane, or the files of the list, that
+// have lq, in order.
+func (m *model) findHits(lq string) (hits []int) {
 	n := len(m.cur().lines)
-	if f.list {
+	if m.find.list {
 		n = m.listLen()
 	}
-	f.hits = slices.DeleteFunc(f.hits, func(h int) bool { return h >= n })
+	for i := range n {
+		if m.findMatch(i, lq) {
+			hits = append(hits, i)
+		}
+	}
+	return hits
+}
+
+// stepFind moves to the next (d = 1) or the previous (d = -1) match of the
+// find, from the cursor. It wraps around.
+func (m *model) stepFind(d int) {
+	f := &m.find
+	gen, at := m.cur().gen, m.cur().cur
+	if f.list {
+		gen, at = m.listLen(), m.listSel()
+	}
+	// A new render moves the rows, for example after a reload, a resize, or
+	// a change of the wrap. Then the hits are old, so the find looks again.
+	if f.gen != gen {
+		f.hits, f.gen = m.findHits(strings.ToLower(f.query)), gen
+	}
 	if len(f.hits) == 0 {
 		m.find = findState{}
 		return
 	}
-	f.i = (min(f.i, len(f.hits)-1) + d + len(f.hits)) % len(f.hits)
+	i, on := slices.BinarySearch(f.hits, at)
+	if d < 0 {
+		i--
+	} else if on {
+		i++
+	}
+	f.i = (i + len(f.hits)) % len(f.hits)
 	m.moveToFind(f.hits[f.i])
 }
 

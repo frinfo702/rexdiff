@@ -338,3 +338,34 @@ func TestWrap(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderNumbersLaterHunks checks that each row has the number of the
+// line that it shows, in a hunk below a hunk that has unchanged lines
+// between two changes.
+func TestRenderNumbersLaterHunks(t *testing.T) {
+	var old, new strings.Builder
+	for i := 1; i <= 30; i++ {
+		fmt.Fprintf(&old, "old%d\n", i)
+		if i == 2 || i == 4 || i == 20 {
+			fmt.Fprintf(&new, "add%d\n", i)
+		}
+		fmt.Fprintf(&new, "old%d\n", i)
+	}
+	d := diff.Render("a.txt", old.String(), new.String(), diff.Options{Width: 80})
+	src := [2][]string{diff.Lines(old.String()), diff.Lines(new.String())}
+	hunks := 0
+	for i, r := range d.Rows {
+		if r.Kind == diff.KindHunk {
+			hunks++
+		}
+		for s, n := range [2]int{r.Old, r.New} {
+			if n > 0 && !strings.Contains(ansi.Strip(d.Lines[i]), src[s][n-1]) {
+				t.Errorf("row %d has the number %d on side %d, but shows %q, not %q",
+					i, n, s, strings.TrimSpace(ansi.Strip(d.Lines[i])), src[s][n-1])
+			}
+		}
+	}
+	if hunks < 2 {
+		t.Fatalf("the diff has %d hunks, want 2 or more", hunks)
+	}
+}

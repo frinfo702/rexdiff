@@ -1128,3 +1128,24 @@ func TestFindListCut(t *testing.T) {
 		t.Errorf("the row of a match does not paint its \"…\": %q", lines[i])
 	}
 }
+
+// TestFindStepAfterRender checks that n moves to a match after a new render
+// moved the rows, and that it steps from the cursor.
+func TestFindStepAfterRender(t *testing.T) {
+	m, dir := newTestModel(t)
+	m = press(t, m, "/", "r", "e", "t", "u", "r", "n", "enter")
+	// An edit above the match moves it down.
+	write(t, dir, "a.go", "package a\n\n// one\n// two\n// return\nfunc A() int {\n\tx := 2\n\treturn x\n}\n")
+	m.reload()
+	p := &m.changes
+	for range 3 {
+		m = press(t, m, "n")
+		if got := ansi.Strip(p.lines[p.cur]); !strings.Contains(got, "return") {
+			t.Fatalf("n moved to %q, want a line with return", got)
+		}
+	}
+	m = press(t, m, "home", "n")
+	if got := ansi.Strip(p.lines[p.cur]); !strings.Contains(got, "// return") {
+		t.Errorf("n from the top moved to %q, want the first match", got)
+	}
+}
