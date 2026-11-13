@@ -124,7 +124,7 @@ func (m *model) headerScopes(l *headerLine) {
 	for i, s := range scopes {
 		style := dimStyle
 		if s == m.scope {
-			style = cursorStyle
+			style = activeStyle
 		}
 		l.add(style.Render(s.label()), headerScope0+headerAction(i))
 		l.add("  ", headerNone)
@@ -305,8 +305,29 @@ func (m *model) selectedRow(r string, w int) string {
 	return style.Render(cursorStyle.Render("▌") + ansi.TruncateLeft(r, 1, ""))
 }
 
-// listStart returns the index of the first file that the list shows.
-func (m *model) listStart(h int) int { return max(0, m.listSel()-(h-2)) }
+// listStart returns the index of the first file that the list shows, h
+// lines high with its title. The list scrolls only when the selection
+// would leave it, so a move inside the list moves the selection, not the
+// files.
+func (m *model) listStart(h int) int {
+	top := &m.changeTop
+	if m.tab == tabFiles {
+		top = &m.allTop
+	}
+	*top = scrollTop(*top, m.listSel(), h-1, m.listLen())
+	return *top
+}
+
+// scrollTop returns the first row that a window of rows rows shows, so
+// that row sel shows. It keeps top if it can, and shows no empty rows at
+// the end while there are rows above.
+func scrollTop(top, sel, rows, n int) int {
+	rows = max(rows, 1)
+	top = min(top, sel)            // the selection is above the window
+	top = max(top, sel-rows+1)     // the selection is below the window
+	top = min(top, max(n-rows, 0)) // the list got shorter
+	return max(top, 0)
+}
 
 // fileRow returns " M name/of/file.go  +3 -1". If the path is too long, it
 // removes the directory first, then the start of the name.
@@ -578,8 +599,12 @@ func (m *model) footerLine() string {
 	switch {
 	case m.mode == modeFind:
 		badge = m.findBar.View() + "  " + findStyle.Render(m.findCount())
+	case m.status != "" && m.statusDone:
+		badge = addStyle.Render("✓ ") + m.status // quiet: it needs no action
 	case m.status != "":
 		badge = cursorStyle.Render(m.status)
+	case m.sends > 0: // after a flash, so a newer message shows first
+		badge = cursorStyle.Render("sending…")
 	case m.release != nil:
 		badge = cursorStyle.Render(m.releaseBadge())
 	case m.find.active():

@@ -1,11 +1,17 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
+    "emil-design-eng": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/emil-design-eng/SKILL.md",
+      "computedHash": "55735a70a886326ee8ba1dd4d1ee040e4e9503a536891467e4ed7e114a69b0dd"
+    },
     "monk": {
       "source": "frinfo702/skills",
       "sourceType": "github",
       "skillPath": "skills/monk/SKILL.md",
-      "computedHash": "260af1cbd64218f2e5b0c2d419c0fd1d0024fa7fac0cafba837ea9d7f3467a77"
+      "computedHash": "b9967a3130106c28ab4393615882bafcaaccd991445cacebf56c6409ed68f5ce"
     }
   }
 }

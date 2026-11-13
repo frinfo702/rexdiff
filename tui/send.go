@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"time"
@@ -14,12 +15,18 @@ import (
 // agent. The user must copy a larger review.
 const maxSend = 256 << 10
 
+// sendTimeout is the longest that a step of a send waits for Rex. Without
+// it, a call that hangs would keep the send running forever.
+const sendTimeout = 10 * time.Second
+
 // listAgents returns a command that lists the agents of the session, other
 // than rexdiff panes. The command returns msg with the agents. Set
 // msg.send to send the review to them.
 func (m *model) listAgents(msg agentsMsg) tea.Cmd {
 	c, ctx := m.rex, m.ctx
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(ctx, sendTimeout)
+		defer cancel()
 		agents, err := c.Agents(ctx)
 		isRexdiff := func(a rex.Agent) bool { return a.App == appName }
 		agents = slices.DeleteFunc(agents, isRexdiff)
@@ -161,6 +168,8 @@ func (m *model) deliver(a rex.Agent) tea.Cmd {
 	}
 	focus := m.cfg.focusAgent()
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(ctx, sendTimeout)
+		defer cancel()
 		status, err := c.Status(ctx, a.Block)
 		if err != nil {
 			return sentMsg{agent: a, err: fmt.Errorf("check %s: %w", a.Name, err)}
@@ -196,7 +205,7 @@ func (m *model) onSent(msg sentMsg) {
 	}
 	m.lastSent = msg.agent.Block
 	sent := plural(len(msg.ids), "comment")
-	m.flash(fmt.Sprintf("sent %s to %s", sent, msg.agent.Name))
+	m.flashDone(fmt.Sprintf("sent %s to %s", sent, msg.agent.Name))
 }
 
 // startSend lists the agents to send the review to.
@@ -212,7 +221,7 @@ func (m *model) startSend() tea.Cmd {
 		m.flashCopy("not inside Rex")
 		return nil
 	}
-	m.flash("sending…")
+	m.clearFlash() // the footer shows the send while m.sends is above 0
 	m.sends++
 	return m.listAgents(agentsMsg{send: true})
 }
@@ -227,7 +236,7 @@ func (m *model) copyComments() tea.Cmd {
 		m.flash("no comments yet")
 		return nil
 	}
-	m.flash("copied " + plural(m.comments.Len(), "comment"))
+	m.flashDone("copied " + plural(m.comments.Len(), "comment"))
 	return tea.SetClipboard(m.reviewText())
 }
 

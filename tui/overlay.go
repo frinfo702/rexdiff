@@ -56,6 +56,7 @@ type overlay struct {
 	items  []pickItem
 	shown  []int // the indices of the items that match the input
 	cur    int
+	top    int // the first row that the list shows
 	mark   int // the commit picker: the item at the start of the range, or -1
 	agents []rex.Agent
 }
@@ -495,7 +496,8 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 func (m *model) overlayRows(inner int) (rows []string, start int) {
 	ov := m.overlay
 	maxRows := min(len(ov.shown), max(m.h-10, 1))
-	start = max(0, ov.cur-maxRows+1)
+	ov.top = scrollTop(ov.top, ov.cur, maxRows, len(ov.shown))
+	start = ov.top
 	for i := start; i < len(ov.shown) && i < start+maxRows; i++ {
 		it := ov.items[ov.shown[i]]
 		tag := ""

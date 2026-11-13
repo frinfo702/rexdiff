@@ -275,6 +275,6 @@ func (m *model) copyTextSelection() tea.Cmd {
 		m.flash("nothing selected")
 		return nil
 	}
-	m.flash("copied " + plural(len([]rune(text)), "char"))
+	m.flashDone("copied " + plural(len([]rune(text)), "char"))
 	return tea.SetClipboard(text)
 }

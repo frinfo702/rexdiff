@@ -250,9 +250,11 @@ type model struct {
 
 	files      []changed // the Changes tab
 	changeSel  int
+	changeTop  int         // the first file that the list of changes shows
 	shownTrees string      // the two trees of files, to notice a change
 	allFiles   []vcs.Entry // the Files tab
 	allSel     int
+	allTop     int    // the first file that the list of all files shows
 	viewed     string // the content in the Files tab, to notice edits
 
 	changes, viewer, prPane pane
@@ -285,6 +287,8 @@ type model struct {
 
 	status     string
 	statusTill time.Time
+	statusDone bool      // the status confirms that an action worked
+	unflashAt  time.Time // the end of the flash that has an unflash command
 
 	agents   map[string]*agentState // by block
 	sends    int                    // the steps of sends that run now
@@ -346,9 +350,10 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 
 // Messages.
 type (
-	tickMsg   struct{}
-	frameMsg  time.Time // a frame of the shimmer of the guide run that started then
-	agentsMsg struct {
+	tickMsg    struct{}
+	frameMsg   time.Time // a frame of the shimmer of the guide run that started then
+	unflashMsg time.Time // the end of the flash that showed until then
+	agentsMsg  struct {
 		agents []rex.Agent
 		err    error
 		send   bool // true if the list is for a send, not to learn the states
@@ -405,13 +410,39 @@ func (m *model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// flashTime is how long a flash shows in the footer.
-const flashTime = 6 * time.Second
+// How long a flash shows in the footer. A confirmation only says that the
+// key worked, so it goes fast and gives the footer back. An error or a hint
+// asks the user to read and to act, so it stays longer.
+const (
+	flashTime = 6 * time.Second
+	doneTime  = 2 * time.Second
+)
 
 // flash shows s in the footer for a short time. The text can come from Rex
 // or from git, so flash quotes it if it has control characters.
-func (m *model) flash(s string) {
-	m.status, m.statusTill = diff.Quote(s), time.Now().Add(flashTime)
+func (m *model) flash(s string) { m.flashFor(s, flashTime) }
+
+// flashDone confirms in the footer that an action worked.
+func (m *model) flashDone(s string) {
+	m.flashFor(s, doneTime)
+	m.statusDone = true
+}
+
+// flashFor shows s in the footer for d.
+func (m *model) flashFor(s string, d time.Duration) {
+	m.status, m.statusTill, m.statusDone = diff.Quote(s), time.Now().Add(d), false
+}
+
+// clearFlash removes the flash from the footer.
+func (m *model) clearFlash() {
+	m.status, m.statusTill, m.statusDone = "", time.Time{}, false
+}
+
+// unflash returns a command that removes the flash at its end. The first
+// tick of the flash starts it, so a flash shows for its time exactly, not
+// until the tick after the end.
+func unflash(till time.Time) tea.Cmd {
+	return tea.Tick(time.Until(till), func(time.Time) tea.Msg { return unflashMsg(till) })
 }
 
 // trees returns the two trees that the Changes tab compares in the scope.
@@ -587,6 +618,10 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		m.onPR(msg)
 	case guideMsg:
 		m.onGuide(msg)
+	case unflashMsg:
+		if m.status != "" && m.statusTill.Equal(time.Time(msg)) { // not a newer flash
+			m.clearFlash()
+		}
 	case frameMsg:
 		if m.guide.running && m.guide.started.Equal(time.Time(msg)) { // one chain per run
 			cmd = frame(m.guide.started)
@@ -702,10 +737,14 @@ func (m *model) onTick() tea.Cmd {
 	if m.tab == tabGuide && m.guide.running { // the clock of the run
 		m.renderGuide()
 	}
-	if m.status != "" && time.Now().After(m.statusTill) {
-		m.status = ""
+	if !m.statusTill.IsZero() && time.Now().After(m.statusTill) { // a late tick
+		m.clearFlash()
 	}
 	cmds := []tea.Cmd{tick(time.Second)}
+	if !m.statusTill.IsZero() && !m.statusTill.Equal(m.unflashAt) { // once per flash
+		m.unflashAt = m.statusTill
+		cmds = append(cmds, unflash(m.statusTill))
+	}
 	if m.ticks%colorTicks == 0 { // follow the changes of the terminal theme
 		cmds = append(cmds, requestColors...)
 	}
