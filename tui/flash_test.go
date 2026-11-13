@@ -44,6 +44,7 @@ func TestLateTick(t *testing.T) {
 func TestSendingBadge(t *testing.T) {
 	m, _ := newTestModel(t)
 	m = press(t, m, "j", "j", "j", "j", "c", "h", "i", "enter")
+	t.Setenv("REX_SESSION", "S")
 	m.rex = rex.FromEnv()
 	m.flash("line 40 isn't shown") // an older flash must not hide the send
 	if m.startSend() == nil {
