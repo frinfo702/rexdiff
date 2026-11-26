@@ -33,13 +33,17 @@ changelog:
 release:
   mode: keep-existing
 
-# Each release writes Casks/rexdiff.rb to this repo. The release workflow
-# gives GITHUB_TOKEN the write access for it.
+# Each release writes Casks/rexdiff.rb to this repo. main requires CI to
+# pass, and GITHUB_TOKEN cannot bypass that, so the push uses a deploy key
+# that the ruleset lets through. The release workflow passes it in.
 homebrew_casks:
   - repository:
       owner: frinfo702
       name: rexdiff
       branch: main
+      git:
+        url: git@github.com:frinfo702/rexdiff.git
+        private_key: "{{ .Env.CASK_DEPLOY_KEY }}"
     directory: Casks
     homepage: https://github.com/frinfo702/rexdiff
     description: Review the changes of a coding agent in Rex
