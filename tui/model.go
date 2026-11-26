@@ -645,7 +645,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		}
 	case frameMsg:
 		if m.guide.running && m.guide.started.Equal(time.Time(msg)) { // one chain per run
-			cmd = frame(m.guide.started)
+			cmd = tea.Batch(frame(m.guide.started), m.sendLogos())
 		}
 	case grepMsg:
 		m.onGrep(msg)
@@ -657,6 +657,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		if msg.err != nil {
 			m.flash("editor: " + msg.err.Error())
 		}
+		m.logosSent = false // the terminal drops the images when the editor leaves the alternate screen
 		m.rerender()
 	case tea.MouseClickMsg:
 		return m.onClick(msg.Mouse())

@@ -64,7 +64,7 @@ echo '{"sections":[{"title":"Written by agy","summary":"S.","files":["a.go"]}]}'
 	t.Setenv("PATH", bin+":/bin")
 
 	m.cfg.GuideAgent = "codex" // a name stands for its command
-	if got := m.guideAgent(); got != "codex exec -" {
+	if got := m.guideAgent(0); got != "codex exec -" {
 		t.Fatalf("guideAgent = %q", got)
 	}
 	m.tab = tabGuide
@@ -179,12 +179,12 @@ func TestCheckAgent(t *testing.T) {
 	m, _ := newTestModel(t)
 	t.Setenv("PATH", t.TempDir())
 	cases := []struct{ command, want string }{
-		{m.guideAgent(), "no agent found"},
+		{m.guideAgent(0), "no agent found"},
 		{"codex exec -", `agent "codex" not found in PATH`},
 		{"FOO=1 codex exec -", ""},
 	}
 	for _, c := range cases {
-		if got := checkAgent(c.command); got != c.want {
+		if got := checkAgent(c.command, 0); got != c.want {
 			t.Errorf("checkAgent(%q) = %q, want %q", c.command, got, c.want)
 		}
 	}
@@ -193,8 +193,8 @@ func TestCheckAgent(t *testing.T) {
 // TestKittyImages checks the guess of a terminal that shows images.
 func TestKittyImages(t *testing.T) {
 	cases := []struct {
-		tmux, program, kittyWindow, term string
-		want                             bool
+		tmux, zellij, sty, program, kittyWindow, term string
+		want                                          bool
 	}{
 		{program: "rex", want: true},
 		{program: "ghostty", want: true},
@@ -202,9 +202,13 @@ func TestKittyImages(t *testing.T) {
 		{term: "xterm-kitty", want: true},
 		{tmux: "/tmp/tmux", program: "ghostty", kittyWindow: "1", term: "xterm-kitty"},
 		{program: "Apple_Terminal", term: "xterm-256color"},
+		{zellij: "0", program: "ghostty"},
+		{sty: "1.tty.host", program: "rex"},
 	}
 	for _, c := range cases {
 		t.Setenv("TMUX", c.tmux)
+		t.Setenv("ZELLIJ", c.zellij)
+		t.Setenv("STY", c.sty)
 		t.Setenv("TERM_PROGRAM", c.program)
 		t.Setenv("KITTY_WINDOW_ID", c.kittyWindow)
 		t.Setenv("TERM", c.term)
@@ -234,5 +238,70 @@ func TestGuideProgressLogo(t *testing.T) {
 	first, next := ansi.Strip(lines[i]), ansi.Strip(lines[i+1])
 	if !strings.Contains(first, "cursor-agent is") || !strings.HasPrefix(next, strings.Repeat(" ", 1+logoCols+1)) || strings.TrimSpace(next) == "" {
 		t.Errorf("progress lines:\n%q\n%q", first, next)
+	}
+}
+
+// TestGuideBigDiff checks a diff too big for an argument: the agents that
+// take the prompt as one are off, the others carry a warning, and the
+// first agent that is installed is one that reads its standard input.
+func TestGuideBigDiff(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // the cache of the guides
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	m, _ := newTestModel(t)
+	bin := t.TempDir()
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(git, filepath.Join(bin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"agy", "claude"} {
+		write(t, bin, name, "#!/bin/sh\ncat >/dev/null\n")
+		if err := os.Chmod(filepath.Join(bin, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+":/bin")
+	defer func(n int) { maxArg = n }(maxArg)
+	maxArg = 10
+
+	if got := m.guideAgent(100); got != "claude -p" {
+		t.Errorf("first agent for a big diff = %q, want claude -p", got)
+	}
+	m.cfg.GuideAgent = "agy"
+	m.tab = tabGuide
+	m = press(t, m, "r")
+	if m.guide.running || !strings.HasPrefix(m.guide.err, "the diff is too big for agy") {
+		t.Fatalf("r with agy and a big diff: %+v", m.guide)
+	}
+	m = press(t, m, "a")
+	if !shows(m, "diff too big", "big diff, slow") {
+		t.Fatalf("picker for a big diff:\n%s", view(m))
+	}
+	m = press(t, m, "j", "j", "j", "j", "j", "enter") // agy
+	if m.guide.running || !strings.Contains(m.status, "too big for agy") {
+		t.Errorf("picking agy for a big diff: running %v, status %q", m.guide.running, m.status)
+	}
+	m.cfg.GuideAgent = "claude" // reads its standard input: it runs, with a warning
+	m = press(t, m, "r")
+	if !m.guide.running || !strings.Contains(m.status, "the diff is big") {
+		t.Errorf("r with claude and a big diff: running %v, status %q", m.guide.running, m.status)
+	}
+}
+
+// TestLogosAfterEditor checks that the logos go again after the editor,
+// which takes the terminal off the alternate screen and its images.
+func TestLogosAfterEditor(t *testing.T) {
+	m, _ := newTestModel(t)
+	m.logos, m.logosSent = true, true
+	m = step(t, m, editorDoneMsg{})
+	if m.logosSent {
+		t.Fatal("the logos count as sent after the editor")
+	}
+	m.guide.running, m.guide.started = true, time.Now()
+	m = step(t, m, frameMsg(m.guide.started))
+	if !m.logosSent {
+		t.Error("a frame of a run does not send the logos")
 	}
 }

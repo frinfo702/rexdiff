@@ -44,6 +44,7 @@ type pickItem struct {
 	logo   int    // the guide agent picker: the image ID of a logo before the label, or 0
 	detail string // the dim text after the label
 	tag    string // a short mark at the end, for example "current"
+	off    string // the guide agent picker: why the row cannot be picked, or ""
 	// id is what the row picks: a path, a ref, a commit, or a block.
 	id      string
 	line    int // the search: the line of a code match

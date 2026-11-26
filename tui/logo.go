@@ -40,14 +40,16 @@ const logoCols = 2
 func logoImageID(i int) int { return 0x524400 + i + 1 }
 
 // kittyImages reports whether the terminal shows images with Unicode
-// placeholders. tmux keeps the variables of the outer terminal but drops
-// the images, so it has no logos.
+// placeholders. tmux, zellij, and screen keep the variables of the outer
+// terminal but drop the images, so they have no logos.
 //
 // ponytail: guesses from the environment; query the terminal (a=q) if a
 // terminal that it misses asks for logos.
 func kittyImages() bool {
-	if os.Getenv("TMUX") != "" {
-		return false
+	for _, mux := range []string{"TMUX", "ZELLIJ", "STY"} {
+		if os.Getenv(mux) != "" {
+			return false
+		}
 	}
 	switch os.Getenv("TERM_PROGRAM") {
 	case "rex", "ghostty":

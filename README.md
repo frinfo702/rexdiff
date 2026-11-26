@@ -88,7 +88,9 @@ are gone, rexdiff marks the comment as stale.
   of each file shows beside its section. rexdiff runs the first of claude, pi,
   codex, opencode, cursor-agent, and agy that is installed, or `guide_agent`.
   Press `a` to pick another agent; in a terminal with the kitty graphics
-  protocol (Rex, Ghostty, kitty), the list shows their logos. It keeps each
+  protocol (Rex, Ghostty, kitty), the list shows their logos. opencode,
+  cursor-agent, and agy take the diff as one argument, so a diff over about
+  1 MB (128 KB on Linux) turns them off. It keeps each
   guide, so the agent writes it once. Press `r` to write it again.
 - **Diff**: the changes, one file at a time. A wide pane shows them side by
   side; a narrow one, top to bottom. Binary files are not diffed.

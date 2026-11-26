@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -43,21 +44,45 @@ const (
 // guideAgents are the agent CLIs that can write the guide, in the order
 // that rexdiff tries them. Each command reads the prompt on its standard
 // input. opencode, cursor-agent, and agy take the prompt only as an
-// argument, so their commands pass the standard input as one.
-//
-// ponytail: Linux caps one argument at 128 KiB (MAX_ARG_STRLEN), under
-// guideMaxDiff; give these agents a smaller diff if a big change fails.
+// argument, so their commands pass the standard input as one, and a big
+// diff does not fit. opencode and cursor-agent run in their modes that do
+// not edit, since the diff can hold instructions.
 var guideAgents = []agentCLI{
-	{"claude", "claude -p"},
-	{"pi", "pi -p"},
-	{"codex", "codex exec -"},
-	{"opencode", `opencode run "$(cat)"`},
-	{"cursor-agent", `cursor-agent -p --mode ask --trust "$(cat)"`},
-	{"agy", `agy -p "$(cat)"`},
+	{"claude", "claude -p", false},
+	{"pi", "pi -p", false},
+	{"codex", "codex exec -", false},
+	{"opencode", `opencode run --agent plan "$(cat)"`, true},
+	{"cursor-agent", `cursor-agent -p --mode ask --trust "$(cat)"`, true},
+	{"agy", `agy -p "$(cat)"`, true},
 }
 
-// agentCLI is an agent CLI that can write the guide, and its command.
-type agentCLI struct{ name, command string }
+// agentCLI is an agent CLI that can write the guide, and its command. arg
+// tells that the command takes the prompt as an argument.
+type agentCLI struct {
+	name, command string
+	arg           bool
+}
+
+// maxArg is the longest prompt, in bytes, that an agent can take as an
+// argument. Linux caps one argument (MAX_ARG_STRLEN), and macOS all the
+// arguments and the environment together (ARG_MAX). A variable, so that
+// tests can set it.
+var maxArg = func() int {
+	if runtime.GOOS == "linux" {
+		return 128<<10 - 1
+	}
+	env := 0
+	for _, e := range os.Environ() {
+		env += len(e) + 1 + 8 // the text, its NUL, and its pointer
+	}
+	return 1<<20 - env - 4<<10 // ponytail: 4 KiB for the other arguments
+}()
+
+// bigPrompt reports whether a prompt of n bytes does not fit an argument.
+func bigPrompt(n int) bool { return n > maxArg }
+
+// megabytes writes n bytes in MB, for the messages about a big diff.
+func megabytes(n int) string { return fmt.Sprintf("%.1f MB", float64(n)/(1<<20)) }
 
 // guideSection is one part of the guide: the files of one change.
 type guideSection struct {
@@ -299,18 +324,23 @@ func (m *model) writeGuide() tea.Cmd {
 		m.renderGuide()
 		return nil
 	}
-	agent := m.guideAgent()
-	if err := checkAgent(agent); err != "" {
+	prompt := guidePrompt(m.guideCommits(), m.files)
+	agent := m.guideAgent(len(prompt))
+	if err := checkAgent(agent, len(prompt)); err != "" {
 		m.guide.err = err
 		m.renderGuide()
 		return nil
+	}
+	if bigPrompt(len(prompt)) {
+		m.flash(fmt.Sprintf("the diff is big (%s): %s can take long", megabytes(len(prompt)), agentName(agent)))
 	}
 	m.guide.running, m.guide.started, m.guide.agent, m.guide.err = true, time.Now(), agent, ""
 	m.renderGuide()
 
 	ctx, dir, trees := m.ctx, m.repo.Root(), m.shownTrees
-	prompt := guidePrompt(m.guideCommits(), m.files)
-	return tea.Batch(m.sendLogos(), frame(m.guide.started), func() tea.Msg {
+	// The logos go with the first frame, after Bubble Tea is on the
+	// alternate screen, where the terminal keeps them.
+	return tea.Batch(frame(m.guide.started), func() tea.Msg {
 		out, err := runAgent(ctx, dir, agent, prompt)
 		if err != nil {
 			return guideMsg{trees: trees, err: err}
@@ -373,11 +403,11 @@ func (m *model) onGuide(msg guideMsg) {
 	}
 }
 
-// guideAgent returns the command that writes the guide: the agent that
-// the user picked, or the setting, or the first agent CLI that is
-// installed, or "". The pick and the setting are a name of guideAgents or
-// a command.
-func (m *model) guideAgent() string {
+// guideAgent returns the command that writes a guide of a prompt of n
+// bytes: the agent that the user picked, or the setting, or the first
+// agent CLI that is installed and takes the prompt, or "". The pick and
+// the setting are a name of guideAgents or a command.
+func (m *model) guideAgent(n int) string {
 	if pick := cmp.Or(m.guidePick, m.cfg.GuideAgent); pick != "" {
 		for _, a := range guideAgents {
 			if a.name == pick {
@@ -387,24 +417,28 @@ func (m *model) guideAgent() string {
 		return pick
 	}
 	for _, a := range guideAgents {
-		if installed(a.name) {
+		if installed(a.name) && !(a.arg && bigPrompt(n)) {
 			return a.command
 		}
 	}
 	return ""
 }
 
-// checkAgent returns why the agent command cannot run, or "". It checks
-// only the PATH for the agent CLIs of guideAgents: a command of the
-// setting can start with a variable, as in "FOO=1 claude -p", and the
-// shell tells when it finds no program.
-func checkAgent(command string) string {
+// checkAgent returns why the agent command cannot write a guide of a
+// prompt of n bytes, or "". It checks only the agent CLIs of guideAgents:
+// a command of the setting can start with a variable, as in
+// "FOO=1 claude -p", and the shell tells when it finds no program.
+func checkAgent(command string, n int) string {
 	if command == "" {
 		return "no agent found"
 	}
 	for _, a := range guideAgents {
-		if a.command == command && !installed(a.name) {
+		switch {
+		case a.command != command:
+		case !installed(a.name):
 			return fmt.Sprintf("agent %q not found in PATH", a.name)
+		case a.arg && bigPrompt(n):
+			return fmt.Sprintf("the diff is too big for %s (%s, at most %s)", a.name, megabytes(n), megabytes(maxArg))
 		}
 	}
 	return ""
@@ -419,19 +453,32 @@ func installed(program string) bool {
 // openGuideAgentPicker lets the user pick the agent that writes the
 // guide. The list has the agent CLIs, and the command of the setting if
 // it is not one of them.
+//
+// A diff that is too big for an argument turns off the agents that take
+// the prompt as one, and marks the others, which take long on it.
 func (m *model) openGuideAgentPicker() tea.Cmd {
 	ov := newOverlay(overlayGuideAgent, "which agent writes the guide?")
-	cur := m.guideAgent()
+	n := len(guidePrompt(m.guideCommits(), m.files))
+	cur := m.guideAgent(n)
 	var items []pickItem
 	for _, a := range guideAgents {
-		tag := ""
+		it := pickItem{label: a.name, id: a.command, logo: m.agentLogoID(a.name)}
+		var tags []string
 		switch {
 		case !installed(a.name):
-			tag = notInstalled
-		case a.command == cur:
-			tag = "current"
+			tags, it.off = []string{"not installed"}, a.name+" is not installed"
+		case a.arg && bigPrompt(n):
+			tags, it.off = []string{"diff too big"}, checkAgent(a.command, n)
+		default:
+			if a.command == cur {
+				tags = append(tags, "current")
+			}
+			if bigPrompt(n) {
+				tags = append(tags, "big diff, slow")
+			}
 		}
-		items = append(items, pickItem{label: a.name, tag: tag, id: a.command, logo: m.agentLogoID(a.name)})
+		it.tag = strings.Join(tags, " · ")
+		items = append(items, it)
 	}
 	if c := m.cfg.GuideAgent; c != "" && !slices.ContainsFunc(guideAgents, func(a agentCLI) bool {
 		return a.name == c || a.command == c
@@ -448,16 +495,13 @@ func (m *model) openGuideAgentPicker() tea.Cmd {
 	return m.sendLogos()
 }
 
-// notInstalled tags an agent CLI of the picker that the PATH does not have.
-const notInstalled = "not installed"
-
 // pickGuideAgent makes the agent of item it of the picker the agent of
 // the guide, and writes the guide with it.
 func (m *model) pickGuideAgent(it pickItem) tea.Cmd {
 	command := it.id
 	switch {
-	case it.tag == notInstalled:
-		m.flash(it.label + " is not installed")
+	case it.off != "":
+		m.flash(it.off)
 		return nil
 	case m.guide.running:
 		m.flash("wait for " + agentName(m.guide.agent) + " to finish")
