@@ -265,7 +265,11 @@ type model struct {
 	overPane  pane
 	guide     guideState
 	guidePane pane
-	guideSel  int // the file of the guide, in the order of guideFiles
+	guideSel  int    // the file of the guide, in the order of guideFiles
+	guidePick string // the agent that the user picked in the Guide tab, or ""
+
+	logos     bool // the terminal shows the logos of the agents
+	logosSent bool // the terminal has the logos
 
 	split      bool // show the diff side by side
 	wrap       bool
@@ -343,6 +347,7 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	m.findBar.Prompt = "/ "
 	m.findBar.SetVirtualCursor(false)
 	m.cfg = cfg
+	m.logos = cfg.Renderer == rendererKitty || kittyImages()
 	m.keys = defaultKeys()
 	m.keys.applyConfig(cfg.Keybindings)
 	m.listLeft = cfg.FileList == positionLeft
@@ -620,6 +625,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		if !sameColor(m.fg, msg.Color) {
 			m.fg = msg.Color
 			m.rerender()
+			cmd = m.recolorLogos()
 		}
 	case uv.UnknownOscEvent:
 		m.onPalette(string(msg))
@@ -639,7 +645,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		}
 	case frameMsg:
 		if m.guide.running && m.guide.started.Equal(time.Time(msg)) { // one chain per run
-			cmd = frame(m.guide.started)
+			cmd = tea.Batch(frame(m.guide.started), m.sendLogos())
 		}
 	case grepMsg:
 		m.onGrep(msg)
@@ -651,6 +657,7 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 		if msg.err != nil {
 			m.flash("editor: " + msg.err.Error())
 		}
+		m.logosSent = false // the terminal drops the images when the editor leaves the alternate screen
 		m.rerender()
 	case tea.MouseClickMsg:
 		return m.onClick(msg.Mouse())

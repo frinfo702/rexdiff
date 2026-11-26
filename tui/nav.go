@@ -255,6 +255,8 @@ func (m *model) viewKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.openPR()
 	case key.Matches(msg, k.Refresh):
 		return m.refresh(), true
+	case m.tab == tabGuide && key.Matches(msg, k.GuideAgent):
+		return m.openGuideAgentPicker(), true
 	case m.release != nil && key.Matches(msg, k.Upgrade):
 		return m.install(), true
 	default:

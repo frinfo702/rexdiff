@@ -21,6 +21,7 @@ type overlayKind int
 
 const (
 	overlayAgents overlayKind = iota
+	overlayGuideAgent
 	overlayBase
 	overlayCommits
 	overlayComments
@@ -40,8 +41,10 @@ const (
 // pickItem is one row of the list of an overlay.
 type pickItem struct {
 	label  string
+	logo   int    // the guide agent picker: the image ID of a logo before the label, or 0
 	detail string // the dim text after the label
 	tag    string // a short mark at the end, for example "current"
+	off    string // the guide agent picker: why the row cannot be picked, or ""
 	// id is what the row picks: a path, a ref, a commit, or a block.
 	id      string
 	line    int // the search: the line of a code match
@@ -78,7 +81,7 @@ func newOverlay(kind overlayKind, title string) *overlay {
 // agents and comments, and the prompt before a quit, have none.
 func (o *overlay) hasInput() bool {
 	switch o.kind {
-	case overlayAgents, overlayComments, overlayQuit:
+	case overlayAgents, overlayGuideAgent, overlayComments, overlayQuit:
 		return false
 	}
 	return true
@@ -372,7 +375,7 @@ func (m *model) inputChanged() tea.Cmd {
 			hits, _ := repo.Grep(ctx, q, maxCodeHits)
 			return grepMsg{q, hits}
 		}
-	case overlayBase, overlayCommits, overlayComments, overlayAgents:
+	case overlayBase, overlayCommits, overlayComments, overlayAgents, overlayGuideAgent:
 		ov.filter()
 	}
 	return nil
@@ -419,6 +422,11 @@ func (m *model) chooseOverlay() tea.Cmd {
 		m.closeOverlay()
 		if a, ok := ov.agent(it); ok {
 			return m.deliver(a)
+		}
+	case overlayGuideAgent:
+		m.closeOverlay()
+		if it != nil {
+			return m.pickGuideAgent(*it)
 		}
 	}
 	m.ensureVisible()
@@ -501,15 +509,35 @@ func (m *model) overlayRows(inner int) (rows []string, start int) {
 	start = ov.top
 	for i := start; i < len(ov.shown) && i < start+maxRows; i++ {
 		it := ov.items[ov.shown[i]]
-		tag := ""
+		// Each part has the background of the selection: the reset at the
+		// end of a part would end a background from around the row.
+		style := func(s lipgloss.Style) lipgloss.Style {
+			if i == ov.cur {
+				return s.Inherit(m.selStyle())
+			}
+			return s
+		}
+		plain := style(lipgloss.NewStyle())
+		var b strings.Builder
+		if m.logos && ov.kind == overlayGuideAgent {
+			if it.logo != 0 {
+				b.WriteString(logoCells(it.logo, plain))
+			} else {
+				b.WriteString(plain.Render(strings.Repeat(" ", logoCols))) // in line with the logos
+			}
+			b.WriteString(plain.Render(" "))
+		}
+		b.WriteString(plain.Render(diff.Quote(it.label)))
+		if it.detail != "" {
+			b.WriteString(plain.Render("  ") + style(dimStyle).Render(diff.Quote(it.detail)))
+		}
 		if it.tag != "" {
-			tag = "  " + cursorStyle.Render(it.tag)
+			b.WriteString(plain.Render("  ") + style(cursorStyle).Render(it.tag))
 		}
 		if ov.kind == overlayCommits && ov.mark == ov.shown[i] {
-			tag += "  " + cursorStyle.Render("range start")
+			b.WriteString(plain.Render("  ") + style(cursorStyle).Render("range start"))
 		}
-		text := diff.Quote(it.label) + "  " + dimStyle.Render(diff.Quote(it.detail)) + tag
-		row := truncate(text, inner-2)
+		row := truncate(b.String(), inner-2)
 		if i == ov.cur {
 			row = m.selStyle().Width(inner).Render("▶ " + row)
 		} else {

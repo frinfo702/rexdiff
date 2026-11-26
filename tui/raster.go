@@ -121,9 +121,10 @@ type raster struct {
 	faces    [4][]font.Face
 	buf      sfnt.Buffer
 
-	mu     sync.Mutex // guards the faces and glyphs, which rows share
+	mu     sync.Mutex // guards the faces, the glyphs, and the logos, which rows share
 	glyphs map[glyphKey]*image.Alpha
-	lines  sync.Pool // *image.RGBA of a line, for the next line
+	logos  map[int]*image.RGBA // the mask of the logo of each image ID, logoCols cells wide
+	lines  sync.Pool           // *image.RGBA of a line, for the next line
 }
 
 // newRaster makes a raster for cells of cw by ch pixels. The font size
@@ -214,7 +215,7 @@ func (r *raster) draw(img *image.RGBA, cells uv.Line, p *palette, cursor int) {
 		fg, bg := p.colors(c.Style)
 		rect := image.Rect(x*r.cw, 0, min(x+w, len(cells))*r.cw, r.ch)
 		draw.Draw(img, rect, image.NewUniform(bg), image.Point{}, draw.Src)
-		if c.Style.Attrs&uv.AttrConceal == 0 {
+		if c.Style.Attrs&uv.AttrConceal == 0 && !r.logoCell(img, rect, c, p.fg) {
 			r.cell(img, rect, c, fg)
 		}
 		x += w

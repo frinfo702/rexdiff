@@ -28,6 +28,8 @@ type keyMap struct {
 	Search, Find, GotoLine, Rendered, Split, Wrap key.Binding
 	NavPosition, NavHide, NavGrow, NavShrink      key.Binding
 	OpenPR, Refresh, Keys, Quit, QuitDiscard      key.Binding
+	// GuideAgent picks the agent that writes the guide, in the Guide tab.
+	GuideAgent key.Binding
 	// Upgrade installs a newer release. It works only while the footer
 	// tells about a newer release.
 	Upgrade key.Binding
@@ -106,6 +108,7 @@ func defaultKeys() keyMap {
 		NavShrink:   bind([]string{">"}, ">", "narrow list"),
 		OpenPR:      bind([]string{"o"}, "o", "open PR in browser"),
 		Refresh:     bind([]string{"r"}, "r", "refresh"),
+		GuideAgent:  bind([]string{"a"}, "a", "pick guide agent"),
 		Upgrade:     bind([]string{"U"}, "U", "update rexdiff"),
 		Keys:        bind([]string{"?"}, "?", "all keys"),
 		Quit:        bind([]string{"q", "ctrl+c"}, "q", "quit"),
@@ -210,6 +213,7 @@ func (k *keyMap) bindings(c keybindings) []binding {
 		{"navigator-shrink", c.NavigatorShrink, &k.NavShrink},
 		{"open-pr", c.OpenPR, &k.OpenPR},
 		{"refresh", c.Refresh, &k.Refresh},
+		{"guide-agent", c.GuideAgent, &k.GuideAgent},
 		{"keys", c.Keys, &k.Keys},
 		{"quit", c.Quit, &k.Quit},
 		{"quit-discard", c.QuitDiscard, &k.QuitDiscard},
@@ -273,7 +277,7 @@ func (h helpKeys) ShortHelp() []key.Binding {
 		return []key.Binding{k.Down, k.Refresh, k.TabOverview, k.Keys, k.Quit}
 	case h.tab == tabGuide:
 		return []key.Binding{
-			k.Comment, k.Send, k.NextFile, hint(k.Refresh, "r", "rewrite guide"), k.Split, k.Keys, k.Quit,
+			k.Comment, k.Send, k.NextFile, hint(k.Refresh, "r", "rewrite guide"), k.GuideAgent, k.Split, k.Keys, k.Quit,
 		}
 	}
 	return []key.Binding{k.Comment, k.Send, k.NextHunk, k.NextFile, k.Split, k.Keys, k.Quit}
@@ -295,7 +299,7 @@ func (h helpKeys) FullHelp() [][]key.Binding {
 	view := []key.Binding{
 		k.Search, k.Find, k.Rendered, k.Split, k.Wrap, k.NavPosition, k.NavHide, k.NavGrow,
 	}
-	other := []key.Binding{k.OpenPR, k.Refresh, k.Keys, k.Quit, k.QuitDiscard}
+	other := []key.Binding{k.OpenPR, k.Refresh, k.GuideAgent, k.Keys, k.Quit, k.QuitDiscard}
 	return [][]key.Binding{move, scopes, comments, view, other}
 }
 
