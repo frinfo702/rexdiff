@@ -12,6 +12,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/aymanbagabas/go-udiff"
+	"github.com/aymanbagabas/go-udiff/lcs"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -123,7 +124,7 @@ func Render(path, before, after string, o Options) ([]string, []Row, Geometry) {
 // diffHunks computes the hunks of the diff, with the tabs of the lines
 // replaced after the diff, so that a change from a tab to spaces shows.
 func diffHunks(before, after string, tabWidth, context int) []hunk {
-	u, err := udiff.ToUnifiedDiff("", "", before, udiff.Lines(before, after), context)
+	u, err := udiff.ToUnifiedDiff("", "", before, Edits(before, after), context)
 	if err != nil {
 		return nil
 	}
@@ -166,6 +167,54 @@ func diffHunks(before, after string, tabWidth, context int) []hunk {
 		hunks[i].scope = scopes[i]
 	}
 	return hunks
+}
+
+// Edits returns the line edits that change before into after. They are
+// the same as the edits of udiff.Lines, but Edits takes less time on a
+// large file, in the way of @pierre/patches: it finds the line ends with
+// strings.IndexByte instead of decoding each rune, it diffs integer ids of
+// the lines instead of the lines, and the new text of an edit is a slice
+// of after instead of a copy.
+func Edits(before, after string) []udiff.Edit {
+	ids := make(map[string]rune)
+	a, aOffsets := lineIDs(before, ids)
+	b, bOffsets := lineIDs(after, ids)
+	// The lcs package compares only for equality, and two lines have the
+	// same id only if they are equal, so the runes give the same diff as
+	// the lines.
+	diffs := lcs.DiffRunes(a, b)
+	edits := make([]udiff.Edit, len(diffs))
+	for i, d := range diffs {
+		edits[i] = udiff.Edit{
+			Start: aOffsets[d.Start],
+			End:   aOffsets[d.End],
+			New:   after[bOffsets[d.ReplStart]:bOffsets[d.ReplEnd]],
+		}
+	}
+	return edits
+}
+
+// lineIDs splits s into lines, each with its LF, and returns the id of
+// each line from ids, which it adds new lines to. The offsets are the
+// start of each line and then the end of s.
+func lineIDs(s string, ids map[string]rune) (lines []rune, offsets []int) {
+	n := strings.Count(s, "\n") + 1
+	lines, offsets = make([]rune, 0, n), make([]int, 1, n+1)
+	for start := 0; start < len(s); {
+		end := len(s)
+		if i := strings.IndexByte(s[start:], '\n'); i >= 0 {
+			end = start + i + 1
+		}
+		id, ok := ids[s[start:end]]
+		if !ok {
+			id = rune(len(ids))
+			ids[s[start:end]] = id
+		}
+		lines = append(lines, id)
+		offsets = append(offsets, end)
+		start = end
+	}
+	return lines, offsets
 }
 
 // pairs puts the lines of a hunk side by side. An equal line is on both

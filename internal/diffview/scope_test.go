@@ -1,6 +1,8 @@
 package diffview
 
 import (
+	"math/rand/v2"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -29,5 +31,28 @@ func TestScopesOfMany(t *testing.T) {
 	want := []string{"", "def a():", "def b():", ""}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestIsDeclarationMatchesRegexp checks that isDeclaration matches the
+// same lines as the regular expression it replaces. The lines join
+// random pieces of declarations, words, and spaces.
+func TestIsDeclarationMatchesRegexp(t *testing.T) {
+	declaration := regexp.MustCompile(`^\s*(?:(?:export|pub(?:\([a-z]+\))?|public|private|protected|internal|static|async|abstract|final|sealed|open|override|default|unsafe|inline|virtual|extern|data|const)\s+)*(?:def|class|func|fn|fun|function|struct|enum|union|trait|impl|interface|type|module|mod|namespace|object|record|protocol|extension|actor|macro|sub|proc)\b`)
+	pieces := []string{
+		"func", "fn", "def", "class", "define", "Func", "fn_", "func2", "funcé",
+		"pub", "pub(crate)", "pub(Crate)", "pub()", "pub(", ")", "public", "static", "async",
+		" ", "  ", "\t", "\v", "\f", "\r", "x", "_", "é", "(", ":", "{", "$",
+	}
+	r := rand.New(rand.NewPCG(3, 4))
+	for range 200_000 {
+		var b strings.Builder
+		for range r.IntN(6) {
+			b.WriteString(pieces[r.IntN(len(pieces))])
+		}
+		l := b.String()
+		if got, want := isDeclaration(l), declaration.MatchString(l); got != want {
+			t.Fatalf("isDeclaration(%q) = %v, want %v", l, got, want)
+		}
 	}
 }
