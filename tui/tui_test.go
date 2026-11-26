@@ -1174,3 +1174,70 @@ func TestFindStepScrolls(t *testing.T) {
 		}
 	}
 }
+
+// TestInputCursor checks that the real cursor is just after the text that
+// the user types, wide runes too. An IME draws the text that it composes
+// at the real cursor.
+func TestInputCursor(t *testing.T) {
+	long := strings.Repeat("abcdefghij", 13) // wider than the screen
+	left := tea.KeyPressMsg{Code: tea.KeyLeft}
+	tests := []struct {
+		name string
+		open []string
+		typ  string
+		left int    // presses of the left arrow after typ
+		want string // the text just before the cursor
+	}{
+		{"comment box", []string{"]", "c"}, "日本", 0, "日本"},
+		{"find bar", []string{"/"}, "日本", 0, "日本"},
+		{"overlay", []string{":"}, "日本", 0, "日本"},
+		{"long find query", []string{"/"}, long, 0, "abcdefghij"},
+		{"scrolled overlay", []string{":"}, long, 0, "abcdefghij"},
+		{"scrolled overlay, cursor moved left", []string{":"}, long, 13, "abcdefg"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, _ := newTestModel(t)
+			m = press(t, m, tt.open...)
+			m = press(t, m, strings.Split(tt.typ, "")...)
+			for range tt.left {
+				m = step(t, m, left)
+			}
+			checkCursorAfter(t, m, tt.want)
+		})
+	}
+}
+
+// TestInputCursorBelowComment opens the comment box on a line that has a
+// comment, near the bottom of the screen. The box shows below the comment,
+// and the screen scrolls so that the box shows.
+func TestInputCursorBelowComment(t *testing.T) {
+	newline := tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
+	for h := 10; h <= 20; h++ {
+		m, _ := newTestModel(t)
+		m = press(t, m, "|", "]", "v", "j", "c", "a")
+		m = step(t, m, newline)
+		m = press(t, m, "b")
+		m = step(t, m, newline)
+		m = press(t, m, "c", "enter")
+		m = step(t, m, tea.WindowSizeMsg{Width: 120, Height: h})
+		m = press(t, m, "v", "c", "日", "本") // a selection makes a new comment
+		if m.mode != modeComment || m.draft.editID != 0 {
+			t.Fatalf("height %d: v c did not open a new comment", h)
+		}
+		checkCursorAfter(t, m, "日本")
+	}
+}
+
+// checkCursorAfter checks that the real cursor of m is just after want.
+func checkCursorAfter(t *testing.T, m model, want string) {
+	t.Helper()
+	c := m.View().Cursor
+	if c == nil {
+		t.Fatalf("no real cursor:\n%s", view(m))
+	}
+	lines := strings.Split(view(m), "\n")
+	if c.Y >= len(lines) || c.X >= m.w || !strings.HasSuffix(ansi.Cut(lines[c.Y], 0, c.X), want) {
+		t.Errorf("cursor at (%d, %d), not just after %q:\n%s", c.X, c.Y, want, view(m))
+	}
+}

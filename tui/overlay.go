@@ -66,6 +66,7 @@ type overlay struct {
 func newOverlay(kind overlayKind, title string) *overlay {
 	ti := textinput.New()
 	ti.Prompt = "› "
+	ti.SetVirtualCursor(false) // see newModel
 	ov := &overlay{kind: kind, title: title, input: ti, mark: -1}
 	if ov.hasInput() {
 		ov.input.Focus()
@@ -473,8 +474,8 @@ func (m *model) overlayBox() (box string, x, y, listY int) {
 		lines = append(lines, "", dimStyle.Render("q/enter quit · esc stay"))
 	} else {
 		if ov.hasInput() {
-			ov.input.SetWidth(inner - 2)
-			lines = append(lines, ov.input.View())
+			v, _ := inputView(ov.input, inner)
+			lines = append(lines, v)
 		}
 		rows, start := m.overlayRows(inner)
 		listY = len(lines) + 1 - start // 1 for the border

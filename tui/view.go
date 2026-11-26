@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -346,9 +347,11 @@ func fileRow(mark, p, stat string, w int) string {
 }
 
 // mainLines renders the visible part of the main pane. rowAt[y] is the row
-// on screen line y, or -1 for a note, a comment, or the comment box.
+// on screen line y, or -1 for a note, a comment, or the comment box. It
+// sets m.boxY to the line where the comment box starts.
 func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 	p := m.cur()
+	m.boxY = -1
 	if note := m.emptyNote(); note != "" {
 		return []string{"", "  " + dimStyle.Render(note)}, []int{-1, -1}
 	}
@@ -389,6 +392,7 @@ func (m *model) mainLines(h int) (lines []string, rowAt []int) {
 			addBelow(m.commentsBelow(t))
 		}
 		if m.mode == modeComment && i == p.end(p.cur) {
+			m.boxY = len(lines)
 			addBelow(m.commentBox())
 		}
 	}
@@ -494,11 +498,14 @@ func commentMark(c *diff.Comment) string {
 	return cursorStyle.Render("● ")
 }
 
+// boxIndent indents the comment box.
+const boxIndent = "    "
+
 // commentBox returns the lines of the comment box, indented.
 func (m *model) commentBox() []string {
 	var box []string
 	for l := range strings.SplitSeq(m.editor.View(), "\n") {
-		box = append(box, "    "+l)
+		box = append(box, boxIndent+l)
 	}
 	return box
 }
@@ -545,6 +552,9 @@ func (m *model) ensureVisible() {
 	for p.top < last {
 		_, rowAt := m.mainLines(h)
 		idx := slices.Index(rowAt, p.end(p.cur))
+		if m.mode == modeComment {
+			idx = m.boxY - 1 // the box shows below the comments of the line
+		}
 		if idx >= 0 && idx+1+box <= h {
 			return
 		}
@@ -598,7 +608,7 @@ func (m *model) footerLine() string {
 	var badge string
 	switch {
 	case m.mode == modeFind:
-		badge = m.findBar.View() + "  " + findStyle.Render(m.findCount())
+		badge, _ = m.findInput()
 	case m.status != "" && m.statusDone:
 		badge = addStyle.Render("✓ ") + m.status // quiet: it needs no action
 	case m.status != "":
@@ -667,12 +677,36 @@ func (m *model) View() tea.View {
 	rule := dimStyle.Render(strings.Repeat("─", m.w))
 	screen := hdr + "\n" + body + "\n" + rule + "\n" + footer
 
+	// The real cursor shows where the user types, so that an IME draws the
+	// text that it composes there.
+	var caret *tea.Cursor
+	switch m.mode {
+	case modeComment:
+		if c := m.editor.Cursor(); c != nil && m.boxY >= 0 && m.boxY+c.Y < h {
+			caret = tea.NewCursor(m.mainX()+len(boxIndent)+c.X, bodyY+m.boxY+c.Y)
+		}
+	case modeFind: // the find bar starts the footer line
+		_, x := m.findInput()
+		caret = tea.NewCursor(x, bodyY+h+1+lipgloss.Height(footer)-lipgloss.Height(m.footerLine()))
+	}
 	if m.mode == modeOverlay && m.overlay != nil {
 		box, x, y, _ := m.overlayBox()
+		// A Compositor, and not Canvas.Compose: a Layer that draws by
+		// itself does not move to its X and Y.
 		c := lipgloss.NewCanvas(m.w, m.h)
-		c.Compose(lipgloss.NewLayer(screen))
-		c.Compose(lipgloss.NewLayer(box).X(x).Y(y).Z(1))
+		c.Compose(lipgloss.NewCompositor(
+			lipgloss.NewLayer(screen),
+			lipgloss.NewLayer(box).X(x).Y(y).Z(1),
+		))
 		screen = c.Render()
+		if m.overlay.hasInput() { // below the title, in the border and the padding
+			_, ix := inputView(m.overlay.input, lipgloss.Width(box)-4)
+			caret = tea.NewCursor(x+2+ix, y+2)
+		}
+	}
+	// A small screen cuts off the input.
+	if caret != nil && (caret.X >= m.w || caret.Y >= m.h) {
+		caret = nil
 	}
 
 	// On a small screen, the parts have their minimum sizes. Cut the
@@ -683,7 +717,34 @@ func (m *model) View() tea.View {
 	v.MouseMode = tea.MouseModeCellMotion
 	v.ReportFocus = true
 	v.ProgramStatus = m.programStatus()
+	v.Cursor = caret
 	return v
+}
+
+// inputView renders ti in w columns or fewer, and returns the column of
+// its cursor. ti scrolls by itself only if it has a width, and then it does
+// not tell how far, so ti has no width and inputView scrolls: the cursor
+// stays at the right edge while the text before it does not fit. ti.Cursor
+// counts runes and not columns, so it is wrong after a wide rune.
+func inputView(ti textinput.Model, w int) (view string, x int) {
+	pw := lipgloss.Width(ti.Prompt)
+	before := []rune(ti.Value())[:ti.Position()]
+	x = ansi.StringWidth(string(before))
+	room := max(w-pw-1, 1) // 1 for the cursor after the text
+	start := 0             // the column of the text where the view starts
+	for i := 0; i < len(before) && x-start > room; i++ {
+		start += ansi.StringWidth(string(before[i]))
+	}
+	v := ti.View()
+	return ansi.Cut(v, 0, pw) + ansi.Cut(v, pw+start, start+w), pw + x - start
+}
+
+// findInput renders the find bar and the count of its hits, and returns
+// the column of the cursor of the bar.
+func (m *model) findInput() (view string, x int) {
+	count := findStyle.Render(m.findCount())
+	v, x := inputView(m.findBar, m.w-lipgloss.Width(count)-2)
+	return v + "  " + count, x
 }
 
 // box joins lines into a block of exactly w columns and h lines.

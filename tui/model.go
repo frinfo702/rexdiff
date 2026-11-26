@@ -276,6 +276,7 @@ type model struct {
 
 	comments diff.Comments
 	editor   textarea.Model
+	boxY     int // the line of the main pane where the comment box starts, or -1
 	draft    *draft
 	mode     mode
 	overlay  *overlay
@@ -303,6 +304,9 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	ta.ShowLineNumbers = false
 	ta.Prompt = "│ "
 	ta.SetHeight(3)
+	// The real cursor, and not a drawn one: an IME draws the text that it
+	// composes at the real cursor.
+	ta.SetVirtualCursor(false)
 	ta.KeyMap.InsertNewline.SetKeys(defaultKeys().Newline.Keys()...)
 
 	m := model{
@@ -336,6 +340,7 @@ func newModel(ctx context.Context, o Options, cfg config) model {
 	m.overPane.anchor, m.guidePane.anchor = -1, -1
 	m.findBar = textinput.New()
 	m.findBar.Prompt = "/ "
+	m.findBar.SetVirtualCursor(false)
 	m.cfg = cfg
 	m.keys = defaultKeys()
 	m.keys.applyConfig(cfg.Keybindings)
