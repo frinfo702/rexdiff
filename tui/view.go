@@ -718,6 +718,10 @@ func (m *model) View() tea.View {
 	v.ReportFocus = true
 	v.ProgramStatus = m.programStatus()
 	v.Cursor = caret
+	if m.kitty != nil {
+		m.kitty.colors(m.fg, m.bg)
+		m.kitty.draw(screen, m.w, m.h, caret)
+	}
 	return v
 }
 

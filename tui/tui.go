@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 	"strings"
 
@@ -110,13 +111,24 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 			m.log.Debug("set label", "err", err)
 		}
 	}
-	program := tea.NewProgram(&m, tea.WithContext(ctx))
+	opts := []tea.ProgramOption{tea.WithContext(ctx)}
+	var out *ttyOut
+	if cfg.Renderer == rendererKitty {
+		out = &ttyOut{File: os.Stdout}
+		opts = append(opts, tea.WithOutput(out))
+	}
+	program := tea.NewProgram(&m, opts...)
+	if out != nil {
+		// After NewProgram: the timer of the screen sends to program.
+		m.kitty = newKittyScreen(out, func() { program.Send(kittyWakeMsg{}) })
+	}
 	if o.Rex != nil {
 		go o.Rex.Watch(ctx, func(e rex.Event) { program.Send(eventMsg(e)) })
 	}
 	final, err := program.Run()
 	if fm, ok := final.(*model); ok && err == nil {
 		if fm.restartState != "" {
+			fm.kitty = nil // the pictures went when the program left the screen
 			// Keep the last screen until the new rexdiff draws, so that
 			// the restart does not show the shell of the pane.
 			fmt.Print("\x1b[?1049h\x1b[?25l\x1b[H" + fm.View().Content)

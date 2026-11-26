@@ -45,6 +45,7 @@ local settings = {
   -- placement = "split", -- split, zoomed, tab, or overlay
   -- layout = "unified", -- split (side by side when it fits) or unified
   -- guide_agent = "claude -p", -- the agent that writes the Guide tab
+  -- renderer = "kitty", -- draw with the kitty graphics protocol, with no flicker
 }
 
 `

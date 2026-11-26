@@ -38,6 +38,14 @@ const (
 	markdownViewRendered markdownView = "rendered"
 )
 
+// renderer tells how rexdiff draws the screen.
+type renderer string
+
+const (
+	rendererText  renderer = "text"  // the cells of the terminal
+	rendererKitty renderer = "kitty" // pictures, with the kitty graphics protocol
+)
+
 // position is a side of the screen.
 type position string
 
@@ -52,6 +60,7 @@ var (
 	configScopes  = []Scope{ScopeUncommitted, ScopeBranch, ScopeLastTurn}
 	markdownViews = []markdownView{markdownViewSource, markdownViewRendered}
 	positions     = []position{positionRight, positionLeft}
+	renderers     = []renderer{rendererText, rendererKitty}
 )
 
 // config holds the settings of rexdiff. The settings are at the top of
@@ -81,6 +90,10 @@ type config struct {
 	DiffSigns bool `json:"diff_signs"`
 	// CursorLine tints the background of the line at the cursor.
 	CursorLine bool `json:"cursor_line"`
+	// Renderer draws the screen as text, or as pictures with the kitty
+	// graphics protocol. The pictures change a whole line at once, so the
+	// screen does not flicker.
+	Renderer renderer `json:"renderer"`
 	// FocusAgent tells if the focus moves to the agent after a send. Nil
 	// means true.
 	FocusAgent *bool `json:"focus_agent_after_send"`
@@ -168,6 +181,7 @@ func defaultConfig() config {
 		FileList:      positionRight,
 		FileListWidth: 32,
 		CursorLine:    true,
+		Renderer:      rendererText,
 	}
 }
 
@@ -260,6 +274,7 @@ func (c config) checkChoices() error {
 		{"default_scope", string(c.DefaultScope), names(configScopes...)},
 		{"markdown_view", string(c.MarkdownView), names(markdownViews...)},
 		{"file_list", string(c.FileList), names(positions...)},
+		{"renderer", string(c.Renderer), names(renderers...)},
 	}
 	for _, k := range choices {
 		if !slices.Contains(k.allowed, k.value) {
