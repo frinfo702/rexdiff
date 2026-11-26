@@ -114,6 +114,10 @@ Other settings:
   standard input, for example `"claude -p --model sonnet"`
 - `diff_signs`: `true` marks changed lines with `+` and `-`, in place of a coloured bar
 - `cursor_line`: `false` turns off the tint of the line at the cursor
+- `renderer`: `"kitty"` draws the screen as pictures with the kitty graphics
+  protocol, which Rex supports. A line changes at once, so the screen does not
+  flicker, and box lines join with no gap. The keys and the mouse work the
+  same. The default is `"text"`
 - `review_prefix`
 - `url_opener`
 - `focus_agent_after_send`

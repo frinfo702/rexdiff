@@ -234,6 +234,7 @@ type model struct {
 	restartState string // the file of the state for the restart, or ""
 
 	w, h    int
+	kitty   *kittyScreen // draws the screen as pictures, or nil for text
 	bg, fg  color.Color
 	red     color.Color // the ANSI red of the terminal, or nil
 	green   color.Color // the ANSI green of the terminal, or nil
@@ -403,6 +404,9 @@ func tick(d time.Duration) tea.Cmd {
 func (m *model) Init() tea.Cmd {
 	cmds := []tea.Cmd{tick(time.Second), m.loadPR()}
 	cmds = append(cmds, requestColors...)
+	if m.kitty != nil {
+		cmds = append(cmds, requestKittyPalette)
+	}
 	if m.rex != nil {
 		cmds = append(cmds, m.listAgents(agentsMsg{}))
 	}
@@ -592,10 +596,16 @@ func (m *model) handle(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
+		if m.kitty != nil {
+			m.kitty.resized()
+		}
 		m.editor.SetWidth(max(m.mainWidth()-8, 20))
 		m.rerender()
 	case tea.FocusMsg:
 		m.focused = true
+		if m.kitty != nil {
+			m.kitty.redraw()
+		}
 		m.reloadIfChanged()
 	case tea.BlurMsg:
 		m.focused = false
@@ -776,6 +786,9 @@ func (m *model) onPalette(reply string) {
 	i, c, ok := paletteReply(reply)
 	if !ok {
 		return
+	}
+	if m.kitty != nil {
+		m.kitty.setANSI(i, c)
 	}
 	switch {
 	case i == 1 && !sameColor(m.red, c):
