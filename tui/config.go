@@ -81,10 +81,11 @@ type config struct {
 	FileList position `json:"file_list"`
 	// FileListWidth is in columns, minListWidth or more.
 	FileListWidth int `json:"file_list_width"`
-	// GuideAgent is the command that writes the Guide tab, for example
-	// "claude -p". It reads the prompt on its standard input and prints
-	// the answer. "" picks the first of claude, pi, and codex that is
-	// installed.
+	// GuideAgent is the agent that writes the Guide tab: a name of
+	// guideAgents, for example "agy", or a command, for example
+	// "claude -p --model sonnet", that reads the prompt on its standard
+	// input and prints the answer. "" picks the first of guideAgents that
+	// is installed.
 	GuideAgent string `json:"guide_agent"`
 	// DiffSigns marks a changed line with + or -, in place of a bar.
 	DiffSigns bool `json:"diff_signs"`
@@ -163,6 +164,7 @@ type keybindings struct {
 	NavigatorShrink   []string `json:"navigator-shrink"`
 	OpenPR            []string `json:"open-pr"`
 	Refresh           []string `json:"refresh"`
+	GuideAgent        []string `json:"guide-agent"`
 	Keys              []string `json:"keys"`
 	Quit              []string `json:"quit"`
 	QuitDiscard       []string `json:"quit-discard"`

@@ -75,6 +75,7 @@ are gone, rexdiff marks the comment as stale.
 | `\|` | side by side or top to bottom |
 | `1` … `5` | overview, guide, diff, all files, or pull request |
 | `r` | in the guide: write it again |
+| `a` | in the guide: pick the agent that writes it |
 | `?` | all keys |
 
 ## Tabs
@@ -84,9 +85,11 @@ are gone, rexdiff marks the comment as stale.
   works with no forge and no login.
 - **Guide**: the changes in the order of their meaning, as on [pulls.review].
   An agent groups the files into sections with a title and a summary; the diff
-  of each file shows beside its section. rexdiff runs the first of `claude -p`,
-  `pi -p`, and `codex exec -` that is installed, or `guide_agent`. It keeps
-  each guide, so the agent writes it once. Press `r` to write it again.
+  of each file shows beside its section. rexdiff runs the first of claude, pi,
+  codex, opencode, cursor-agent, and agy that is installed, or `guide_agent`.
+  Press `a` to pick another agent; in a terminal with the kitty graphics
+  protocol (Rex, Ghostty, kitty), the list shows their logos. It keeps each
+  guide, so the agent writes it once. Press `r` to write it again.
 - **Diff**: the changes, one file at a time. A wide pane shows them side by
   side; a narrow one, top to bottom. Binary files are not diffed.
 
@@ -110,8 +113,9 @@ Other settings:
 - `markdown_view`
 - `file_list`
 - `file_list_width`
-- `guide_agent`: the command that writes the guide. It reads the prompt on its
-  standard input, for example `"claude -p --model sonnet"`
+- `guide_agent`: the agent that writes the guide: `claude`, `pi`, `codex`,
+  `opencode`, `cursor-agent`, or `agy`, or a command that reads the prompt on
+  its standard input, for example `"claude -p --model sonnet"`
 - `diff_signs`: `true` marks changed lines with `+` and `-`, in place of a coloured bar
 - `cursor_line`: `false` turns off the tint of the line at the cursor
 - `renderer`: `"kitty"` draws the screen as pictures with the kitty graphics

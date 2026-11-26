@@ -1,7 +1,7 @@
 package tui
 
 // The Guide tab reads the changes in the order of their meaning, as
-// pulls.review does. An agent CLI (claude, pi, or codex) groups the
+// pulls.review does. An agent CLI (claude, pi, codex, and others) groups the
 // changed files into sections, each with a title and a short summary. The
 // tab shows a section at the left and the diff of one of its files at the
 // right. The guide of a pair of trees is kept on disk, so the agent writes
@@ -41,12 +41,23 @@ const (
 )
 
 // guideAgents are the agent CLIs that can write the guide, in the order
-// that rexdiff tries them. Each one reads the prompt on its standard input.
-var guideAgents = []struct{ name, command string }{
+// that rexdiff tries them. Each command reads the prompt on its standard
+// input. opencode, cursor-agent, and agy take the prompt only as an
+// argument, so their commands pass the standard input as one.
+//
+// ponytail: Linux caps one argument at 128 KiB (MAX_ARG_STRLEN), under
+// guideMaxDiff; give these agents a smaller diff if a big change fails.
+var guideAgents = []agentCLI{
 	{"claude", "claude -p"},
 	{"pi", "pi -p"},
 	{"codex", "codex exec -"},
+	{"opencode", `opencode run "$(cat)"`},
+	{"cursor-agent", `cursor-agent -p --mode ask --trust "$(cat)"`},
+	{"agy", `agy -p "$(cat)"`},
 }
+
+// agentCLI is an agent CLI that can write the guide, and its command.
+type agentCLI struct{ name, command string }
 
 // guideSection is one part of the guide: the files of one change.
 type guideSection struct {
@@ -161,18 +172,24 @@ func (m *model) guideNote() string {
 	case g.running:
 		return m.guideProgress()
 	case g.err != "":
-		return g.err + " · press r to try again"
+		return g.err + " · press r to try again, a to pick the agent"
 	case len(m.files) == 0:
 		return cmp.Or(m.changes.note, "no changes to explain")
 	}
-	return "press r to write a guide"
+	return "press r to write a guide, a to pick the agent"
 }
 
 // guideProgress tells which agent writes the guide, and for how long.
 func (m *model) guideProgress() string {
-	name, _, _ := strings.Cut(m.guide.agent, " ")
 	secs := int(time.Since(m.guide.started).Seconds())
-	return fmt.Sprintf("%s is reading the changes… %ds", name, secs)
+	return fmt.Sprintf("%s is reading the changes… %ds", agentName(m.guide.agent), secs)
+}
+
+// agentName returns the program of the command of an agent, for example
+// "claude" for "claude -p".
+func agentName(command string) string {
+	name, _, _ := strings.Cut(strings.TrimSpace(command), " ")
+	return name
 }
 
 // guideLines renders h lines of the guide column: the section, its
@@ -195,7 +212,13 @@ func (m *model) guideLines(h int) (lines []string, first, outline int) {
 	lines = append(lines, "")
 	switch {
 	case m.guide.running:
-		add(noteStyle, "↻ "+m.guideProgress())
+		icon := cmp.Or(m.agentLogo(agentName(m.guide.agent)), noteStyle.Render("↻")+" ")
+		for i, l := range strings.Split(wrapWords(m.guideProgress(), w-2-logoCols-1), "\n") {
+			if i > 0 {
+				icon = "  "
+			}
+			lines = append(lines, " "+icon+" "+noteStyle.Render(l))
+		}
 		lines = append(lines, "")
 	case m.guide.trees != m.shownTrees:
 		add(noteStyle, "↻ the changes moved on · r to rewrite")
@@ -277,8 +300,8 @@ func (m *model) writeGuide() tea.Cmd {
 		return nil
 	}
 	agent := m.guideAgent()
-	if agent == "" {
-		m.guide.err = "no agent to write the guide: install claude or pi, or set guide_agent"
+	if err := checkAgent(agent); err != "" {
+		m.guide.err = err
 		m.renderGuide()
 		return nil
 	}
@@ -287,7 +310,7 @@ func (m *model) writeGuide() tea.Cmd {
 
 	ctx, dir, trees := m.ctx, m.repo.Root(), m.shownTrees
 	prompt := guidePrompt(m.guideCommits(), m.files)
-	return tea.Batch(frame(m.guide.started), func() tea.Msg {
+	return tea.Batch(m.sendLogos(), frame(m.guide.started), func() tea.Msg {
 		out, err := runAgent(ctx, dir, agent, prompt)
 		if err != nil {
 			return guideMsg{trees: trees, err: err}
@@ -350,18 +373,98 @@ func (m *model) onGuide(msg guideMsg) {
 	}
 }
 
-// guideAgent returns the command that writes the guide: the setting, or
-// the first agent CLI that is installed, or "".
+// guideAgent returns the command that writes the guide: the agent that
+// the user picked, or the setting, or the first agent CLI that is
+// installed, or "". The pick and the setting are a name of guideAgents or
+// a command.
 func (m *model) guideAgent() string {
-	if m.cfg.GuideAgent != "" {
-		return m.cfg.GuideAgent
+	if pick := cmp.Or(m.guidePick, m.cfg.GuideAgent); pick != "" {
+		for _, a := range guideAgents {
+			if a.name == pick {
+				return a.command
+			}
+		}
+		return pick
 	}
 	for _, a := range guideAgents {
-		if _, err := exec.LookPath(a.name); err == nil {
+		if installed(a.name) {
 			return a.command
 		}
 	}
 	return ""
+}
+
+// checkAgent returns why the agent command cannot run, or "". It checks
+// only the PATH for the agent CLIs of guideAgents: a command of the
+// setting can start with a variable, as in "FOO=1 claude -p", and the
+// shell tells when it finds no program.
+func checkAgent(command string) string {
+	if command == "" {
+		return "no agent found"
+	}
+	for _, a := range guideAgents {
+		if a.command == command && !installed(a.name) {
+			return fmt.Sprintf("agent %q not found in PATH", a.name)
+		}
+	}
+	return ""
+}
+
+// installed reports whether the PATH has program.
+func installed(program string) bool {
+	_, err := exec.LookPath(program)
+	return err == nil
+}
+
+// openGuideAgentPicker lets the user pick the agent that writes the
+// guide. The list has the agent CLIs, and the command of the setting if
+// it is not one of them.
+func (m *model) openGuideAgentPicker() tea.Cmd {
+	ov := newOverlay(overlayGuideAgent, "which agent writes the guide?")
+	cur := m.guideAgent()
+	var items []pickItem
+	for _, a := range guideAgents {
+		tag := ""
+		switch {
+		case !installed(a.name):
+			tag = notInstalled
+		case a.command == cur:
+			tag = "current"
+		}
+		items = append(items, pickItem{label: a.name, tag: tag, id: a.command, logo: m.agentLogoID(a.name)})
+	}
+	if c := m.cfg.GuideAgent; c != "" && !slices.ContainsFunc(guideAgents, func(a agentCLI) bool {
+		return a.name == c || a.command == c
+	}) {
+		tag := ""
+		if c == cur {
+			tag = "current"
+		}
+		items = append(items, pickItem{label: "guide_agent", detail: c, tag: tag, id: c})
+	}
+	ov.setItems(items)
+	ov.cur = max(slices.IndexFunc(items, func(it pickItem) bool { return it.id == cur }), 0)
+	m.open(ov)
+	return m.sendLogos()
+}
+
+// notInstalled tags an agent CLI of the picker that the PATH does not have.
+const notInstalled = "not installed"
+
+// pickGuideAgent makes the agent of item it of the picker the agent of
+// the guide, and writes the guide with it.
+func (m *model) pickGuideAgent(it pickItem) tea.Cmd {
+	command := it.id
+	switch {
+	case it.tag == notInstalled:
+		m.flash(it.label + " is not installed")
+		return nil
+	case m.guide.running:
+		m.flash("wait for " + agentName(m.guide.agent) + " to finish")
+		return nil
+	}
+	m.guidePick = command
+	return m.writeGuide()
 }
 
 // guideCommits returns the subjects of the commits of the branch, which
