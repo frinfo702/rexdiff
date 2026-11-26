@@ -169,7 +169,7 @@ func (d *Diff) SideAt(x int) (s Side, onNumber bool) {
 func Count(old, new string) (added, deleted int) {
 	old = strings.ReplaceAll(old, "\r\n", "\n")
 	new = strings.ReplaceAll(new, "\r\n", "\n")
-	u, err := udiff.ToUnifiedDiff("", "", old, udiff.Lines(old, new), 0)
+	u, err := udiff.ToUnifiedDiff("", "", old, diffview.Edits(old, new), 0)
 	if err != nil {
 		return 0, 0
 	}
