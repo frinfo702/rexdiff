@@ -29,6 +29,10 @@ The script downloads the release for this system, checks its checksum, and
 puts the binary in `~/.local/bin`, or in `REXDIFF_BIN_DIR`. It also says how
 to add the directory to `PATH` if it is not there.
 
+To update rexdiff, run `rexdiff update`. It installs the latest release the
+way you installed rexdiff: with Homebrew, go install, or a download like the
+curl script.
+
 With Go:
 
 ```sh

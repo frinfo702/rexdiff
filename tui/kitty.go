@@ -36,6 +36,11 @@ import (
 // it, to quit or to run an editor, ttyOut deletes them, or they would cover
 // the shell. Until Bubble Tea comes back, the pictures wait.
 //
+// Until the first pictures go out, the text of Bubble Tea would show as it
+// is, with gaps in the box lines and in other colours, and then change into
+// the pictures. covered tells the view to show no text until then, and
+// onCover makes it draw the text once the pictures cover it.
+//
 // A terminal that reads slowly blocks a write. The writes hold wmu, and
 // queue takes only mu, so a frame that waits for the terminal does not stop
 // the program: the keys still work, and q still quits.
@@ -47,6 +52,10 @@ type ttyOut struct {
 	timer   *time.Timer
 	away    bool // Bubble Tea left the alternate screen
 	leaves  int  // how many times Bubble Tea left it
+	covered bool // pictures went out since Bubble Tea came to the screen
+	// onCover runs, in its own goroutine, when the first pictures go out
+	// after Bubble Tea came to the alternate screen. It can be nil.
+	onCover func()
 }
 
 // pictureWait is how long the pictures of a frame wait for the text of the
@@ -64,7 +73,7 @@ func (o *ttyOut) Write(p []byte) (int, error) {
 	o.mu.Lock()
 	leaving := !o.away && bytes.Contains(p, []byte(ansi.ResetModeAltScreenSaveCursor))
 	if leaving {
-		o.away, o.leaves, o.pending = true, o.leaves+1, nil
+		o.away, o.leaves, o.pending, o.covered = true, o.leaves+1, nil, false
 	}
 	if bytes.Contains(p, []byte(ansi.SetModeAltScreenSaveCursor)) {
 		o.away = false
@@ -82,9 +91,30 @@ func (o *ttyOut) Write(p []byte) (int, error) {
 	}
 	n, err := o.File.Write(p)
 	if err == nil && len(pictures) > 0 {
-		_, err = o.File.Write(pictures)
+		if _, err = o.File.Write(pictures); err == nil {
+			o.cover()
+		}
 	}
 	return n, err
+}
+
+// cover notes that pictures went out. The first pictures run onCover.
+func (o *ttyOut) cover() {
+	o.mu.Lock()
+	first := !o.covered && !o.away
+	o.covered = o.covered || first
+	o.mu.Unlock()
+	if first && o.onCover != nil {
+		go o.onCover() // it sends to the program, which can wait for this write
+	}
+}
+
+// isCovered reports whether pictures went out since Bubble Tea came to the
+// alternate screen.
+func (o *ttyOut) isCovered() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.covered
 }
 
 // left returns how many times Bubble Tea left the alternate screen. The
@@ -117,7 +147,9 @@ func (o *ttyOut) flush() {
 	}
 	o.mu.Unlock()
 	if len(pictures) > 0 {
-		_, _ = o.File.Write(pictures)
+		if _, err := o.File.Write(pictures); err == nil {
+			o.cover()
+		}
 	}
 }
 
