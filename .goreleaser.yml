@@ -30,8 +30,14 @@ changelog:
 # The release workflow runs when someone publishes a release on GitHub.
 # GoReleaser adds the files to that release. It does not make a new one,
 # and it keeps the notes.
+#
+# GoReleaser publishes the release again after the upload. Without
+# make_latest it sends no "latest" to GitHub, and the release that the curl
+# install and the update of a downloaded rexdiff get (releases/latest)
+# stays old.
 release:
   mode: keep-existing
+  make_latest: true
 
 # Each release writes Casks/rexdiff.rb to this repo. main requires CI to
 # pass, and GITHUB_TOKEN cannot bypass that, so the push uses a deploy key
