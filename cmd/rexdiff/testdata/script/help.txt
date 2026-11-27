@@ -12,3 +12,9 @@ stdout '^\(devel\)$'
 # install -h writes no file.
 exec rexdiff install -h
 ! exists .config/rex
+
+# A build for development cannot update itself, and says so.
+! exec rexdiff update
+stderr '^rexdiff: this rexdiff cannot update itself'
+! exec rexdiff update extra
+stderr 'update takes no arguments'

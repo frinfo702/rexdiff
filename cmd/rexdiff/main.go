@@ -8,6 +8,7 @@
 //	rexdiff [flags] [repo]
 //	rexdiff install
 //	rexdiff uninstall
+//	rexdiff update
 package main
 
 import (
@@ -42,6 +43,7 @@ func main() {
 const usage = `usage: rexdiff [flags] [repo]
        rexdiff install
        rexdiff uninstall
+       rexdiff update
 
 flags:
 `
@@ -58,6 +60,15 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return install(ctx, bin, args[1:], stdout, stderr)
 		case "uninstall":
 			return uninstall(ctx, stdout)
+		case "update":
+			if len(args) > 1 {
+				return errors.New("update takes no arguments")
+			}
+			bin, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			return selfUpdate(ctx, update.Detect(bin, version), stdout)
 		}
 	}
 	f, err := parseFlags(args, stderr)
@@ -123,6 +134,31 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	}
 	fmt.Print("\x1b[?1049l\x1b[?25h") // leave the screen that Run kept, show the cursor
 	return fmt.Errorf("start the new rexdiff: %w; your comments are saved in %s", err, resume)
+}
+
+// selfUpdate installs the latest release with u, the way the user installed
+// rexdiff, as the U key of the viewer does. u is nil if rexdiff cannot
+// update itself.
+func selfUpdate(ctx context.Context, u *update.Updater, stdout io.Writer) error {
+	if u == nil {
+		return errors.New("this rexdiff cannot update itself; " +
+			"install it again the way you installed it")
+	}
+	r, isNewer, err := u.Latest(ctx)
+	if err != nil {
+		return fmt.Errorf("find the latest release: %w", err)
+	}
+	have := update.Version(version)
+	if !isNewer {
+		fmt.Fprintf(stdout, "rexdiff %s is the latest\n", have)
+		return nil
+	}
+	fmt.Fprintf(stdout, "updating rexdiff %s to %s\n", have, r.Tag)
+	if err := u.Install(ctx, r); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "updated rexdiff to %s\n", r.Tag)
+	return nil
 }
 
 // resumeEnv is the variable that gives a restarted rexdiff the path of the
