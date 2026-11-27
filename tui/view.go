@@ -721,6 +721,9 @@ func (m *model) View() tea.View {
 	if m.kitty != nil {
 		m.kitty.colors(m.fg, m.bg)
 		m.kitty.draw(screen, m.w, m.h, caret)
+		if !m.kitty.out.isCovered() { // see ttyOut
+			v.Content, v.Cursor = "", nil
+		}
 	}
 	return v
 }

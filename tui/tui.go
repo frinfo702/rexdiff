@@ -120,7 +120,9 @@ func Run(ctx context.Context, o Options) (resume string, err error) {
 	program := tea.NewProgram(&m, opts...)
 	if out != nil {
 		// After NewProgram: the timer of the screen sends to program.
-		m.kitty = newKittyScreen(out, func() { program.Send(kittyWakeMsg{}) })
+		wake := func() { program.Send(kittyWakeMsg{}) }
+		m.kitty = newKittyScreen(out, wake)
+		out.onCover = wake
 	}
 	if o.Rex != nil {
 		go o.Rex.Watch(ctx, func(e rex.Event) { program.Send(eventMsg(e)) })

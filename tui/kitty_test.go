@@ -228,3 +228,40 @@ func TestKittyRedrawAndResize(t *testing.T) {
 		t.Fatalf("new cells did not draw all again: %q", s)
 	}
 }
+
+// TestKittyHidesTextUntilPictures checks that the view shows no text until
+// the first pictures go out, so the bare text does not show at the start or
+// after the editor, and that the view is asked to draw the text then.
+func TestKittyHidesTextUntilPictures(t *testing.T) {
+	m, _ := newTestModel(t)
+	out, _ := testOut(t)
+	covers := make(chan struct{}, 4)
+	out.onCover = func() { covers <- struct{}{} }
+	m.kitty = newKittyScreen(out, nil)
+	if v := m.View(); v.Content != "" {
+		t.Fatal("text before the colours settled")
+	}
+	m.kitty.settled.Store(true)
+	if v := m.View(); v.Content != "" {
+		t.Fatal("text in the frame of the first pictures")
+	}
+	_, _ = out.Write([]byte("frame")) // the pictures go after it
+	<-covers
+	if v := m.View(); v.Content == "" {
+		t.Fatal("no text after the pictures went out")
+	}
+	_, _ = out.Write([]byte("more"))
+	if len(covers) != 0 {
+		t.Fatal("onCover ran again without a leave")
+	}
+
+	_, _ = out.Write([]byte(ansi.ResetModeAltScreenSaveCursor)) // the editor
+	if v := m.View(); v.Content != "" {
+		t.Fatal("text after leaving the alternate screen")
+	}
+	_, _ = out.Write([]byte(ansi.SetModeAltScreenSaveCursor))
+	<-covers
+	if v := m.View(); v.Content == "" {
+		t.Fatal("no text after coming back")
+	}
+}
